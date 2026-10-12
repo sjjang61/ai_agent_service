@@ -1,5 +1,5 @@
 import { create } from 'zustand'
-import type { Conversation, Message } from '../types/chat'
+import type { AgentStepData, Conversation, Message } from '../types/chat'
 
 interface ChatState {
   conversations: Conversation[]
@@ -12,6 +12,7 @@ interface ChatState {
   setMessages: (convId: string, msgs: Message[]) => void
   addMessage: (convId: string, msg: Message) => void
   updateLastAssistantMessage: (convId: string, content: string) => void
+  appendStepToLastAssistantMessage: (convId: string, step: AgentStepData) => void
 }
 
 export const useChatStore = create<ChatState>((set) => ({
@@ -35,6 +36,15 @@ export const useChatStore = create<ChatState>((set) => ({
       const last = msgs[msgs.length - 1]
       if (last && last.role === 'assistant') {
         msgs[msgs.length - 1] = { ...last, content }
+      }
+      return { messages: { ...s.messages, [convId]: msgs } }
+    }),
+  appendStepToLastAssistantMessage: (convId, step) =>
+    set((s) => {
+      const msgs = [...(s.messages[convId] || [])]
+      const last = msgs[msgs.length - 1]
+      if (last && last.role === 'assistant') {
+        msgs[msgs.length - 1] = { ...last, agent_steps: [...(last.agent_steps || []), step] }
       }
       return { messages: { ...s.messages, [convId]: msgs } }
     }),

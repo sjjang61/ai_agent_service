@@ -2,6 +2,9 @@ import ReactMarkdown from 'react-markdown'
 import type { Message } from '../../types/chat'
 import StepProgressItem from './StepProgressItem'
 import StreamingCursor from './StreamingCursor'
+import WidgetRenderer, { extractWidgets } from '../widgets/WidgetRenderer'
+import TodoCard, { extractLatestTodos } from './TodoCard'
+import FormCard, { extractLatestForm } from './FormCard'
 import { useAgentStore } from '../../store/agentStore'
 import { useChatStore } from '../../store/chatStore'
 
@@ -12,6 +15,9 @@ export default function MessageBubble({ message }: { message: Message }) {
 
   const msgs = currentConversationId ? messages[currentConversationId] || [] : []
   const isLastAssistant = !isUser && msgs[msgs.length - 1]?.id === message.id
+  const widgets = isUser ? [] : extractWidgets(message.agent_steps)
+  const todos = isUser ? null : extractLatestTodos(message.agent_steps)
+  const form = isUser ? null : extractLatestForm(message.agent_steps)
   const showCursor = isLastAssistant && isRunning && !message.content
 
   return (
@@ -46,6 +52,15 @@ export default function MessageBubble({ message }: { message: Message }) {
             ))}
           </div>
         )}
+        {todos && <TodoCard todos={todos} />}
+        {form && (
+          <FormCard
+            form={form}
+            conversationId={message.conversation_id}
+            interactive={isLastAssistant && isRunning}
+          />
+        )}
+        <WidgetRenderer widgets={widgets} />
         <div className="prose prose-invert prose-sm max-w-none">
           {message.content === '__error__' ? (
             <span className="text-red-400 not-prose">

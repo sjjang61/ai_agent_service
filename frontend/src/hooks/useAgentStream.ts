@@ -10,12 +10,16 @@ function nextStepId() {
   return `step-${Date.now()}-${++stepCounter}`
 }
 
-const SANDBOX_TOOLS = new Set(['code_executor', 'file_manager', 'shell_executor'])
+const MESSAGE_RENDERED_TOOLS = new Set(['create_widget', 'todo', 'form_ask_user'])
+const SANDBOX_TOOLS = new Set([
+  'code_executor', 'file_manager', 'shell_executor',
+  'write_file', 'edit_file', 'delete_file', 'download_file', 'exec_command',
+])
 
 export function useAgentStream(conversationId: string) {
   const { token } = useAuthStore()
   const { setRunning, addStep, appendToken, clearSteps, triggerWorkspaceRefresh } = useAgentStore()
-  const { addMessage, updateLastAssistantMessage } = useChatStore()
+  const { addMessage, updateLastAssistantMessage, appendStepToLastAssistantMessage } = useChatStore()
 
   const sendMessage = useCallback(
     async (content: string) => {
@@ -88,6 +92,19 @@ export function useAgentStream(conversationId: string) {
                   output: event.output,
                   timestamp: new Date().toISOString(),
                 })
+                // 위젯·할 일·질문 폼은 응답 말풍선 안에 바로 그리기 위해 메시지에도 스텝을 붙인다
+                if (
+                  event.tool &&
+                  ((event.type === 'tool_result' && MESSAGE_RENDERED_TOOLS.has(event.tool)) ||
+                    (event.type === 'tool_call' && event.tool === 'form_ask_user'))
+                ) {
+                  appendStepToLastAssistantMessage(conversationId, {
+                    type: event.type,
+                    tool: event.tool,
+                    input: event.input,
+                    output: event.output,
+                  })
+                }
                 // 샌드박스 도구 결과 후 워크스페이스 파일 목록 갱신
                 if (event.type === 'tool_result' && event.tool && SANDBOX_TOOLS.has(event.tool)) {
                   triggerWorkspaceRefresh()
@@ -103,7 +120,7 @@ export function useAgentStream(conversationId: string) {
         setRunning(false)
       }
     },
-    [conversationId, token, clearSteps, setRunning, addStep, appendToken, addMessage, updateLastAssistantMessage, triggerWorkspaceRefresh]
+    [conversationId, token, clearSteps, setRunning, addStep, appendToken, addMessage, updateLastAssistantMessage, appendStepToLastAssistantMessage, triggerWorkspaceRefresh]
   )
 
   return { sendMessage }

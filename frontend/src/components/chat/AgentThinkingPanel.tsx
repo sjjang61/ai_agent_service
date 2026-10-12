@@ -7,6 +7,9 @@ export default function AgentThinkingPanel({ steps }: { steps: AgentStep[] }) {
   const [collapsed, setCollapsed] = useState(false)
 
   const lastStep = steps[steps.length - 1]
+  const lastNarration = [...steps]
+    .reverse()
+    .find((s) => s.type === 'tool_call' && s.tool === 'narrate')?.input as { message?: string } | undefined
   const isActive = (step: AgentStep) => step === lastStep
 
   return (
@@ -17,7 +20,9 @@ export default function AgentThinkingPanel({ steps }: { steps: AgentStep[] }) {
       >
         <div className="flex items-center gap-2">
           <div className="w-2 h-2 rounded-full bg-blue-400 animate-pulse" />
-          <span className="font-medium">Agent 작업 중... ({steps.length} steps)</span>
+          <span className="font-medium">
+            {typeof lastNarration?.message === 'string' ? lastNarration.message : 'Agent 작업 중...'} ({steps.length} steps)
+          </span>
         </div>
         {collapsed ? <ChevronDown size={15} /> : <ChevronUp size={15} />}
       </button>
