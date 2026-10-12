@@ -1,10 +1,8 @@
-import { useEffect, useState } from 'react'
 import {
-  X, Brain, Code2, FileText, Globe, Search, Wrench, CheckCircle2,
-  ChevronDown, ChevronRight, File, FolderOpen, RefreshCw, Terminal
+  X, Brain, Code2, FileText, Globe, Search, Wrench, CheckCircle2, File, Terminal
 } from 'lucide-react'
 import { useAgentStore } from '../../store/agentStore'
-import { sandboxApi } from '../../api/sandbox'
+import ArtifactsPanel from './ArtifactsPanel'
 import type { SelectedStepDetail } from '../../types/agent'
 
 // ─── 스텝 상세 섹션 ────────────────────────────────────────────────────────────
@@ -129,103 +127,13 @@ function ToolIcon({ tool }: { tool?: string }) {
   switch (tool) {
     case 'code_executor': return <Code2 size={13} className="text-amber-400" />
     case 'file_manager': return <FileText size={13} className="text-cyan-400" />
-    case 'shell_executor': return <Terminal size={13} className="text-green-400" />
+    case 'shell_executor': case 'exec_command': return <Terminal size={13} className="text-green-400" />
+    case 'read_file': case 'write_file': case 'edit_file': case 'grep_file': case 'delete_file': case 'download_file': case 'publish_file':
+      return <FileText size={13} className="text-cyan-400" />
     case 'web_search': return <Search size={13} className="text-blue-400" />
     case 'web_crawler': return <Globe size={13} className="text-blue-400" />
     default: return <Wrench size={13} className="text-blue-400" />
   }
-}
-
-// ─── 워크스페이스 파일 트리 ──────────────────────────────────────────────────────
-
-interface FileViewerProps {
-  path: string
-  onClose: () => void
-}
-
-function FileViewer({ path, onClose }: FileViewerProps) {
-  const [content, setContent] = useState<string | null>(null)
-  const [loading, setLoading] = useState(true)
-
-  useEffect(() => {
-    setLoading(true)
-    sandboxApi.getFileContent(path)
-      .then((r) => setContent(r.data.content))
-      .catch(() => setContent('파일을 읽을 수 없습니다.'))
-      .finally(() => setLoading(false))
-  }, [path])
-
-  return (
-    <div className="mt-2 space-y-1.5">
-      <div className="flex items-center justify-between">
-        <p className="text-[10px] text-slate-400 font-mono truncate">{path}</p>
-        <button onClick={onClose} className="text-slate-500 hover:text-slate-300 text-xs">닫기</button>
-      </div>
-      {loading
-        ? <p className="text-xs text-slate-500">로딩 중...</p>
-        : <CodeBlock content={content ?? ''} />
-      }
-    </div>
-  )
-}
-
-function WorkspaceTree({ refreshTick }: { refreshTick: number }) {
-  const [files, setFiles] = useState<string[]>([])
-  const [loading, setLoading] = useState(false)
-  const [openFile, setOpenFile] = useState<string | null>(null)
-  const [collapsed, setCollapsed] = useState(false)
-
-  const load = () => {
-    setLoading(true)
-    sandboxApi.getWorkspaceTree()
-      .then((r) => setFiles(r.data.files))
-      .catch(() => setFiles([]))
-      .finally(() => setLoading(false))
-  }
-
-  useEffect(() => { load() }, [refreshTick])
-
-  if (files.length === 0 && !loading) return null
-
-  return (
-    <div className="border-t border-slate-700/50 pt-3 mt-3">
-      <button
-        onClick={() => setCollapsed(!collapsed)}
-        className="flex items-center gap-1.5 text-xs text-slate-400 hover:text-slate-200 transition-colors w-full mb-2"
-      >
-        {collapsed ? <ChevronRight size={12} /> : <ChevronDown size={12} />}
-        <FolderOpen size={12} />
-        <span className="font-medium">워크스페이스 파일 ({files.length})</span>
-        <button
-          onClick={(e) => { e.stopPropagation(); load() }}
-          className="ml-auto text-slate-600 hover:text-slate-400"
-        >
-          <RefreshCw size={11} className={loading ? 'animate-spin' : ''} />
-        </button>
-      </button>
-
-      {!collapsed && (
-        <div className="space-y-0.5">
-          {files.map((f) => (
-            <div key={f}>
-              <button
-                onClick={() => setOpenFile(openFile === f ? null : f)}
-                className={`w-full flex items-center gap-1.5 px-2 py-1 rounded text-xs transition-colors text-left ${
-                  openFile === f ? 'bg-slate-700/60 text-slate-200' : 'text-slate-400 hover:bg-slate-800/60 hover:text-slate-300'
-                }`}
-              >
-                <File size={11} className="flex-shrink-0 text-slate-500" />
-                <span className="font-mono truncate">{f}</span>
-              </button>
-              {openFile === f && (
-                <FileViewer path={f} onClose={() => setOpenFile(null)} />
-              )}
-            </div>
-          ))}
-        </div>
-      )}
-    </div>
-  )
 }
 
 // ─── 메인 패널 ────────────────────────────────────────────────────────────────
@@ -256,7 +164,9 @@ export default function SandboxDetailPanel() {
       {/* 콘텐츠 */}
       <div className="flex-1 overflow-y-auto px-4 py-4 space-y-2">
         <StepDetailContent step={selectedStep} />
-        <WorkspaceTree refreshTick={workspaceRefreshTick} />
+        <div className="border-t border-slate-700/50 pt-3 mt-3">
+          <ArtifactsPanel compact refreshTick={workspaceRefreshTick} />
+        </div>
       </div>
     </div>
   )

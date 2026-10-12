@@ -133,6 +133,11 @@ class Settings(BaseSettings):
     BROWSER_MAX_STEPS: int = 30
     BROWSER_TIMEOUT_SECONDS: int = 300
 
+    # 산출물(artifacts) 보기
+    ARTIFACT_PREVIEW_MAX_KB: int = 200
+    ARTIFACT_MAX_DOWNLOAD_MB: int = 100
+    ARTIFACT_LIST_LIMIT: int = 2000
+
     # Skills (사용자별 설치 경로: SKILLS_DIR/{user_id}/{skill_name})
     SKILLS_DIR: str = str(Path(__file__).parent.parent.parent / "data" / "skills")
     SKILL_MAX_DOWNLOAD_MB: int = 50

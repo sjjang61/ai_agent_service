@@ -1,7 +1,7 @@
 import { Link } from 'react-router-dom'
 import { ArrowLeft } from 'lucide-react'
 import SandboxStatus from '../components/sandbox/SandboxStatus'
-import FileExplorer from '../components/sandbox/FileExplorer'
+import ArtifactsPanel from '../components/sandbox/ArtifactsPanel'
 
 export default function SandboxPage() {
   return (
@@ -14,7 +14,7 @@ export default function SandboxPage() {
           <h1 className="text-xl font-bold text-white">Sandbox</h1>
         </div>
         <SandboxStatus />
-        <FileExplorer />
+        <ArtifactsPanel />
       </div>
     </div>
   )

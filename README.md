@@ -192,7 +192,7 @@ ai_agent_service/
 │   │   ├── components/
 │   │   │   ├── chat/          # ChatLayout, Sidebar, MessageBubble, InputBar, AgentThinkingPanel
 │   │   │   ├── mcp/           # McpServerList, McpServerForm
-│   │   │   └── sandbox/       # SandboxStatus, FileExplorer
+│   │   │   └── sandbox/       # SandboxStatus, ArtifactsPanel (산출물 보기)
 │   │   ├── store/             # Zustand stores (auth, chat, agent, mcp)
 │   │   ├── hooks/             # useAgentStream, useWebSocket, useMcpConfig
 │   │   ├── api/               # Axios 클라이언트 + 엔드포인트
@@ -408,6 +408,10 @@ curl -X POST http://localhost:8500/api/auth/login \
 | `POST` | `/api/sandbox/stop` | 컨테이너 중지 |
 | `GET`  | `/api/sandbox/files` | 파일 목록 |
 | `GET`  | `/api/sandbox/files/{path}` | 파일 내용 |
+| `GET`  | `/api/sandbox/artifacts` | 산출물 목록 (크기·수정시각·종류, 최근 수정순). 중지된 sandbox 는 `restorable` 로 백업 복구 가능 여부 안내 |
+| `GET`  | `/api/sandbox/artifacts/preview?path=` | 텍스트 미리보기 (앞 200KB) |
+| `GET`  | `/api/sandbox/artifacts/raw?path=&download=` | 파일 원본 다운로드 / 이미지 인라인 미리보기 |
+| `POST` | `/api/sandbox/artifacts/publish` | 파일을 공개 다운로드 링크로 발행 |
 
 ---
 
