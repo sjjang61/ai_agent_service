@@ -1,3 +1,4 @@
+import asyncio
 import json
 import logging
 from typing import Any, Dict, List, Optional
@@ -6,12 +7,16 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 
 logger = logging.getLogger(__name__)
+
+# 사용자가 실행을 중단했을 때 저장되는 응답 끝에 붙는 안내 (UI 에도 그대로 보인다)
+CANCEL_NOTE = "_(사용자가 실행을 중단했습니다)_"
 from fastapi.responses import StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.agent.orchestrator import AgentOrchestrator
 from app.db.session import get_session
 from app.core.forms import PendingForms
+from app.core.runs import RunRegistry, cancellable_events
 from app.services.attachment_service import compose_with_attachments, validate_attachments
 from app.dependencies import get_current_user
 from app.models.user import User
@@ -104,6 +109,8 @@ async def send_message(
     attachments = validate_attachments(data.attachments)
     if not data.content.strip() and not attachments:
         raise HTTPException(status_code=400, detail="메시지 또는 첨부 파일이 필요합니다")
+    if RunRegistry.is_running(conversation_id):
+        raise HTTPException(status_code=409, detail="이 대화에서 이미 에이전트가 실행 중입니다")
     await ChatService.save_message(conversation_id, "user", data.content, db, attachments=attachments)
     user_input = compose_with_attachments(data.content, attachments)
 
@@ -123,28 +130,42 @@ async def send_message(
         full_response = ""
         agent_steps = []
         has_error = False
+        cancelled = False
         try:
-            async for event in orchestrator.run(user_input, conversation_id, db):
+            source = orchestrator.run(user_input, conversation_id, db)
+            async for event in cancellable_events(conversation_id, current_user.id, source):
                 if event["type"] == "token":
                     full_response += event.get("content", "")
                 elif event["type"] in ("thought", "tool_call", "tool_result"):
                     agent_steps.append(event)
                 elif event["type"] == "error":
                     has_error = True
+                elif event["type"] == "cancelled":
+                    cancelled = True
                 yield f"data: {json.dumps(event)}\n\n"
+        except asyncio.CancelledError:
+            # 클라이언트 연결이 끊김: 지금까지의 결과를 백그라운드로 저장하고 종료
+            note = full_response + ("\n\n" if full_response else "") + CANCEL_NOTE
+            asyncio.create_task(persist_partial(note, agent_steps))
+            raise
         except Exception as e:
             logger.error("[chat] agent 실행 오류: %s", e, exc_info=True)
             has_error = True
             yield f"data: {json.dumps({'type': 'error', 'message': str(e)})}\n\n"
-        finally:
-            if full_response or has_error:
-                save_content = full_response if full_response else "__error__"
-                msg = await ChatService.save_message(
-                    conversation_id, "assistant", save_content, db, agent_steps=agent_steps
-                )
-                yield f"data: {json.dumps({'type': 'done', 'message_id': msg.id})}\n\n"
+        if cancelled:
+            note = full_response + ("\n\n" if full_response else "") + CANCEL_NOTE
+            msg = await ChatService.save_message(conversation_id, "assistant", note, db, agent_steps=agent_steps)
+            yield f"data: {json.dumps({'type': 'done', 'message_id': msg.id})}\n\n"
+        elif full_response or has_error:
+            save_content = full_response if full_response else "__error__"
+            msg = await ChatService.save_message(
+                conversation_id, "assistant", save_content, db, agent_steps=agent_steps
+            )
+            yield f"data: {json.dumps({'type': 'done', 'message_id': msg.id})}\n\n"
 
     return StreamingResponse(event_stream(), media_type="text/event-stream")
+
+
 class FormAnswerRequest(BaseModel):
     answers: Optional[Dict[str, Any]] = None
     cancelled: bool = False
@@ -166,3 +187,12 @@ async def answer_form(
     return {"status": "ok"}
 
 
+@router.post("/conversations/{conversation_id}/cancel")
+async def cancel_run(
+    conversation_id: str,
+    current_user: User = Depends(get_current_user),
+):
+    """이 대화에서 실행 중인 에이전트를 취소한다. 진행 중인 LLM 호출·도구 대기가 중단되고 지금까지의 결과가 저장된다."""
+    if not RunRegistry.cancel(conversation_id, current_user.id):
+        raise HTTPException(status_code=404, detail="실행 중인 작업이 없습니다")
+    return {"status": "cancelling"}

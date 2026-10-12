@@ -1,6 +1,6 @@
-import { useState, useRef } from 'react'
+import { useState, useRef, useEffect } from 'react'
 import axios from 'axios'
-import { Send, Loader2, Paperclip, X, FileText, AlertCircle } from 'lucide-react'
+import { Send, Loader2, Paperclip, X, FileText, AlertCircle, Square } from 'lucide-react'
 import { useAgentStore } from '../../store/agentStore'
 import { useAgentStream } from '../../hooks/useAgentStream'
 import { sandboxApi } from '../../api/sandbox'
@@ -27,9 +27,29 @@ export default function InputBar({ conversationId }: { conversationId: string })
   const [files, setFiles] = useState<Pending[]>([])
   const [dragging, setDragging] = useState(false)
   const { isRunning, triggerWorkspaceRefresh } = useAgentStore()
-  const { sendMessage } = useAgentStream(conversationId)
+  const { sendMessage, cancelRun } = useAgentStream(conversationId)
+  const [cancelling, setCancelling] = useState(false)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
+
+  const handleCancel = async () => {
+    if (cancelling) return
+    setCancelling(true)
+    await cancelRun()
+  }
+
+  // 실행이 끝나면 '중단 중' 표시를 해제하고, 실행 중에는 Esc 로도 중단할 수 있게 한다
+  useEffect(() => {
+    if (!isRunning) {
+      setCancelling(false)
+      return
+    }
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') handleCancel()
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  })
 
   const uploading = files.some((f) => f.status === 'uploading')
   const ready = files.filter((f) => f.status === 'done' && f.attachment)
@@ -178,14 +198,25 @@ export default function InputBar({ conversationId }: { conversationId: string })
             className="flex-1 bg-transparent text-white resize-none outline-none text-sm placeholder-slate-500 max-h-40 leading-6"
             style={{ minHeight: '24px' }}
           />
-          <button
-            onClick={handleSend}
-            disabled={!canSend}
-            title={uploading ? '업로드가 끝나면 보낼 수 있습니다' : undefined}
-            className="flex-shrink-0 p-1.5 bg-blue-600 hover:bg-blue-700 disabled:opacity-40 disabled:cursor-not-allowed text-white rounded-lg transition-colors"
-          >
-            {isRunning || uploading ? <Loader2 size={16} className="animate-spin" /> : <Send size={16} />}
-          </button>
+          {isRunning ? (
+            <button
+              onClick={handleCancel}
+              disabled={cancelling}
+              title="실행 중단 (Esc)"
+              className="flex-shrink-0 p-1.5 bg-red-600 hover:bg-red-700 disabled:opacity-60 text-white rounded-lg transition-colors"
+            >
+              {cancelling ? <Loader2 size={16} className="animate-spin" /> : <Square size={16} fill="currentColor" />}
+            </button>
+          ) : (
+            <button
+              onClick={handleSend}
+              disabled={!canSend}
+              title={uploading ? '업로드가 끝나면 보낼 수 있습니다' : undefined}
+              className="flex-shrink-0 p-1.5 bg-blue-600 hover:bg-blue-700 disabled:opacity-40 disabled:cursor-not-allowed text-white rounded-lg transition-colors"
+            >
+              {uploading ? <Loader2 size={16} className="animate-spin" /> : <Send size={16} />}
+            </button>
+          )}
         </div>
       </div>
       <p className="text-xs text-slate-600 text-center mt-2">

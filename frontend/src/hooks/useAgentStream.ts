@@ -1,4 +1,5 @@
 import { useCallback } from 'react'
+import { chatApi } from '../api/chat'
 import { useAuthStore } from '../store/authStore'
 import { useAgentStore } from '../store/agentStore'
 import { useChatStore } from '../store/chatStore'
@@ -9,6 +10,10 @@ let stepCounter = 0
 function nextStepId() {
   return `step-${Date.now()}-${++stepCounter}`
 }
+
+// 대화별 진행 중인 요청의 AbortController (취소 시 연결을 끊는 데 사용)
+const controllers = new Map<string, AbortController>()
+const CANCEL_NOTE = '_(사용자가 실행을 중단했습니다)_'
 
 const MESSAGE_RENDERED_TOOLS = new Set(['create_widget', 'todo', 'form_ask_user'])
 const SANDBOX_TOOLS = new Set([
@@ -49,6 +54,9 @@ export function useAgentStream(conversationId: string) {
       }
       addMessage(conversationId, assistantMsg)
 
+      const controller = new AbortController()
+      controllers.set(conversationId, controller)
+      let fullContent = ''
       try {
         const response = await fetch(
           `/api/chat/conversations/${conversationId}/messages`,
@@ -59,12 +67,25 @@ export function useAgentStream(conversationId: string) {
               Authorization: `Bearer ${token}`,
             },
             body: JSON.stringify({ content, attachments }),
+            signal: controller.signal,
           }
         )
 
+        if (!response.ok) {
+          // 예: 409 (이 대화에서 이미 실행 중), 400 (잘못된 첨부)
+          let detail = '요청을 처리하지 못했습니다.'
+          try {
+            const body = await response.json()
+            if (typeof body?.detail === 'string') detail = body.detail
+          } catch {
+            // JSON 이 아니면 기본 문구 사용
+          }
+          updateLastAssistantMessage(conversationId, `⚠️ ${detail}`)
+          return
+        }
+
         const reader = response.body?.getReader()
         const decoder = new TextDecoder()
-        let fullContent = ''
 
         while (reader) {
           const { done, value } = await reader.read()
@@ -110,6 +131,10 @@ export function useAgentStream(conversationId: string) {
                 if (event.type === 'tool_result' && event.tool && SANDBOX_TOOLS.has(event.tool)) {
                   triggerWorkspaceRefresh()
                 }
+              } else if (event.type === 'cancelled') {
+                // 서버가 실행을 중단함: 지금까지의 응답 뒤에 중단 안내를 붙인다 (서버에 저장된 내용과 같다)
+                fullContent += (fullContent ? '\n\n' : '') + CANCEL_NOTE
+                updateLastAssistantMessage(conversationId, fullContent)
               } else if (event.type === 'error') {
                 const friendlyMsg = '비정상적인 에러 발생으로 잠시후에 다시 시도해주세요.'
                 updateLastAssistantMessage(conversationId, friendlyMsg)
@@ -117,12 +142,32 @@ export function useAgentStream(conversationId: string) {
             } catch {}
           }
         }
+      } catch (e) {
+        // 취소 API 가 늦거나 실패해 연결을 직접 끊은 경우
+        if ((e as Error)?.name !== 'AbortError') throw e
+        if (!fullContent.endsWith(CANCEL_NOTE)) {
+          fullContent += (fullContent ? '\n\n' : '') + CANCEL_NOTE
+          updateLastAssistantMessage(conversationId, fullContent)
+        }
       } finally {
+        if (controllers.get(conversationId) === controller) controllers.delete(conversationId)
         setRunning(false)
       }
     },
     [conversationId, token, clearSteps, setRunning, addStep, appendToken, addMessage, updateLastAssistantMessage, appendStepToLastAssistantMessage, triggerWorkspaceRefresh]
   )
 
-  return { sendMessage }
+  /** 실행 중인 에이전트를 중단한다. 서버가 `cancelled` 이벤트로 스트림을 끝내고, 응답이 없으면 연결을 직접 끊는다. */
+  const cancelRun = useCallback(async () => {
+    const controller = controllers.get(conversationId)
+    try {
+      await chatApi.cancelRun(conversationId)
+    } catch {
+      controller?.abort() // 서버가 실행 중인 작업을 찾지 못함(404) 등
+      return
+    }
+    setTimeout(() => controller?.abort(), 3000) // 서버 응답이 늦을 때를 대비한 안전장치
+  }, [conversationId])
+
+  return { sendMessage, cancelRun }
 }

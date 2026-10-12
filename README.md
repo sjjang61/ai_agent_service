@@ -386,6 +386,7 @@ curl -X POST http://localhost:8500/api/auth/login \
 | `DELETE` | `/api/chat/conversations/{id}` | 대화 삭제 |
 | `GET`  | `/api/chat/conversations/{id}/messages` | 메시지 목록 |
 | `POST` | `/api/chat/conversations/{id}/messages` | 메시지 전송 (SSE 스트리밍) |
+| `POST` | `/api/chat/conversations/{id}/cancel` | 실행 중인 에이전트 취소 (진행 중인 LLM 호출·도구 대기·sandbox 명령 중단, 부분 결과는 저장) |
 
 ### MCP 서버 관리
 

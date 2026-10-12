@@ -1,4 +1,4 @@
-export type AgentEventType = 'thought' | 'tool_call' | 'tool_result' | 'token' | 'done' | 'error'
+export type AgentEventType = 'thought' | 'tool_call' | 'tool_result' | 'token' | 'done' | 'error' | 'cancelled'
 
 export interface AgentStreamEvent {
   type: AgentEventType
