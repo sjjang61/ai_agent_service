@@ -3,7 +3,7 @@ import { useAuthStore } from '../store/authStore'
 import { useAgentStore } from '../store/agentStore'
 import { useChatStore } from '../store/chatStore'
 import type { AgentStreamEvent } from '../types/agent'
-import type { Message } from '../types/chat'
+import type { Attachment, Message } from '../types/chat'
 
 let stepCounter = 0
 function nextStepId() {
@@ -22,7 +22,7 @@ export function useAgentStream(conversationId: string) {
   const { addMessage, updateLastAssistantMessage, appendStepToLastAssistantMessage } = useChatStore()
 
   const sendMessage = useCallback(
-    async (content: string) => {
+    async (content: string, attachments: Attachment[] = []) => {
       clearSteps()
       setRunning(true)
 
@@ -33,6 +33,7 @@ export function useAgentStream(conversationId: string) {
         content,
         agent_steps: [],
         tool_calls: [],
+        attachments,
         created_at: new Date().toISOString(),
       }
       addMessage(conversationId, userMsg)
@@ -57,7 +58,7 @@ export function useAgentStream(conversationId: string) {
               'Content-Type': 'application/json',
               Authorization: `Bearer ${token}`,
             },
-            body: JSON.stringify({ content }),
+            body: JSON.stringify({ content, attachments }),
           }
         )
 

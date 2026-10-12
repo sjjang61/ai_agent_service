@@ -39,7 +39,10 @@ class ConversationMemory:
         mem = cls()
         for m in db_messages[-20:]:
             if m.role == "user":
-                mem._messages.append(HumanMessage(content=m.content))
+                from app.services.attachment_service import compose_with_attachments
+
+                atts = (getattr(m, "metadata_", None) or {}).get("attachments")
+                mem._messages.append(HumanMessage(content=compose_with_attachments(m.content, atts)))
             elif m.role == "assistant":
                 mem._messages.append(AIMessage(content=m.content))
         return mem

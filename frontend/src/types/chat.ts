@@ -15,6 +15,12 @@ export interface AgentStepData {
   output?: string
 }
 
+export interface Attachment {
+  name: string
+  path: string
+  size: number
+}
+
 export interface Message {
   id: string
   conversation_id: string
@@ -22,5 +28,6 @@ export interface Message {
   content: string
   agent_steps: AgentStepData[]
   tool_calls: unknown[]
+  attachments?: Attachment[]
   created_at: string
 }

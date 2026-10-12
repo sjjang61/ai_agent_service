@@ -19,6 +19,12 @@ class ConversationResponse(BaseModel):
     updated_at: datetime
 
 
+class Attachment(BaseModel):
+    name: str = ""
+    path: str
+    size: int = 0
+
+
 class MessageResponse(BaseModel):
     id: str
     conversation_id: str
@@ -26,10 +32,12 @@ class MessageResponse(BaseModel):
     content: str
     agent_steps: List[Any] = []
     tool_calls: List[Any] = []
+    attachments: List[Attachment] = []
     created_at: datetime
 
 
 class SendMessageRequest(BaseModel):
-    content: str
+    content: str = ""
+    attachments: List[Attachment] = []
     llm_provider: Optional[str] = None
     model: Optional[str] = None

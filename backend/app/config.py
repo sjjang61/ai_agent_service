@@ -133,6 +133,9 @@ class Settings(BaseSettings):
     BROWSER_MAX_STEPS: int = 30
     BROWSER_TIMEOUT_SECONDS: int = 300
 
+    # 채팅 첨부 파일 업로드 (sandbox /workspace/uploads/)
+    UPLOAD_MAX_MB: int = 50
+
     # 산출물(artifacts) 보기
     ARTIFACT_PREVIEW_MAX_KB: int = 200
     ARTIFACT_MAX_DOWNLOAD_MB: int = 100

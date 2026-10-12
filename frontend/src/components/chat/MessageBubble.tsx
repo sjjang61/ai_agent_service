@@ -7,6 +7,8 @@ import TodoCard, { extractLatestTodos } from './TodoCard'
 import FormCard, { extractLatestForm } from './FormCard'
 import { useAgentStore } from '../../store/agentStore'
 import { useChatStore } from '../../store/chatStore'
+import { Paperclip } from 'lucide-react'
+import { formatSize } from '../sandbox/ArtifactsPanel'
 
 export default function MessageBubble({ message }: { message: Message }) {
   const isUser = message.role === 'user'
@@ -61,6 +63,23 @@ export default function MessageBubble({ message }: { message: Message }) {
           />
         )}
         <WidgetRenderer widgets={widgets} />
+        {message.attachments && message.attachments.length > 0 && (
+          <div className="flex flex-wrap gap-1.5 mb-2">
+            {message.attachments.map((a) => (
+              <span
+                key={a.path}
+                title={a.path}
+                className={`inline-flex items-center gap-1 max-w-[220px] px-2 py-1 rounded-lg text-xs border ${
+                  isUser ? 'bg-blue-700/60 border-blue-400/40 text-blue-50' : 'bg-slate-700/60 border-slate-600 text-slate-200'
+                }`}
+              >
+                <Paperclip size={11} className="flex-shrink-0" />
+                <span className="truncate">{a.name}</span>
+                <span className="opacity-60 flex-shrink-0">{formatSize(a.size)}</span>
+              </span>
+            ))}
+          </div>
+        )}
         <div className="prose prose-invert prose-sm max-w-none">
           {message.content === '__error__' ? (
             <span className="text-red-400 not-prose">

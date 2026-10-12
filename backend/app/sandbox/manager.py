@@ -143,7 +143,9 @@ class SandboxManager:
         def _write():
             container = client.containers.get(container_id)
             parent, name = posixpath.split(path)
-            container.exec_run(["mkdir", "-p", parent])
+            res = container.exec_run(["mkdir", "-p", parent])
+            if res.exit_code != 0:
+                raise RuntimeError((res.output or b"").decode("utf-8", errors="replace").strip() or f"mkdir failed: {parent}")
             buf = io.BytesIO()
             with tarfile.open(fileobj=buf, mode="w") as tar:
                 ti = tarfile.TarInfo(name)

@@ -12,6 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.agent.orchestrator import AgentOrchestrator
 from app.db.session import get_session
 from app.core.forms import PendingForms
+from app.services.attachment_service import compose_with_attachments, validate_attachments
 from app.dependencies import get_current_user
 from app.models.user import User
 from app.schemas.chat import (
@@ -86,6 +87,7 @@ async def list_messages(
             content=m.content,
             agent_steps=m.agent_steps or [],
             tool_calls=m.tool_calls or [],
+            attachments=(m.metadata_ or {}).get("attachments", []),
             created_at=m.created_at,
         )
         for m in messages
@@ -99,7 +101,18 @@ async def send_message(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_session),
 ):
-    await ChatService.save_message(conversation_id, "user", data.content, db)
+    attachments = validate_attachments(data.attachments)
+    if not data.content.strip() and not attachments:
+        raise HTTPException(status_code=400, detail="메시지 또는 첨부 파일이 필요합니다")
+    await ChatService.save_message(conversation_id, "user", data.content, db, attachments=attachments)
+    user_input = compose_with_attachments(data.content, attachments)
+
+    async def persist_partial(content: str, steps: list):
+        """연결이 끊긴 요청의 DB 세션은 이미 닫혔을 수 있어 새 세션으로 저장한다."""
+        from app.db.session import AsyncSessionLocal
+
+        async with AsyncSessionLocal() as s:
+            await ChatService.save_message(conversation_id, "assistant", content, s, agent_steps=steps)
 
     async def event_stream():
         orchestrator = AgentOrchestrator(
@@ -111,7 +124,7 @@ async def send_message(
         agent_steps = []
         has_error = False
         try:
-            async for event in orchestrator.run(data.content, conversation_id, db):
+            async for event in orchestrator.run(user_input, conversation_id, db):
                 if event["type"] == "token":
                     full_response += event.get("content", "")
                 elif event["type"] in ("thought", "tool_call", "tool_result"):

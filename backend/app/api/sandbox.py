@@ -1,3 +1,4 @@
+import posixpath
 from typing import List, Optional
 from urllib.parse import quote
 
@@ -10,6 +11,7 @@ from app.dependencies import get_current_user
 from app.models.user import User
 from app.config import settings
 from app.services import artifact_service, publish_service
+from app.services.attachment_service import MAX_ATTACHMENTS, UPLOAD_DIR
 from app.tools.workspace_tools import WORKSPACE, resolve_path
 from app.services.sandbox_service import SandboxService, sandbox_backup, sandbox_manager
 
@@ -238,3 +240,53 @@ async def publish_artifact(
         raise HTTPException(status_code=413, detail=str(e))
 
 
+# ── 첨부 파일 업로드 ──────────────────────────────────────────────────────────
+def _unique_name(name: str, existing: set[str]) -> str:
+    if name not in existing:
+        return name
+    stem, dot, ext = name.rpartition(".")
+    if not dot:
+        stem, ext = name, ""
+    for i in range(1, 1000):
+        cand = f"{stem} ({i}){'.' + ext if ext else ''}"
+        if cand not in existing:
+            return cand
+    raise HTTPException(status_code=409, detail="같은 이름의 파일이 너무 많습니다")
+
+
+@router.post("/uploads")
+async def upload_files(
+    files: List[UploadFile] = File(...),
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_session),
+):
+    """채팅 첨부 파일을 사용자의 sandbox(/workspace/uploads/)에 올린다. 같은 이름은 `이름 (1).ext` 로 저장한다."""
+    if not files or len(files) > MAX_ATTACHMENTS:
+        raise HTTPException(status_code=400, detail=f"한 번에 1~{MAX_ATTACHMENTS}개의 파일을 올릴 수 있습니다")
+    limit = settings.UPLOAD_MAX_MB * 1024 * 1024
+
+    # 메모리를 아끼기 위해 먼저 크기를 확인한다 (limit 초과분은 읽지 않는다)
+    payloads: list[tuple[str, bytes]] = []
+    for f in files:
+        data = await f.read(limit + 1)
+        if len(data) > limit:
+            raise HTTPException(status_code=413, detail=f"'{f.filename}' 이(가) 너무 큽니다 (최대 {settings.UPLOAD_MAX_MB}MB)")
+        payloads.append((publish_service.safe_filename(f.filename or "file"), data))
+
+    try:
+        sb = await SandboxService.get_or_create_sandbox(current_user.id, db)
+        _, listing, _ = await sandbox_manager.exec_command(
+            sb.container_id, f"ls -1A {UPLOAD_DIR} 2>/dev/null", timeout=15
+        )
+        existing = {n for n in listing.splitlines() if n}
+        saved = []
+        for name, data in payloads:
+            final = _unique_name(name, existing)
+            existing.add(final)
+            await sandbox_manager.write_file(sb.container_id, posixpath.join(UPLOAD_DIR, final), data)
+            saved.append({"name": final, "path": posixpath.join(UPLOAD_DIR, final), "size": len(data)})
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"Sandbox 에 업로드하지 못했습니다: {e}")
+    return {"files": saved}

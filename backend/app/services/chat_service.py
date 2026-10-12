@@ -53,6 +53,7 @@ class ChatService:
         db: AsyncSession,
         agent_steps: list = None,
         tool_calls: list = None,
+        attachments: list = None,
     ) -> Message:
         msg = Message(
             conversation_id=conversation_id,
@@ -60,6 +61,7 @@ class ChatService:
             content=content,
             agent_steps=agent_steps or [],
             tool_calls=tool_calls or [],
+            metadata_={"attachments": attachments} if attachments else {},
         )
         db.add(msg)
 

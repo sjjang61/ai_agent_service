@@ -412,6 +412,7 @@ curl -X POST http://localhost:8500/api/auth/login \
 | `GET`  | `/api/sandbox/artifacts/preview?path=` | 텍스트 미리보기 (앞 200KB) |
 | `GET`  | `/api/sandbox/artifacts/raw?path=&download=` | 파일 원본 다운로드 / 이미지 인라인 미리보기 |
 | `POST` | `/api/sandbox/artifacts/publish` | 파일을 공개 다운로드 링크로 발행 |
+| `POST` | `/api/sandbox/uploads` | 채팅 첨부 파일을 sandbox `/workspace/uploads/` 에 업로드 (multipart, 파일당 `UPLOAD_MAX_MB`) |
 
 ---
 
@@ -498,6 +499,7 @@ curl -X POST http://localhost:8500/api/mcp/configs \
 | `BROWSER_MAX_STEPS` / `BROWSER_TIMEOUT_SECONDS` | ❌ | `30` / `300` | `cli_browser_agent` 의 최대 조작 횟수 / 제한 시간(초) |
 | `PUBLIC_BASE_URL` | ❌ | `http://localhost:8500` | `publish_file` 공개 링크에 붙는 백엔드 외부 주소 |
 | `PUBLISH_EXPIRE_HOURS` / `PUBLISH_MAX_MB` / `DOWNLOAD_MAX_MB` | ❌ | `24` / `100` / `50` | 공개 링크 유효시간·최대 크기, `download_file` 최대 크기 |
+| `UPLOAD_MAX_MB` | ❌ | `50` | 채팅 첨부 파일 1개당 최대 크기 |
 | `PET_STREAMING` | ❌ | `false` | PetAgent 가 SSE 스트리밍을 지원하면 `true` |
 | `OPENAI_MODEL` / `GEMINI_MODEL` / `ANTHROPIC_MODEL` | ❌ | `gpt-4o` / `gemini-2.5-flash` / `claude-sonnet-4-5` | LLM_TYPE 별 모델 (pet 은 `PET_MODEL_ID`) |
 | `MINIO_ENDPOINT` / `MINIO_ACCESS_KEY` / `MINIO_SECRET_KEY` | ❌ | (비활성) | Sandbox 백업용 MinIO. 비우면 자동 백업/종료 꺼짐 |
