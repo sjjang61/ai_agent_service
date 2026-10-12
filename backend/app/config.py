@@ -79,6 +79,8 @@ class Settings(BaseSettings):
     AGENT_MAX_ITERATIONS: int = 25
     AGENT_TIMEOUT_SECONDS: int = 300
     AGENT_MEMORY_WINDOW: int = 20
+    # 에이전트 실행 엔진: agno (멀티에이전트 Team) | langgraph (단일 ReAct 에이전트)
+    AGENT_ENGINE: Literal["agno", "langgraph"] = "agno"
 
     # PetAgent (사내 LLM — OpenAI-compatible)
     PET_AGENT_URL: str = ""
@@ -86,6 +88,7 @@ class Settings(BaseSettings):
     PET_API_KEY: str = "NONE"
     PET_TIMEOUT: float = 60.0
     PET_MCP_SERVER_URL: str = ""
+    PET_STREAMING: bool = False  # PetAgent 서버가 SSE 스트리밍을 지원하면 true
     # reasoning 모델(gpt-5 계열 등)은 tool 사용 시 chat/completions 에서 "none" 이어야 한다. 빈 값이면 미전송
     PET_REASONING_EFFORT: str = "none"
     OPENAI_REASONING_EFFORT: str = ""
