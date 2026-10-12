@@ -115,6 +115,13 @@ class Settings(BaseSettings):
     SANDBOX_REAPER_INTERVAL_SECONDS: int = 60
     SANDBOX_BACKUP_MAX_MB: int = 500  # 초과하면 백업 실패 처리 (sandbox 는 종료하지 않음)
 
+    # 파일 도구: 공개 다운로드 링크(publish_file/write_file) · URL 다운로드(download_file)
+    PUBLIC_BASE_URL: str = "http://localhost:8500"  # 공개 링크에 붙는 백엔드 외부 접근 주소
+    PUBLISH_DIR: str = str(Path(__file__).parent.parent.parent / "data" / "published")
+    PUBLISH_EXPIRE_HOURS: int = 24
+    PUBLISH_MAX_MB: int = 100
+    DOWNLOAD_MAX_MB: int = 50
+
     # Skills (사용자별 설치 경로: SKILLS_DIR/{user_id}/{skill_name})
     SKILLS_DIR: str = str(Path(__file__).parent.parent.parent / "data" / "skills")
     SKILL_MAX_DOWNLOAD_MB: int = 50

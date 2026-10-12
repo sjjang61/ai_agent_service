@@ -489,6 +489,8 @@ curl -X POST http://localhost:8500/api/mcp/configs \
 | `GOOGLE_API_KEY` | ❌ | - | Gemini 사용 시 |
 | `TAVILY_API_KEY` | ❌ | - | 웹서치 기능 |
 | `LLM_TYPE` | ❌ | `pet` | 사용할 LLM: `pet` \| `openai` \| `gemini` \| `anthropic` |
+| `PUBLIC_BASE_URL` | ❌ | `http://localhost:8500` | `publish_file` 공개 링크에 붙는 백엔드 외부 주소 |
+| `PUBLISH_EXPIRE_HOURS` / `PUBLISH_MAX_MB` / `DOWNLOAD_MAX_MB` | ❌ | `24` / `100` / `50` | 공개 링크 유효시간·최대 크기, `download_file` 최대 크기 |
 | `OPENAI_MODEL` / `GEMINI_MODEL` / `ANTHROPIC_MODEL` | ❌ | `gpt-4o` / `gemini-2.5-flash` / `claude-sonnet-4-5` | LLM_TYPE 별 모델 (pet 은 `PET_MODEL_ID`) |
 | `MINIO_ENDPOINT` / `MINIO_ACCESS_KEY` / `MINIO_SECRET_KEY` | ❌ | (비활성) | Sandbox 백업용 MinIO. 비우면 자동 백업/종료 꺼짐 |
 | `MINIO_BUCKET` | ❌ | `sandbox-sessions` | 백업 버킷 (`{세션id}/workspace.tar.gz`) |

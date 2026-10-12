@@ -2,8 +2,10 @@ import asyncio
 import gzip
 import io
 import os
+import posixpath
 import shlex
 import tarfile
+import time
 from pathlib import Path
 
 from app.config import settings
@@ -94,6 +96,60 @@ class SandboxManager:
             return dest
 
         return await loop.run_in_executor(None, _put)
+
+    async def read_file(self, container_id: str, path: str, max_bytes: int) -> tuple[bytes, int]:
+        """컨테이너 파일 하나를 읽는다. (내용, 파일 mode) 반환.
+
+        없으면 FileNotFoundError, 디렉터리면 IsADirectoryError, 제한 초과면 ValueError.
+        """
+        loop = asyncio.get_event_loop()
+        client = self._get_client()
+
+        def _read() -> tuple[bytes, int]:
+            from docker.errors import NotFound
+
+            container = client.containers.get(container_id)
+            try:
+                stream, _ = container.get_archive(path)
+            except NotFound:
+                raise FileNotFoundError(path)
+            buf, total = io.BytesIO(), 0
+            for chunk in stream:
+                total += len(chunk)
+                if total > max_bytes + 1024 * 1024:  # tar 헤더/패딩 여유
+                    raise ValueError(f"파일이 너무 큽니다 (최대 {max_bytes // (1024 * 1024)}MB)")
+                buf.write(chunk)
+            buf.seek(0)
+            with tarfile.open(fileobj=buf) as tar:
+                members = tar.getmembers()
+                if not members or members[0].isdir():
+                    raise IsADirectoryError(path)
+                m = members[0]
+                if m.size > max_bytes:
+                    raise ValueError(f"파일이 너무 큽니다 (최대 {max_bytes // (1024 * 1024)}MB)")
+                return tar.extractfile(m).read(), m.mode
+
+        return await loop.run_in_executor(None, _read)
+
+    async def write_file(self, container_id: str, path: str, data: bytes, mode: int = 0o644):
+        """컨테이너에 파일을 쓴다 (상위 디렉터리 자동 생성, 소유자 uid 1000)."""
+        loop = asyncio.get_event_loop()
+        client = self._get_client()
+
+        def _write():
+            container = client.containers.get(container_id)
+            parent, name = posixpath.split(path)
+            container.exec_run(["mkdir", "-p", parent])
+            buf = io.BytesIO()
+            with tarfile.open(fileobj=buf, mode="w") as tar:
+                ti = tarfile.TarInfo(name)
+                ti.size, ti.mode, ti.uid, ti.gid = len(data), mode, 1000, 1000
+                ti.mtime = int(time.time())
+                tar.addfile(ti, io.BytesIO(data))
+            if not container.put_archive(parent, buf.getvalue()):
+                raise RuntimeError(f"파일 쓰기 실패: {path}")
+
+        await loop.run_in_executor(None, _write)
 
     async def is_running(self, container_id: str) -> bool:
         """컨테이너가 실제로 존재하고 실행 중인지 확인 (DB 상태와의 불일치 감지용)."""
