@@ -105,6 +105,10 @@ class Settings(BaseSettings):
     SANDBOX_POOL_MIN: int = 3
     SANDBOX_POOL_MAX: int = 50
 
+    # MCP 도구 노출 방식: lazy = 목록만 프롬프트에 두고 load_mcp_tool/call_mcp_tool/run_mcp_code 로 사용,
+    #                    direct = 모든 MCP 도구를 개별 도구로 직접 등록 (스키마가 매번 LLM 컨텍스트에 포함됨)
+    MCP_TOOL_MODE: Literal["lazy", "direct"] = "lazy"
+
     # Sandbox 백업/복구 (MinIO). MINIO_ENDPOINT 가 비어 있으면 백업 기능 비활성화
     MINIO_ENDPOINT: str = ""  # host:port
     MINIO_ACCESS_KEY: str = ""
@@ -121,6 +125,10 @@ class Settings(BaseSettings):
     PUBLISH_EXPIRE_HOURS: int = 24
     PUBLISH_MAX_MB: int = 100
     DOWNLOAD_MAX_MB: int = 50
+
+    # 브라우저 에이전트 (cli_browser_agent)
+    BROWSER_MAX_STEPS: int = 30
+    BROWSER_TIMEOUT_SECONDS: int = 300
 
     # Skills (사용자별 설치 경로: SKILLS_DIR/{user_id}/{skill_name})
     SKILLS_DIR: str = str(Path(__file__).parent.parent.parent / "data" / "skills")

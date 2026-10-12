@@ -54,6 +54,22 @@ class MCPSessionManager:
         return all_tools
 
     @classmethod
+    async def get_clients(cls, user_id: str, db: AsyncSession) -> Dict[str, MCPClient]:
+        """연결된 MCP 서버 클라이언트 {server_name: MCPClient}. 연결 실패한 서버는 제외."""
+        from app.services.mcp_service import MCPService
+
+        configs = await MCPService.get_user_configs(user_id, db)
+        clients: Dict[str, MCPClient] = {}
+        for config in configs:
+            try:
+                clients[config.name] = await cls.get_or_create_session(user_id, config)
+            except Exception as e:
+                user_sessions = cls._sessions.get(user_id, {})
+                user_sessions.pop(config.name, None)
+                logger.warning("[mcp] 서버 연결 실패 (건너뜀): server=%s error=%s", config.name, e)
+        return clients
+
+    @classmethod
     async def reload_session(cls, user_id: str, server_name: str):
         user_sessions = cls._sessions.get(user_id, {})
         if server_name in user_sessions:

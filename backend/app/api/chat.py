@@ -1,8 +1,9 @@
 import json
 import logging
-from typing import List
+from typing import Any, Dict, List, Optional
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException
+from pydantic import BaseModel
 
 logger = logging.getLogger(__name__)
 from fastapi.responses import StreamingResponse
@@ -10,6 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.agent.orchestrator import AgentOrchestrator
 from app.db.session import get_session
+from app.core.forms import PendingForms
 from app.dependencies import get_current_user
 from app.models.user import User
 from app.schemas.chat import (
@@ -130,3 +132,24 @@ async def send_message(
                 yield f"data: {json.dumps({'type': 'done', 'message_id': msg.id})}\n\n"
 
     return StreamingResponse(event_stream(), media_type="text/event-stream")
+class FormAnswerRequest(BaseModel):
+    answers: Optional[Dict[str, Any]] = None
+    cancelled: bool = False
+
+
+@router.post("/conversations/{conversation_id}/form-answer")
+async def answer_form(
+    conversation_id: str,
+    data: FormAnswerRequest,
+    current_user: User = Depends(get_current_user),
+):
+    """form_ask_user 로 대기 중인 에이전트에게 사용자의 응답(또는 취소)을 전달한다."""
+    try:
+        delivered = PendingForms.answer(conversation_id, current_user.id, data.answers, data.cancelled)
+    except ValueError as e:
+        raise HTTPException(status_code=422, detail=str(e))
+    if not delivered:
+        raise HTTPException(status_code=404, detail="대기 중인 폼이 없습니다 (이미 응답했거나 시간이 초과되었습니다)")
+    return {"status": "ok"}
+
+

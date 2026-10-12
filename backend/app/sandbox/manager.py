@@ -1,10 +1,14 @@
 import asyncio
 import gzip
 import io
+import json
 import os
 import posixpath
 import shlex
+import socket
+import struct
 import tarfile
+import threading
 import time
 from pathlib import Path
 
@@ -150,6 +154,111 @@ class SandboxManager:
                 raise RuntimeError(f"파일 쓰기 실패: {path}")
 
         await loop.run_in_executor(None, _write)
+
+    async def exec_with_rpc(
+        self,
+        container_id: str,
+        cmd: list[str],
+        rpc_handler,
+        timeout: int,
+        rpc_prefix: str = "@@MCP_RPC@@",
+        max_rpc: int = 200,
+        max_output_bytes: int = 200_000,
+    ) -> tuple[int, str, str, int]:
+        """컨테이너에서 cmd 를 실행하면서, stdout 의 `rpc_prefix{json}` 줄을 RPC 요청으로 처리한다.
+
+        요청마다 `await rpc_handler(dict) -> dict` 를 실행하고 그 결과를 한 줄 JSON 으로 프로세스 stdin 에 돌려준다.
+        그 외의 stdout/stderr 는 일반 출력으로 수집한다. 반환: (exit_code, stdout, stderr, rpc_count)
+        """
+        loop = asyncio.get_running_loop()
+        client = self._get_client()
+        stop = threading.Event()  # 호출이 취소되면 스레드를 멈춘다
+
+        def _run():
+            api = client.api
+            ex = api.exec_create(container_id, cmd, stdin=True, stdout=True, stderr=True, tty=False)
+            sock = api.exec_start(ex["Id"], socket=True, demux=False)
+            raw = getattr(sock, "_sock", sock)
+            raw.settimeout(1.0)
+            deadline = time.monotonic() + timeout
+            pending, out_lines, err = b"", [], bytearray()
+            out_size, rpc_count, timed_out = 0, 0, False
+
+            def read_exact(n: int):
+                buf = bytearray()
+                while len(buf) < n:
+                    if stop.is_set():
+                        raise InterruptedError
+                    if time.monotonic() > deadline:
+                        raise TimeoutError
+                    try:
+                        chunk = raw.recv(n - len(buf))
+                    except socket.timeout:
+                        continue
+                    if not chunk:
+                        return None
+                    buf.extend(chunk)
+                return bytes(buf)
+
+            def emit(text: str):
+                nonlocal out_size
+                if out_size < max_output_bytes:
+                    out_lines.append(text)
+                    out_size += len(text) + 1
+
+            try:
+                while True:
+                    header = read_exact(8)
+                    if not header:
+                        break
+                    stream, size = header[0], struct.unpack(">I", header[4:8])[0]
+                    data = read_exact(size) if size else b""
+                    if data is None:
+                        break
+                    if stream == 2:  # stderr
+                        if len(err) < max_output_bytes:
+                            err.extend(data)
+                        continue
+                    pending += data
+                    while b"\n" in pending:
+                        line, pending = pending.split(b"\n", 1)
+                        text = line.decode("utf-8", errors="replace")
+                        if not text.startswith(rpc_prefix):
+                            emit(text)
+                            continue
+                        rpc_count += 1
+                        if stop.is_set():
+                            raise InterruptedError  # 취소 이후에는 MCP 호출을 더 보내지 않는다
+                        if rpc_count > max_rpc:
+                            resp = {"error": f"RPC 호출 한도({max_rpc})를 초과했습니다"}
+                        else:
+                            try:
+                                req = json.loads(text[len(rpc_prefix):])
+                                resp = asyncio.run_coroutine_threadsafe(rpc_handler(req), loop).result(timeout=120)
+                            except Exception as e:  # noqa: BLE001
+                                resp = {"error": f"{type(e).__name__}: {e}"}
+                        raw.sendall((json.dumps(resp, ensure_ascii=False, default=str) + "\n").encode("utf-8"))
+            except TimeoutError:
+                timed_out = True
+            except InterruptedError:
+                pass
+            finally:
+                try:
+                    raw.close()
+                except OSError:
+                    pass
+            if pending:
+                emit(pending.decode("utf-8", errors="replace"))
+            code = api.exec_inspect(ex["Id"]).get("ExitCode")
+            if timed_out or code is None:
+                code = 124
+            return code, "\n".join(out_lines), err.decode("utf-8", errors="replace"), rpc_count
+
+        try:
+            return await loop.run_in_executor(None, _run)
+        except asyncio.CancelledError:
+            stop.set()
+            raise
 
     async def is_running(self, container_id: str) -> bool:
         """컨테이너가 실제로 존재하고 실행 중인지 확인 (DB 상태와의 불일치 감지용)."""

@@ -8,7 +8,7 @@ from langchain_core.tools import BaseTool
 MAX_READ_BYTES = 100 * 1024
 
 
-class ReadSkillInput(BaseModel):
+class LoadSkillInput(BaseModel):
     name: str = Field(description="Installed skill name (see the 'Installed skills' list)")
     file: str = Field(
         default="SKILL.md",
@@ -16,14 +16,14 @@ class ReadSkillInput(BaseModel):
     )
 
 
-class ReadSkillTool(BaseTool):
-    name: str = "read_skill"
+class LoadSkillTool(BaseTool):
+    name: str = "load_skill"
     description: str = (
-        "Read an installed skill's instructions (SKILL.md) or one of its bundled files. "
+        "Load the instructions (SKILL.md) of an installed skill that matches the type of task, or one of its bundled files. "
         "When the user's request matches an installed skill, call this first and follow the instructions. "
         "The result also lists the other files bundled with the skill."
     )
-    args_schema: type[BaseModel] = ReadSkillInput
+    args_schema: type[BaseModel] = LoadSkillInput
     # {skill_name: install_path} — 해당 사용자의 활성 skill 만 전달된다
     skills: Dict[str, str] = {}
 
@@ -92,7 +92,7 @@ class RegisterSkillTool(BaseTool):
             )
         if imported:
             s = imported[0]
-            return f"Installed skill '{s.name}' (available via read_skill from the next request)."
+            return f"Installed skill '{s.name}' (available via load_skill from the next request)."
         return "Failed to install skill: " + ("; ".join(errors) or "not found")
 
 
@@ -108,11 +108,11 @@ def build_skills_prompt(skills: list) -> str:
         "",
         "## Installed skills",
         "사용자가 설치한 skill 목록입니다. 요청이 어떤 skill의 설명과 맞으면 "
-        "`read_skill` 도구로 SKILL.md 를 먼저 읽고 그 지침을 따르세요. "
+        "`load_skill` 도구로 SKILL.md 를 먼저 읽고 그 지침을 따르세요. "
         "각 skill의 파일(스크립트 포함)은 sandbox의 `/workspace/skills/<name>/` 에도 복사되어 있으므로 "
-        "스크립트 실행은 shell_executor/code_executor 로 그 경로에서 하세요. "
+        "스크립트 실행은 exec_command/code_executor 로 그 경로에서 하세요. "
         "새 skill을 만들 때는 `/workspace/skills/<name>/SKILL.md` 에 작성한 뒤 반드시 `register_skill` 도구로 "
-        "설치하세요 (파일만 만들어서는 설치되지 않으며 read_skill 로 읽을 수 없습니다). "
+        "설치하세요 (파일만 만들어서는 설치되지 않으며 load_skill 로 읽을 수 없습니다). "
         "사용 가능한 skill을 묻는 질문에는 이 목록으로 답하세요.",
         "",
     ]
