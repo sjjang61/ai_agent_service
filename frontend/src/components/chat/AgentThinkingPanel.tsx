@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { ChevronDown, ChevronUp } from 'lucide-react'
+import { ChevronDown, ChevronUp, HelpCircle } from 'lucide-react'
 import type { AgentStep } from '../../types/agent'
 import StepProgressItem from './StepProgressItem'
 
@@ -13,31 +13,36 @@ export default function AgentThinkingPanel({ steps }: { steps: AgentStep[] }) {
   const isActive = (step: AgentStep) => step === lastStep
 
   return (
-    <div className="mx-4 mb-2 bg-slate-800/80 border border-slate-700 rounded-xl overflow-hidden">
-      <button
-        onClick={() => setCollapsed(!collapsed)}
-        className="w-full flex items-center justify-between px-4 py-2.5 text-sm text-slate-300 hover:bg-slate-700/50 transition-colors"
-      >
-        <div className="flex items-center gap-2">
-          <div className="w-2 h-2 rounded-full bg-blue-400 animate-pulse" />
-          <span className="font-medium">
-            {typeof lastNarration?.message === 'string' ? lastNarration.message : 'Agent 작업 중...'} ({steps.length} steps)
-          </span>
-        </div>
-        {collapsed ? <ChevronDown size={15} /> : <ChevronUp size={15} />}
-      </button>
+    <div className="mx-4 mb-2 max-w-[800px] lg:mx-auto">
+      <div className="bg-surface-secondary border border-border rounded-[var(--radius-lg)] overflow-hidden">
+        <button
+          onClick={() => setCollapsed(!collapsed)}
+          className="w-full flex items-center justify-between px-4 py-3 text-sm hover:bg-surface-hover transition-colors bg-surface-tertiary border-b border-border"
+        >
+          <div className="flex items-center gap-2.5">
+            <HelpCircle size={16} className="text-accent-yellow" />
+            <span className="font-medium text-content-secondary">
+              {typeof lastNarration?.message === 'string' ? lastNarration.message : 'Agent thinking...'} ({steps.length} steps)
+            </span>
+          </div>
+          <div className="flex items-center gap-2">
+            <div className="w-2 h-2 rounded-full bg-accent-primary animate-pulse-slow" />
+            {collapsed ? <ChevronDown size={15} className="text-content-muted" /> : <ChevronUp size={15} className="text-content-muted" />}
+          </div>
+        </button>
 
-      {!collapsed && (
-        <div className="px-3 pb-3 space-y-1 max-h-52 overflow-y-auto">
-          {steps.map((step) => (
-            <StepProgressItem
-              key={step.id}
-              step={step}
-              isActive={isActive(step) && step.type === 'tool_call'}
-            />
-          ))}
-        </div>
-      )}
+        {!collapsed && (
+          <div className="px-4 py-3 space-y-2 max-h-52 overflow-y-auto">
+            {steps.map((step) => (
+              <StepProgressItem
+                key={step.id}
+                step={step}
+                isActive={isActive(step) && step.type === 'tool_call'}
+              />
+            ))}
+          </div>
+        )}
+      </div>
     </div>
   )
 }
