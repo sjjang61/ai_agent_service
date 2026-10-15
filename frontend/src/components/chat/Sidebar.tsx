@@ -1,5 +1,5 @@
 import { useNavigate } from 'react-router-dom'
-import { Plus, MessageSquare, Settings, Box, Sparkles, LogOut, Trash2 } from 'lucide-react'
+import { Plus, MessageSquare, Settings, Box, Sparkles, LogOut, Trash2, BarChart3 } from 'lucide-react'
 import { useChatStore } from '../../store/chatStore'
 import { useAuthStore } from '../../store/authStore'
 import { chatApi } from '../../api/chat'
@@ -100,6 +100,13 @@ export default function Sidebar() {
         >
           <Box size={15} />
           Sandbox
+        </button>
+        <button
+          onClick={() => navigate('/admin/usage')}
+          className="w-full flex items-center gap-2 px-3 py-2 text-slate-400 hover:text-white hover:bg-slate-700 rounded-lg transition-colors text-sm"
+        >
+          <BarChart3 size={15} />
+          Token Usage
         </button>
         <div className="flex items-center justify-between px-3 py-2 mt-1">
           <span className="text-xs text-slate-500 truncate">{user?.display_name}</span>

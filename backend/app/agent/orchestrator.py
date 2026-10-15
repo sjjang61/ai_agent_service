@@ -107,7 +107,7 @@ class AgentOrchestrator:
                 yield {"type": "error", "message": str(e)}
                 return
             async for event in runner.stream(
-                user_input, memory.get_messages(), conversation_id, self.user_id
+                user_input, memory.get_messages(), conversation_id, self.user_id, db=db
             ):
                 yield event
             return
