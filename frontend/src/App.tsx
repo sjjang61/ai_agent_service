@@ -1,5 +1,6 @@
 import { Routes, Route, Navigate } from 'react-router-dom'
 import { useAuthStore } from './store/authStore'
+import AdminUsagePage from './pages/AdminUsagePage'
 import AuthPage from './pages/AuthPage'
 import ChatPage from './pages/ChatPage'
 import McpSettingsPage from './pages/McpSettingsPage'
@@ -20,6 +21,7 @@ export default function App() {
       <Route path="/mcp" element={<PrivateRoute><McpSettingsPage /></PrivateRoute>} />
       <Route path="/sandbox" element={<PrivateRoute><SandboxPage /></PrivateRoute>} />
       <Route path="/skills" element={<PrivateRoute><SkillsPage /></PrivateRoute>} />
+      <Route path="/admin/usage" element={<PrivateRoute><AdminUsagePage /></PrivateRoute>} />
     </Routes>
   )
 }

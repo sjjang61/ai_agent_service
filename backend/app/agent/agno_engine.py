@@ -17,6 +17,7 @@ from typing import Any, AsyncIterator, List, Optional
 
 from langchain_core.messages import AIMessage, BaseMessage, HumanMessage
 from langchain_core.tools import BaseTool
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import normalize_llm_type, settings
 
@@ -230,8 +231,26 @@ def _use_streaming(llm_type: str) -> bool:
     return settings.PET_STREAMING if normalize_llm_type(llm_type) == "pet" else True
 
 
+def _extract_metrics(obj) -> tuple[int, int]:
+    """Agno RunOutput 또는 이벤트에서 input_tokens, output_tokens 추출."""
+    metrics = getattr(obj, "metrics", None)
+    if not metrics:
+        return 0, 0
+    input_tokens = getattr(metrics, "input_tokens", 0) or 0
+    output_tokens = getattr(metrics, "output_tokens", 0) or 0
+    return input_tokens, output_tokens
+
+
 async def stream_team(
-    team, user_input: str, history: List[BaseMessage], session_id: str, user_id: str, streaming: bool
+    team,
+    user_input: str,
+    history: List[BaseMessage],
+    session_id: str,
+    user_id: str,
+    streaming: bool,
+    db: Optional[AsyncSession] = None,
+    llm_provider: str = "",
+    model: str = "",
 ) -> AsyncIterator[dict]:
     from agno.models.message import Message
 
@@ -241,32 +260,57 @@ async def stream_team(
     messages = _history_to_agno(history) + [Message(role="user", content=user_input)]
     kwargs = dict(input=messages, user_id=user_id, session_id=session_id)
 
+    total_input_tokens = 0
+    total_output_tokens = 0
+
     if not streaming:
         # 스트리밍 미지원 LLM: 완료 후 결과(RunOutput)에서 이벤트를 재구성한다
         out = await team.arun(**kwargs, stream=False)
+        inp, outp = _extract_metrics(out)
+        total_input_tokens += inp
+        total_output_tokens += outp
         for ev in _events_from_output(out):
             yield ev
-        return
+    else:
+        got_token = False
+        async for ev in team.arun(**kwargs, stream=True, stream_events=True):
+            name = getattr(ev, "event", "")
+            if name == "TeamRunContent":  # 리더의 응답 토큰 (멤버의 RunContent 는 중간 결과라 제외)
+                c = getattr(ev, "content", None)
+                if isinstance(c, str) and c:
+                    got_token = True
+                    yield {"type": "token", "content": c}
+            elif name in ("ToolCallStarted", "TeamToolCallStarted") and ev.tool:
+                yield _tool_call_event(ev.tool)
+            elif name in ("ToolCallCompleted", "TeamToolCallCompleted") and ev.tool:
+                yield _tool_result_event(ev.tool)
+            elif name in ("ToolCallError", "TeamToolCallError") and ev.tool:
+                yield _tool_result_event(ev.tool, error=getattr(ev, "error", None) or "tool error")
+            elif name in ("RunError", "TeamRunError"):
+                yield {"type": "error", "message": getattr(ev, "content", None) or "Agent run failed"}
+                return
+            elif name in ("TeamRunCompleted", "RunCompleted"):
+                inp, outp = _extract_metrics(ev)
+                total_input_tokens += inp
+                total_output_tokens += outp
+        if not got_token:
+            logger.warning("[agno] 응답 토큰이 없습니다")
 
-    got_token = False
-    async for ev in team.arun(**kwargs, stream=True, stream_events=True):
-        name = getattr(ev, "event", "")
-        if name == "TeamRunContent":  # 리더의 응답 토큰 (멤버의 RunContent 는 중간 결과라 제외)
-            c = getattr(ev, "content", None)
-            if isinstance(c, str) and c:
-                got_token = True
-                yield {"type": "token", "content": c}
-        elif name in ("ToolCallStarted", "TeamToolCallStarted") and ev.tool:
-            yield _tool_call_event(ev.tool)
-        elif name in ("ToolCallCompleted", "TeamToolCallCompleted") and ev.tool:
-            yield _tool_result_event(ev.tool)
-        elif name in ("ToolCallError", "TeamToolCallError") and ev.tool:
-            yield _tool_result_event(ev.tool, error=getattr(ev, "error", None) or "tool error")
-        elif name in ("RunError", "TeamRunError"):
-            yield {"type": "error", "message": getattr(ev, "content", None) or "Agent run failed"}
-            return
-    if not got_token:
-        logger.warning("[agno] 응답 토큰이 없습니다")
+    # 토큰 사용량 기록
+    if db and (total_input_tokens > 0 or total_output_tokens > 0):
+        try:
+            from app.services.token_usage_service import TokenUsageService
+            await TokenUsageService.record_usage(
+                db=db,
+                user_id=user_id,
+                conversation_id=session_id,
+                llm_provider=llm_provider,
+                model_name=model,
+                input_tokens=total_input_tokens,
+                output_tokens=total_output_tokens,
+            )
+        except Exception:
+            logger.exception("[agno] 토큰 사용량 기록 실패")
 
 
 def _events_from_output(out) -> list:
@@ -291,14 +335,29 @@ def _events_from_output(out) -> list:
 class AgnoRunner:
     def __init__(self, tools: List[BaseTool], llm_provider: str, model: Optional[str], system_prompt: str):
         self.llm_type = normalize_llm_type(llm_provider)
+        self.llm_provider = llm_provider
+        self.model = model or settings.default_model_for(self.llm_type)
         self.team = build_team(tools, self.llm_type, model, system_prompt)
 
     async def stream(
-        self, user_input: str, history: List[BaseMessage], conversation_id: str, user_id: str
+        self,
+        user_input: str,
+        history: List[BaseMessage],
+        conversation_id: str,
+        user_id: str,
+        db: Optional[AsyncSession] = None,
     ) -> AsyncIterator[dict]:
         try:
             async for ev in stream_team(
-                self.team, user_input, history, conversation_id, user_id, _use_streaming(self.llm_type)
+                self.team,
+                user_input,
+                history,
+                conversation_id,
+                user_id,
+                _use_streaming(self.llm_type),
+                db=db,
+                llm_provider=self.llm_provider,
+                model=self.model,
             ):
                 yield ev
         except Exception as e:
