@@ -20,6 +20,7 @@ import { useChatStore } from '../../store/chatStore'
 import { chatApi } from '../../api/chat'
 import { useAuthStore } from '../../store/authStore'
 import type { Conversation } from '../../types/chat'
+import DocumentPanel from './DocumentPanel'
 
 export default function Sidebar() {
   const {
@@ -153,6 +154,9 @@ export default function Sidebar() {
             </p>
           )}
         </div>
+
+        {/* RAG Documents Panel - only show when a conversation is selected */}
+        {currentConversationId && <DocumentPanel conversationId={currentConversationId} />}
       </div>
 
       {/* Footer - Quick Links */}

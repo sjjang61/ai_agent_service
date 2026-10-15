@@ -82,6 +82,10 @@ class ChatService:
     async def delete_conversation(
         conversation_id: str, user_id: str, db: AsyncSession
     ):
+        # 벡터 컬렉션 삭제 (RAG 문서)
+        from app.core.vector_store import VectorStoreManager
+        VectorStoreManager.delete_collection(conversation_id)
+
         await db.execute(
             delete(Message).where(Message.conversation_id == conversation_id)
         )

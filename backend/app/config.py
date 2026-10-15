@@ -151,6 +151,14 @@ class Settings(BaseSettings):
     MEMORY_CONTEXT_LIMIT: int = 15  # Agent 프롬프트에 주입할 최대 메모리 개수
     SHORT_TERM_MEMORY_TTL: int = 86400  # 단기 메모리 TTL (초, 기본 24시간)
 
+    # RAG (Retrieval-Augmented Generation)
+    CHROMA_PERSIST_DIR: str = str(Path(__file__).parent.parent.parent / "data" / "chroma")
+    EMBEDDING_MODEL: str = "text-embedding-3-small"
+    CHUNK_SIZE: int = 1000
+    CHUNK_OVERLAP: int = 200
+    RAG_TOP_K: int = 5  # 검색 시 상위 K개 청크
+    RAG_MAX_FILE_SIZE_MB: int = 50  # 문서 최대 크기
+
     # CORS
     CORS_ORIGINS: list[str] = [
         "http://localhost:5173",

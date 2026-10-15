@@ -15,6 +15,7 @@ async def get_builtin_tools(
     from app.tools.shell_executor import ShellExecutorTool
     from app.tools.memory_tool import MemoryTool
     from app.tools.widget_tool import CreateWidgetTool
+    from app.tools.rag_tool import RAGTool
     from app.tools.workspace_tools import (
         DeleteFileTool, DownloadFileTool, EditFileTool, ExecCommandTool, GrepFileTool,
         PublishFileTool, ReadFileTool, ReadImageTool, WriteFileTool,
@@ -31,6 +32,7 @@ async def get_builtin_tools(
             conversation_id=conversation_id,
             db_session_factory=db_session_factory,
         ),
+        RAGTool(conversation_id=conversation_id),
         ReadFileTool(user_id=user_id),
         WriteFileTool(user_id=user_id),
         EditFileTool(user_id=user_id),

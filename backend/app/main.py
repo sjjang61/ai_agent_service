@@ -5,7 +5,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.api import admin, auth, chat, files, mcp, memory, sandbox, skills, tools, ws
+from app.api import admin, auth, chat, documents, files, mcp, memory, sandbox, skills, tools, ws
 from app.db.session import init_db
 from app.config import settings
 
@@ -61,11 +61,17 @@ def _setup_mcp_log_filter() -> None:
 async def lifespan(app: FastAPI):
     _setup_mcp_log_filter()
     await init_db()
+
+    # Chroma 벡터 스토어 초기화
+    from app.core.vector_store import VectorStoreManager
+    VectorStoreManager.initialize()
+
     from app.sandbox.reaper import run_idle_reaper
 
     reaper = asyncio.create_task(run_idle_reaper())
     yield
     reaper.cancel()
+    await VectorStoreManager.cleanup()
 
 
 app = FastAPI(title="AI Agent Platform", version="0.1.0", lifespan=lifespan)
@@ -81,6 +87,7 @@ app.add_middleware(
 app.include_router(admin.router, prefix="/api/admin", tags=["admin"])
 app.include_router(auth.router, prefix="/api/auth", tags=["auth"])
 app.include_router(chat.router, prefix="/api/chat", tags=["chat"])
+app.include_router(documents.router, prefix="/api", tags=["documents"])
 app.include_router(mcp.router, prefix="/api/mcp", tags=["mcp"])
 app.include_router(memory.router, prefix="/api/memory", tags=["memory"])
 app.include_router(sandbox.router, prefix="/api/sandbox", tags=["sandbox"])
