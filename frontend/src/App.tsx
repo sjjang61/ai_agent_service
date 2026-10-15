@@ -3,6 +3,7 @@ import { useAuthStore } from './store/authStore'
 import AuthPage from './pages/AuthPage'
 import ChatPage from './pages/ChatPage'
 import McpSettingsPage from './pages/McpSettingsPage'
+import MemoryPage from './pages/MemoryPage'
 import SandboxPage from './pages/SandboxPage'
 import SkillsPage from './pages/SkillsPage'
 
@@ -18,6 +19,7 @@ export default function App() {
       <Route path="/" element={<PrivateRoute><ChatPage /></PrivateRoute>} />
       <Route path="/chat/:conversationId" element={<PrivateRoute><ChatPage /></PrivateRoute>} />
       <Route path="/mcp" element={<PrivateRoute><McpSettingsPage /></PrivateRoute>} />
+      <Route path="/memory" element={<PrivateRoute><MemoryPage /></PrivateRoute>} />
       <Route path="/sandbox" element={<PrivateRoute><SandboxPage /></PrivateRoute>} />
       <Route path="/skills" element={<PrivateRoute><SkillsPage /></PrivateRoute>} />
     </Routes>

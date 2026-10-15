@@ -26,3 +26,7 @@ class UserResponse(BaseModel):
     display_name: str
     is_active: bool
     created_at: datetime
+
+
+class SimpleLoginRequest(BaseModel):
+    login_id: str

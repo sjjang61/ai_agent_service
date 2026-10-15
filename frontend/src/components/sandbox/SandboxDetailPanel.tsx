@@ -42,7 +42,7 @@ function StepDetailContent({ step }: { step: SelectedStepDetail }) {
           <>
             {step.tool === 'code_executor' && typeof input.code === 'string' && (
               <div className="space-y-1">
-                {input.filename && (
+                {input.filename != null && (
                   <p className="text-xs text-slate-400 font-mono">파일: {String(input.filename)}</p>
                 )}
                 <p className="text-[10px] text-slate-500 uppercase tracking-wide">코드</p>
@@ -53,9 +53,9 @@ function StepDetailContent({ step }: { step: SelectedStepDetail }) {
               <div className="space-y-1">
                 <p className="text-xs text-slate-400">
                   작업: <span className="text-cyan-400 font-medium">{String(input.operation ?? '')}</span>
-                  {input.path && <span className="ml-2 font-mono text-slate-300">{String(input.path)}</span>}
+                  {input.path != null && <span className="ml-2 font-mono text-slate-300">{String(input.path)}</span>}
                 </p>
-                {input.content && (
+                {input.content != null && (
                   <>
                     <p className="text-[10px] text-slate-500 uppercase tracking-wide">내용</p>
                     <CodeBlock content={String(input.content)} />

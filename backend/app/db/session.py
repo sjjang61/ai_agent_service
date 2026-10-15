@@ -1,3 +1,5 @@
+from contextlib import asynccontextmanager
+
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine, async_sessionmaker
 
 from app.config import settings
@@ -16,7 +18,14 @@ async def get_session():
         yield session
 
 
+@asynccontextmanager
+async def get_session_context():
+    """Async context manager for DB session (for use in tools/services)."""
+    async with AsyncSessionLocal() as session:
+        yield session
+
+
 async def init_db():
-    from app.models import user, conversation, message, mcp_config, tool_execution, sandbox, skill  # noqa
+    from app.models import user, conversation, message, mcp_config, tool_execution, sandbox, skill, memory  # noqa
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
