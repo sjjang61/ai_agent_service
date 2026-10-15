@@ -11,19 +11,19 @@ const CATEGORY_LABELS: Record<
 > = {
   preference: {
     label: '선호도',
-    color: 'bg-purple-500/20 text-purple-400 border-purple-500/30',
+    color: 'bg-accent-purple/20 text-accent-purple border-accent-purple/30',
   },
   fact: {
     label: '사실',
-    color: 'bg-blue-500/20 text-blue-400 border-blue-500/30',
+    color: 'bg-accent-blue/20 text-accent-blue border-accent-blue/30',
   },
   instruction: {
     label: '지시사항',
-    color: 'bg-orange-500/20 text-orange-400 border-orange-500/30',
+    color: 'bg-accent-orange/20 text-accent-orange border-accent-orange/30',
   },
   general: {
     label: '일반',
-    color: 'bg-slate-500/20 text-slate-400 border-slate-500/30',
+    color: 'bg-surface-tertiary/50 text-content-muted border-border',
   },
 }
 
@@ -73,7 +73,7 @@ export default function MemoryList() {
     <div className="space-y-4">
       {/* Header */}
       <div className="flex justify-between items-center">
-        <h2 className="text-lg font-semibold text-white flex items-center gap-2">
+        <h2 className="text-lg font-semibold text-content-primary flex items-center gap-2">
           <Brain size={20} />
           메모리 관리
         </h2>
@@ -82,7 +82,7 @@ export default function MemoryList() {
             setEditMemory(null)
             setShowForm(true)
           }}
-          className="flex items-center gap-2 px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-sm transition-colors"
+          className="flex items-center gap-2 px-3 py-1.5 bg-accent-primary hover:bg-accent-hover text-white rounded-lg text-sm transition-colors"
         >
           <Plus size={14} />
           메모리 추가
@@ -94,14 +94,14 @@ export default function MemoryList() {
         <div className="relative flex-1 min-w-[200px]">
           <Search
             size={14}
-            className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"
+            className="absolute left-3 top-1/2 -translate-y-1/2 text-content-muted"
           />
           <input
             type="text"
             placeholder="메모리 검색..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            className="w-full pl-9 pr-3 py-2 bg-slate-800 border border-slate-700 rounded-lg text-white text-sm focus:outline-none focus:border-blue-500"
+            className="w-full pl-9 pr-3 py-2 bg-surface-secondary border border-border rounded-lg text-content-primary text-sm focus:outline-none focus:border-accent-primary"
           />
         </div>
         <div className="flex gap-1">
@@ -111,8 +111,8 @@ export default function MemoryList() {
               onClick={() => setSelectedCategory(cat)}
               className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
                 selectedCategory === cat
-                  ? 'bg-blue-600 text-white'
-                  : 'bg-slate-800 text-slate-400 hover:text-white'
+                  ? 'bg-accent-primary text-white'
+                  : 'bg-surface-secondary text-content-muted hover:text-content-primary'
               }`}
             >
               {cat ? CATEGORY_LABELS[cat].label : '전체'}
@@ -135,7 +135,7 @@ export default function MemoryList() {
 
       {/* Memory List */}
       {isLoading ? (
-        <div className="text-slate-400 text-sm py-8 text-center">
+        <div className="text-content-muted text-sm py-8 text-center">
           로딩 중...
         </div>
       ) : (
@@ -145,12 +145,12 @@ export default function MemoryList() {
             return (
               <div
                 key={memory.id}
-                className="rounded-xl p-4 bg-slate-800 border border-slate-700 hover:border-slate-600 transition-colors"
+                className="rounded-xl p-4 bg-surface-secondary border border-border hover:border-border-light transition-colors"
               >
                 <div className="flex items-start justify-between gap-3">
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2 flex-wrap mb-1">
-                      <span className="font-medium text-white">
+                      <span className="font-medium text-content-primary">
                         {memory.key}
                       </span>
                       <span
@@ -158,7 +158,7 @@ export default function MemoryList() {
                       >
                         {catStyle.label}
                       </span>
-                      <span className="text-[10px] px-1.5 py-0.5 rounded bg-slate-700 text-slate-400">
+                      <span className="text-[10px] px-1.5 py-0.5 rounded bg-surface-tertiary text-content-muted">
                         {SOURCE_LABELS[memory.source]}
                       </span>
                       <div className="flex items-center gap-0.5">
@@ -167,22 +167,22 @@ export default function MemoryList() {
                             <Star
                               key={i}
                               size={10}
-                              className="text-yellow-500 fill-yellow-500"
+                              className="text-accent-yellow fill-accent-yellow"
                             />
                           )
                         )}
                       </div>
                     </div>
-                    <p className="text-sm text-slate-300 whitespace-pre-wrap break-words">
+                    <p className="text-sm text-content-secondary whitespace-pre-wrap break-words">
                       {memory.value}
                     </p>
                     {memory.tags.length > 0 && (
                       <div className="flex items-center gap-1 mt-2">
-                        <Tag size={12} className="text-slate-500" />
+                        <Tag size={12} className="text-content-muted" />
                         {memory.tags.map((tag) => (
                           <span
                             key={tag}
-                            className="text-xs bg-slate-700 px-1.5 py-0.5 rounded text-slate-400"
+                            className="text-xs bg-surface-tertiary px-1.5 py-0.5 rounded text-content-muted"
                           >
                             {tag}
                           </span>
@@ -193,14 +193,14 @@ export default function MemoryList() {
                   <div className="flex items-center gap-1 flex-shrink-0">
                     <button
                       onClick={() => setEditMemory(memory)}
-                      className="p-1.5 text-slate-400 hover:text-white transition-colors"
+                      className="p-1.5 text-content-muted hover:text-content-primary transition-colors"
                       title="수정"
                     >
                       <Edit2 size={14} />
                     </button>
                     <button
                       onClick={() => handleDelete(memory.id)}
-                      className="p-1.5 text-slate-400 hover:text-red-400 transition-colors"
+                      className="p-1.5 text-content-muted hover:text-accent-red transition-colors"
                       title="삭제"
                     >
                       <Trash2 size={14} />
@@ -211,7 +211,7 @@ export default function MemoryList() {
             )
           })}
           {memories.length === 0 && (
-            <div className="text-center text-slate-500 py-12 border border-dashed border-slate-700 rounded-xl">
+            <div className="text-center text-content-muted py-12 border border-dashed border-border rounded-xl">
               <Brain size={32} className="mx-auto mb-2 opacity-50" />
               <p className="text-sm">저장된 메모리가 없습니다.</p>
               <p className="text-xs mt-1">

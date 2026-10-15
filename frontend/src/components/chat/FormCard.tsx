@@ -124,27 +124,27 @@ export default function FormCard({
     })
 
   return (
-    <div className="mb-3 rounded-xl border border-blue-500/40 bg-slate-900/60 p-3">
-      <div className="flex items-center gap-2 mb-1">
-        <MessageCircleQuestion size={16} className="text-blue-400" />
-        <h4 className="text-sm font-semibold text-slate-100">{form.title}</h4>
+    <div className="mb-3 rounded-[var(--radius-lg)] border border-accent-blue/30 bg-surface-secondary p-4 shadow-sm">
+      <div className="flex items-center gap-2 mb-2">
+        <MessageCircleQuestion size={16} className="text-accent-blue" />
+        <h4 className="text-sm font-semibold text-content-primary">{form.title}</h4>
       </div>
-      {form.description && <p className="text-xs text-slate-400 mb-2">{form.description}</p>}
+      {form.description && <p className="text-xs text-content-secondary mb-3">{form.description}</p>}
 
       <div className="space-y-3 mt-2">
         {form.questions.map((q) => (
-          <div key={q.id}>
-            <p className="text-sm text-slate-200 mb-1">
+          <div key={q.id} className="p-3 rounded-md bg-surface-tertiary/50">
+            <p className="text-sm text-content-primary mb-2 font-medium">
               {q.label}
-              {q.required && <span className="text-red-400 ml-1">*</span>}
+              {q.required && <span className="text-accent-red ml-1">*</span>}
             </p>
             {answered || !active ? (
-              <p className="text-sm text-blue-300">
+              <p className="text-sm text-accent-blue">
                 {answered && answered[q.id] !== undefined
                   ? Array.isArray(answered[q.id])
                     ? (answered[q.id] as string[]).join(', ')
                     : String(answered[q.id])
-                  : <span className="text-slate-500">(응답 없음)</span>}
+                  : <span className="text-content-muted">(응답 없음)</span>}
               </p>
             ) : q.type === 'text' ? (
               <textarea
@@ -152,12 +152,12 @@ export default function FormCard({
                 placeholder={q.placeholder}
                 value={(values[q.id] as string) ?? ''}
                 onChange={(e) => setValues((s) => ({ ...s, [q.id]: e.target.value }))}
-                className="w-full px-3 py-2 bg-slate-800 border border-slate-600 rounded-lg text-sm text-white placeholder-slate-500 focus:outline-none focus:border-blue-500"
+                className="w-full px-3 py-2 bg-surface-primary border border-border rounded-md text-sm text-content-primary placeholder-content-muted focus:outline-none focus:border-accent-primary transition-colors"
               />
             ) : (
-              <div className="space-y-1">
+              <div className="space-y-2">
                 {q.options!.map((opt) => (
-                  <label key={opt} className="flex items-center gap-2 text-sm text-slate-200 cursor-pointer">
+                  <label key={opt} className="flex items-center gap-2 text-sm text-content-primary cursor-pointer hover:text-accent-primary transition-colors">
                     <input
                       type={q.type === 'single_choice' ? 'radio' : 'checkbox'}
                       name={q.id}
@@ -172,6 +172,7 @@ export default function FormCard({
                           setOthers((s) => ({ ...s, [q.id]: '' }))
                         } else toggle(q.id, opt)
                       }}
+                      className="accent-accent-primary"
                     />
                     {opt}
                   </label>
@@ -181,7 +182,7 @@ export default function FormCard({
                     placeholder="기타 (직접 입력)"
                     value={others[q.id] ?? ''}
                     onChange={(e) => setOthers((s) => ({ ...s, [q.id]: e.target.value }))}
-                    className="w-full mt-1 px-3 py-1.5 bg-slate-800 border border-slate-600 rounded-lg text-sm text-white placeholder-slate-500 focus:outline-none focus:border-blue-500"
+                    className="w-full mt-1 px-3 py-2 bg-surface-primary border border-border rounded-md text-sm text-content-primary placeholder-content-muted focus:outline-none focus:border-accent-primary transition-colors"
                   />
                 )}
               </div>
@@ -191,29 +192,43 @@ export default function FormCard({
       </div>
 
       {active && (
-        <div className="mt-3 flex items-center gap-2">
+        <div className="mt-4 flex items-center gap-2 pt-3 border-t border-border">
           <button
             disabled={busy}
             onClick={() => submit(false)}
-            className="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white rounded-lg text-sm"
+            className="px-4 py-2 bg-accent-primary hover:bg-accent-primary/90 disabled:opacity-50 disabled:cursor-not-allowed text-white rounded-md text-sm font-medium transition-colors"
           >
             제출
           </button>
           <button
             disabled={busy}
             onClick={() => submit(true)}
-            className="px-3 py-1.5 bg-slate-700 hover:bg-slate-600 disabled:opacity-50 text-slate-200 rounded-lg text-sm"
+            className="px-4 py-2 bg-surface-tertiary hover:bg-surface-hover disabled:opacity-50 disabled:cursor-not-allowed text-content-secondary rounded-md text-sm font-medium transition-colors"
           >
             취소
           </button>
-          {error && <span className="text-xs text-red-400">{error}</span>}
+          {error && <span className="text-xs text-accent-red ml-2">{error}</span>}
         </div>
       )}
-      {sent && form.state === 'pending' && <p className="mt-2 text-xs text-slate-400">응답을 전달했습니다. 작업을 이어갑니다...</p>}
-      {form.state === 'cancelled' && <p className="mt-2 text-xs text-slate-400">질문을 취소했습니다.</p>}
-      {form.state === 'timeout' && <p className="mt-2 text-xs text-slate-400">응답 시간이 초과되었습니다.</p>}
+      {sent && form.state === 'pending' && (
+        <p className="mt-3 text-xs text-content-secondary bg-surface-tertiary px-3 py-2 rounded-md">
+          ✓ 응답을 전달했습니다. 작업을 이어갑니다...
+        </p>
+      )}
+      {form.state === 'cancelled' && (
+        <p className="mt-3 text-xs text-content-muted bg-surface-tertiary px-3 py-2 rounded-md">
+          ✗ 질문을 취소했습니다.
+        </p>
+      )}
+      {form.state === 'timeout' && (
+        <p className="mt-3 text-xs text-accent-orange bg-surface-tertiary px-3 py-2 rounded-md">
+          ⚠ 응답 시간이 초과되었습니다.
+        </p>
+      )}
       {form.state === 'pending' && !interactive && !sent && (
-        <p className="mt-2 text-xs text-slate-500">이 질문은 더 이상 응답할 수 없습니다.</p>
+        <p className="mt-3 text-xs text-content-muted bg-surface-tertiary px-3 py-2 rounded-md">
+          ⓘ 이 질문은 더 이상 응답할 수 없습니다.
+        </p>
       )}
     </div>
   )

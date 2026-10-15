@@ -1,0 +1,93 @@
+/* ReactFlow 테마 커스터마이징 */
+
+/* 배경 */
+.react-flow__background {
+  background-color: var(--surface-secondary);
+}
+
+/* 노드 기본 스타일 */
+.react-flow__node {
+  font-family: inherit;
+}
+
+/* Handle (연결점) 스타일 */
+.react-flow__handle {
+  width: 10px;
+  height: 10px;
+  border: 2px solid var(--surface-secondary);
+  transition: all 0.2s;
+}
+
+.react-flow__handle:hover {
+  width: 12px;
+  height: 12px;
+}
+
+/* Edge (연결선) 스타일 */
+.react-flow__edge-path {
+  stroke-width: 2;
+}
+
+.react-flow__edge.selected .react-flow__edge-path {
+  stroke: var(--accent-primary);
+  stroke-width: 3;
+}
+
+/* Controls 스타일 */
+.react-flow__controls {
+  background-color: var(--surface-tertiary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+}
+
+.react-flow__controls-button {
+  background-color: var(--surface-tertiary);
+  border: none;
+  border-bottom: 1px solid var(--border);
+  color: var(--content-primary);
+  transition: background-color 0.2s;
+}
+
+.react-flow__controls-button:hover {
+  background-color: var(--surface-hover);
+}
+
+.react-flow__controls-button:last-child {
+  border-bottom: none;
+}
+
+/* MiniMap 스타일 */
+.react-flow__minimap {
+  background-color: var(--surface-tertiary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+}
+
+.react-flow__minimap-mask {
+  fill: var(--accent-primary);
+  fill-opacity: 0.15;
+}
+
+/* Attribution */
+.react-flow__attribution {
+  background: var(--surface-tertiary);
+  color: var(--content-muted);
+  font-size: 10px;
+  padding: 2px 6px;
+  border-radius: var(--radius-sm);
+}
+
+/* 다크 모드 대응 */
+[data-theme='dark'] .react-flow__background {
+  background-color: var(--surface-secondary);
+}
+
+[data-theme='dark'] .react-flow__edge-path {
+  stroke: var(--border);
+}
+
+[data-theme='dark'] .react-flow__controls,
+[data-theme='dark'] .react-flow__minimap {
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+}

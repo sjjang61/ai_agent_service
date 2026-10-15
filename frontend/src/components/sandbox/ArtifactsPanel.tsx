@@ -28,12 +28,12 @@ export function relativeTime(iso: string) {
 function KindIcon({ kind }: { kind: ArtifactKind }) {
   const cls = 'flex-shrink-0'
   switch (kind) {
-    case 'image': return <ImageIcon size={13} className={`${cls} text-purple-400`} />
-    case 'text': return <FileText size={13} className={`${cls} text-cyan-400`} />
-    case 'pdf': return <FileText size={13} className={`${cls} text-red-400`} />
-    case 'office': return <Presentation size={13} className={`${cls} text-amber-400`} />
-    case 'archive': return <Archive size={13} className={`${cls} text-yellow-500`} />
-    default: return <File size={13} className={`${cls} text-slate-500`} />
+    case 'image': return <ImageIcon size={13} className={`${cls} text-accent-purple`} />
+    case 'text': return <FileText size={13} className={`${cls} text-accent-cyan`} />
+    case 'pdf': return <FileText size={13} className={`${cls} text-accent-red`} />
+    case 'office': return <Presentation size={13} className={`${cls} text-accent-amber`} />
+    case 'archive': return <Archive size={13} className={`${cls} text-accent-yellow`} />
+    default: return <File size={13} className={`${cls} text-content-muted`} />
   }
 }
 
@@ -93,23 +93,23 @@ function Preview({ file }: { file: Artifact }) {
     }
   }, [file.path])
 
-  if (error) return <p className="text-xs text-red-400 px-2 py-2">{error}</p>
-  if (!preview) return <p className="text-xs text-slate-500 px-2 py-2">불러오는 중...</p>
+  if (error) return <p className="text-xs text-accent-red px-2 py-2">{error}</p>
+  if (!preview) return <p className="text-xs text-content-muted px-2 py-2">불러오는 중...</p>
   if (preview.kind === 'image' && imgUrl)
-    return <img src={imgUrl} alt={file.name} className="max-w-full max-h-72 rounded border border-slate-700 m-2 bg-slate-950" />
+    return <img src={imgUrl} alt={file.name} className="max-w-full max-h-72 rounded border border-border m-2 bg-surface-primary" />
   if (preview.kind === 'text')
     return (
       <div className="m-2">
-        <pre className="bg-slate-950 rounded-lg p-3 text-xs font-mono overflow-auto max-h-64 text-slate-300 whitespace-pre-wrap break-words border border-slate-700/50">
+        <pre className="bg-surface-primary rounded-lg p-3 text-xs font-mono overflow-auto max-h-64 text-content-secondary whitespace-pre-wrap break-words border border-border">
           {preview.content || '(빈 파일)'}
         </pre>
         {preview.truncated && (
-          <p className="text-[10px] text-slate-500 mt-1">앞부분만 표시했습니다 (전체 {formatSize(preview.size)}). 전체는 다운로드하세요.</p>
+          <p className="text-[10px] text-content-muted mt-1">앞부분만 표시했습니다 (전체 {formatSize(preview.size)}). 전체는 다운로드하세요.</p>
         )}
       </div>
     )
   return (
-    <p className="text-xs text-slate-500 px-2 py-2">
+    <p className="text-xs text-content-muted px-2 py-2">
       {preview.kind === 'too_large' ? '파일이 커서 미리보기를 지원하지 않습니다.' : '미리보기를 지원하지 않는 형식입니다.'} 다운로드해서 확인하세요.
     </p>
   )
@@ -227,20 +227,20 @@ export default function ArtifactsPanel({ compact = false, refreshTick = 0 }: Pro
     return (
       <div key={f.path}>
         <div
-          className={`group flex items-center gap-1.5 pr-1 rounded text-xs ${open ? 'bg-slate-700/60' : 'hover:bg-slate-800/60'}`}
+          className={`group flex items-center gap-1.5 pr-1 rounded text-xs ${open ? 'bg-surface-active' : 'hover:bg-surface-hover'}`}
           style={{ paddingLeft: 8 + depth * 14 }}
         >
           <button onClick={() => setOpenPath(open ? null : f.path)} className="flex-1 min-w-0 flex items-center gap-1.5 py-1 text-left">
             <KindIcon kind={f.kind} />
-            <span className="font-mono truncate text-slate-200" title={f.path}>{showPath ? f.path : f.name}</span>
+            <span className="font-mono truncate text-content-primary" title={f.path}>{showPath ? f.path : f.name}</span>
           </button>
-          {!compact && <span className="text-slate-500 w-16 text-right flex-shrink-0">{formatSize(f.size)}</span>}
-          {!compact && <span className="text-slate-500 w-16 text-right flex-shrink-0">{relativeTime(f.modified)}</span>}
-          {compact && <span className="text-slate-600 text-[10px] flex-shrink-0">{formatSize(f.size)}</span>}
-          <button onClick={() => download(f)} title="다운로드" className="p-1 text-slate-500 hover:text-slate-200 flex-shrink-0">
+          {!compact && <span className="text-content-secondary w-16 text-right flex-shrink-0">{formatSize(f.size)}</span>}
+          {!compact && <span className="text-content-secondary w-16 text-right flex-shrink-0">{relativeTime(f.modified)}</span>}
+          {compact && <span className="text-content-muted text-[10px] flex-shrink-0">{formatSize(f.size)}</span>}
+          <button onClick={() => download(f)} title="다운로드" className="p-1 text-content-secondary hover:text-content-primary flex-shrink-0">
             {busyPath === f.path ? <Loader2 size={12} className="animate-spin" /> : <Download size={12} />}
           </button>
-          <button onClick={() => publish(f)} title="공개 링크 만들기" className="p-1 text-slate-500 hover:text-slate-200 flex-shrink-0">
+          <button onClick={() => publish(f)} title="공개 링크 만들기" className="p-1 text-content-secondary hover:text-content-primary flex-shrink-0">
             <Link2 size={12} />
           </button>
         </div>
@@ -258,13 +258,13 @@ export default function ArtifactsPanel({ compact = false, refreshTick = 0 }: Pro
         <button
           key={`dir:${d.path}`}
           onClick={() => setClosedDirs((s) => { const c = new Set(s); closed ? c.delete(d.path) : c.add(d.path); return c })}
-          className="w-full flex items-center gap-1.5 py-1 text-xs text-slate-300 hover:bg-slate-800/60 rounded"
+          className="w-full flex items-center gap-1.5 py-1 text-xs text-content-primary hover:bg-surface-hover rounded"
           style={{ paddingLeft: 4 + depth * 14 }}
         >
           {closed ? <ChevronRight size={12} /> : <ChevronDown size={12} />}
-          {closed ? <Folder size={13} className="text-blue-400" /> : <FolderOpen size={13} className="text-blue-400" />}
+          {closed ? <Folder size={13} className="text-accent-primary" /> : <FolderOpen size={13} className="text-accent-primary" />}
           <span className="font-medium">{d.name}</span>
-          <span className="text-slate-600">({countFiles(d)})</span>
+          <span className="text-content-muted">({countFiles(d)})</span>
         </button>
       )
       if (!closed) out.push(...renderNode(d, depth + 1))
@@ -276,18 +276,18 @@ export default function ArtifactsPanel({ compact = false, refreshTick = 0 }: Pro
   const notRunning = data && data.status !== 'running'
 
   return (
-    <div className={compact ? '' : 'bg-slate-800 rounded-xl p-4 border border-slate-700'}>
+    <div className={compact ? '' : 'bg-surface-secondary rounded-xl p-4 border border-border'}>
       <div className="flex items-center justify-between mb-3 gap-2">
         <div className="flex items-center gap-2 min-w-0">
-          <FolderOpen size={16} className="text-blue-400 flex-shrink-0" />
-          <span className="text-sm font-medium text-white">산출물</span>
+          <FolderOpen size={16} className="text-accent-primary flex-shrink-0" />
+          <span className="text-sm font-medium text-content-primary">산출물</span>
           {data?.status === 'running' && (
-            <span className="text-xs text-slate-500 truncate">
+            <span className="text-xs text-content-muted truncate">
               {files.length}개 · {formatSize(totalSize)}
             </span>
           )}
         </div>
-        <button onClick={() => refetch()} title="새로고침" className="text-slate-400 hover:text-white flex-shrink-0">
+        <button onClick={() => refetch()} title="새로고침" className="text-content-secondary hover:text-content-primary flex-shrink-0">
           <RefreshCw size={14} className={isFetching ? 'animate-spin' : ''} />
         </button>
       </div>
@@ -295,7 +295,7 @@ export default function ArtifactsPanel({ compact = false, refreshTick = 0 }: Pro
       {notice && (
         <div
           className={`mb-3 text-xs rounded-lg px-3 py-2 whitespace-pre-wrap break-all border ${
-            notice.kind === 'ok' ? 'bg-green-500/10 border-green-500/30 text-green-300' : 'bg-red-500/10 border-red-500/30 text-red-300'
+            notice.kind === 'ok' ? 'bg-accent-green/10 border-accent-green/30 text-accent-green' : 'bg-accent-red/10 border-accent-red/30 text-accent-red'
           }`}
         >
           {notice.text}
@@ -304,19 +304,19 @@ export default function ArtifactsPanel({ compact = false, refreshTick = 0 }: Pro
       )}
 
       {isLoading ? (
-        <p className="text-xs text-slate-500 text-center py-6">불러오는 중...</p>
+        <p className="text-xs text-content-muted text-center py-6">불러오는 중...</p>
       ) : error ? (
-        <p className="text-xs text-red-400 text-center py-6">{errorMessage(error, '목록을 불러오지 못했습니다')}</p>
+        <p className="text-xs text-accent-red text-center py-6">{errorMessage(error, '목록을 불러오지 못했습니다')}</p>
       ) : notRunning ? (
         <div className="text-center py-6 space-y-3">
-          <p className="text-xs text-slate-400">
+          <p className="text-xs text-content-secondary">
             {data.status === 'not_created' ? 'Sandbox 가 아직 만들어지지 않았습니다.' : 'Sandbox 가 중지되어 있습니다.'}
             {data.restorable && ' 시작하면 저장된 백업에서 작업 환경이 복구됩니다.'}
           </p>
           <button
             onClick={startSandbox}
             disabled={starting}
-            className="inline-flex items-center gap-2 px-3 py-1.5 bg-green-600 hover:bg-green-700 disabled:opacity-50 text-white rounded-lg text-xs"
+            className="inline-flex items-center gap-2 px-3 py-1.5 bg-accent-green hover:bg-accent-green/90 disabled:opacity-50 text-white rounded-lg text-xs"
           >
             {starting ? <Loader2 size={12} className="animate-spin" /> : <Play size={12} />}
             {data.restorable ? '시작하고 복구' : '시작'}
@@ -326,37 +326,37 @@ export default function ArtifactsPanel({ compact = false, refreshTick = 0 }: Pro
         <>
           <div className="flex items-center gap-2 mb-2">
             <div className="relative flex-1 min-w-0">
-              <Search size={12} className="absolute left-2 top-2 text-slate-500" />
+              <Search size={12} className="absolute left-2 top-2 text-content-muted" />
               <input
                 value={filter}
                 onChange={(e) => setFilter(e.target.value)}
                 placeholder="파일 검색"
-                className="w-full pl-7 pr-2 py-1 bg-slate-900 border border-slate-700 rounded text-xs text-white placeholder-slate-600 focus:outline-none focus:border-blue-500"
+                className="w-full pl-7 pr-2 py-1 bg-surface-primary border border-border rounded text-xs text-content-primary placeholder-content-muted focus:outline-none focus:border-accent-primary"
               />
             </div>
             <select
               value={sort}
               onChange={(e) => setSort(e.target.value as Sort)}
-              className="bg-slate-900 border border-slate-700 rounded text-xs text-slate-300 px-1.5 py-1"
+              className="bg-surface-primary border border-border rounded text-xs text-content-primary px-1.5 py-1"
             >
               <option value="recent">최근 수정</option>
               <option value="name">이름</option>
               <option value="size">크기</option>
             </select>
           </div>
-          <label className="flex items-center gap-1.5 text-[11px] text-slate-500 mb-2 cursor-pointer">
+          <label className="flex items-center gap-1.5 text-[11px] text-content-secondary mb-2 cursor-pointer">
             <input type="checkbox" checked={showHidden} onChange={(e) => setShowHidden(e.target.checked)} />
             숨김 파일 포함
           </label>
 
           {filtered.length === 0 ? (
-            <p className="text-xs text-slate-500 text-center py-6">{files.length === 0 ? '아직 저장된 파일이 없습니다.' : '검색 결과가 없습니다.'}</p>
+            <p className="text-xs text-content-muted text-center py-6">{files.length === 0 ? '아직 저장된 파일이 없습니다.' : '검색 결과가 없습니다.'}</p>
           ) : q ? (
             <div className="space-y-0.5">{[...filtered].sort(sorters[sort]).map((f) => row(f, 0, true))}</div>
           ) : (
             <div className="space-y-0.5">{renderNode(tree, -1)}</div>
           )}
-          {data?.truncated && <p className="text-[10px] text-slate-500 mt-2">파일이 많아 일부만 표시했습니다.</p>}
+          {data?.truncated && <p className="text-[10px] text-content-muted mt-2">파일이 많아 일부만 표시했습니다.</p>}
         </>
       )}
     </div>

@@ -121,9 +121,30 @@ class AgentOrchestrator:
     ) -> AsyncIterator[dict]:
         from app.services.chat_service import ChatService
         from app.services.memory_service import MemoryService, ShortTermMemoryService
+        from app.tools.interaction_tools import complete_all_todos
+
+        print(f"\n{'='*80}")
+        print(f"[ORCHESTRATOR RUN] 새 요청 시작")
+        print(f"  conversation_id: {conversation_id}")
+        print(f"  user_input: {user_input[:200]}")
+        print(f"{'='*80}\n")
+        logger.info(f"[orchestrator] 새 요청 시작 - conversation_id: {conversation_id[:8]}..., user_input: {user_input[:100]}")
+
+        # 새 요청 시작 시 이전 작업의 미완료 todo를 모두 completed로 변경
+        # 이전 대화가 컨텍스트로 포함되더라도 이전 작업을 다시 수행하지 않도록 함
+        complete_all_todos(conversation_id)
 
         messages = await ChatService.get_messages(conversation_id, db)
+        logger.info(f"[orchestrator] 대화 기록 로드: {len(messages)}개 메시지")
+
         memory = ConversationMemory.from_db_messages(messages)
+
+        logger.info(f"[orchestrator] 메모리 구성: {len(memory.get_messages())}개 메시지 (최근 20개)")
+
+        # 디버깅: 메모리에 포함된 메시지 로깅
+        for i, msg in enumerate(memory.get_messages()[-5:]):  # 최근 5개만
+            role = "user" if msg.__class__.__name__ == "HumanMessage" else ("system" if msg.__class__.__name__ == "SystemMessage" else "assistant")
+            logger.info(f"  [{i}] {role}: {msg.content[:100]}...")
 
         # Load user memories for context injection
         try:
