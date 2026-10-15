@@ -1,6 +1,10 @@
 """add token_usages table
 
+<<<<<<<< HEAD:backend/app/db/migrations/versions/b2c3d4e5f6a1_add_token_usages.py
 Revision ID: b2c3d4e5f6a1
+========
+Revision ID: b2c3d4e5f6g7
+>>>>>>>> sjjang61/llm_wiki:backend/app/db/migrations/versions/b2c3d4e5f6g7_add_token_usages.py
 Revises: a1b2c3d4e5f6
 Create Date: 2026-10-13 00:00:00.000000
 
@@ -11,7 +15,11 @@ from alembic import op
 import sqlalchemy as sa
 
 
+<<<<<<<< HEAD:backend/app/db/migrations/versions/b2c3d4e5f6a1_add_token_usages.py
 revision: str = 'b2c3d4e5f6a1'
+========
+revision: str = 'b2c3d4e5f6g7'
+>>>>>>>> sjjang61/llm_wiki:backend/app/db/migrations/versions/b2c3d4e5f6g7_add_token_usages.py
 down_revision: Union[str, None] = 'a1b2c3d4e5f6'
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None

@@ -8,7 +8,7 @@ from sqlalchemy.ext.asyncio import async_engine_from_config
 from alembic import context
 
 from app.db.base import Base
-from app.models import user, conversation, message, mcp_config, tool_execution, sandbox, skill, token_usage  # noqa
+from app.models import user, conversation, message, mcp_config, tool_execution, sandbox, skill, token_usage, wiki_entry  # noqa
 
 config = context.config
 
