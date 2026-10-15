@@ -1,5 +1,5 @@
 import { useNavigate } from 'react-router-dom'
-import { Plus, MessageSquare, Settings, Box, Sparkles, LogOut, Trash2, BarChart3 } from 'lucide-react'
+import { Plus, MessageSquare, Settings, Box, Sparkles, LogOut, Trash2, BarChart3, Wrench } from 'lucide-react'
 import { useChatStore } from '../../store/chatStore'
 import { useAuthStore } from '../../store/authStore'
 import { chatApi } from '../../api/chat'
@@ -80,6 +80,13 @@ export default function Sidebar() {
       </div>
 
       <div className="p-3 border-t border-slate-700 space-y-0.5">
+        <button
+          onClick={() => navigate('/tools')}
+          className="w-full flex items-center gap-2 px-3 py-2 text-slate-400 hover:text-white hover:bg-slate-700 rounded-lg transition-colors text-sm"
+        >
+          <Wrench size={15} />
+          Tools
+        </button>
         <button
           onClick={() => navigate('/mcp')}
           className="w-full flex items-center gap-2 px-3 py-2 text-slate-400 hover:text-white hover:bg-slate-700 rounded-lg transition-colors text-sm"
