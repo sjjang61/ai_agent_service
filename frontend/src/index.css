@@ -18,9 +18,14 @@
   /* Accent Colors (shared across themes) */
   --accent-primary: #3b82f6;
   --accent-hover: #2563eb;
+  --accent-blue: #3b82f6;
   --accent-green: #22c55e;
   --accent-yellow: #f59e0b;
+  --accent-orange: #f97316;
   --accent-red: #ef4444;
+  --accent-purple: #a855f7;
+  --accent-amber: #f59e0b;
+  --accent-cyan: #06b6d4;
 }
 
 /* Dark Theme (default) */
@@ -144,6 +149,14 @@ body {
 }
 
 /* ========================================
+   SVG Text Font Fix
+   ======================================== */
+
+svg text {
+  font-family: -apple-system, BlinkMacSystemFont, "Apple SD Gothic Neo", "Malgun Gothic", "Noto Sans KR", Roboto, "Helvetica Neue", Arial, sans-serif !important;
+}
+
+/* ========================================
    Utility Classes
    ======================================== */
 
@@ -180,6 +193,25 @@ body {
   to { transform: rotate(360deg); }
 }
 
+@keyframes check {
+  0% {
+    opacity: 0;
+    transform: scale(0.5) rotate(-45deg);
+  }
+  50% {
+    opacity: 1;
+    transform: scale(1.1) rotate(0deg);
+  }
+  100% {
+    opacity: 1;
+    transform: scale(1) rotate(0deg);
+  }
+}
+
 .animate-pulse-slow {
   animation: pulse 1.5s infinite;
+}
+
+.animate-check {
+  animation: check 0.3s ease-out;
 }

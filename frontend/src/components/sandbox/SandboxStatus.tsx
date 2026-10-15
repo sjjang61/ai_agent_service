@@ -27,31 +27,31 @@ export default function SandboxStatus() {
   const isRunning = status?.status === 'running'
 
   return (
-    <div className="bg-slate-800 rounded-xl p-6 border border-slate-700">
+    <div className="bg-surface-secondary rounded-xl p-6 border border-border">
       <div className="flex items-center justify-between mb-4">
         <div className="flex items-center gap-3">
-          <div className="w-10 h-10 bg-slate-700 rounded-xl flex items-center justify-center">
-            <Terminal size={20} className="text-blue-400" />
+          <div className="w-10 h-10 bg-surface-tertiary rounded-xl flex items-center justify-center">
+            <Terminal size={20} className="text-accent-blue" />
           </div>
           <div>
-            <h3 className="font-semibold text-white">Sandbox Container</h3>
-            <p className="text-xs text-slate-500">Isolated execution environment</p>
+            <h3 className="font-semibold text-content-primary">Sandbox Container</h3>
+            <p className="text-xs text-content-muted">Isolated execution environment</p>
           </div>
         </div>
         <div className="flex items-center gap-2">
           <div
             className={`w-2.5 h-2.5 rounded-full ${
-              isLoading ? 'bg-slate-500' : isRunning ? 'bg-green-400 animate-pulse' : 'bg-red-400'
+              isLoading ? 'bg-surface-tertiary' : isRunning ? 'bg-accent-green animate-pulse' : 'bg-accent-red'
             }`}
           />
-          <span className="text-sm text-slate-400 capitalize">
+          <span className="text-sm text-content-muted capitalize">
             {isLoading ? 'checking...' : status?.status || 'unknown'}
           </span>
         </div>
       </div>
 
       {status?.container_id && (
-        <p className="text-xs text-slate-500 font-mono mb-4 bg-slate-900 px-3 py-1.5 rounded">
+        <p className="text-xs text-content-muted font-mono mb-4 bg-surface-primary px-3 py-1.5 rounded border border-border">
           Container: {status.container_id.slice(0, 12)}...
         </p>
       )}
@@ -60,7 +60,7 @@ export default function SandboxStatus() {
         <button
           onClick={() => startMutation.mutate()}
           disabled={isRunning || startMutation.isPending}
-          className="flex items-center gap-2 px-4 py-2 bg-green-600 hover:bg-green-700 disabled:opacity-50 text-white rounded-lg text-sm transition-colors"
+          className="flex items-center gap-2 px-4 py-2 bg-accent-green hover:bg-accent-green/80 disabled:opacity-50 text-white rounded-lg text-sm transition-colors"
         >
           {startMutation.isPending ? <RefreshCw size={14} className="animate-spin" /> : <Play size={14} />}
           Start
@@ -68,7 +68,7 @@ export default function SandboxStatus() {
         <button
           onClick={() => stopMutation.mutate()}
           disabled={!isRunning || stopMutation.isPending}
-          className="flex items-center gap-2 px-4 py-2 bg-red-600 hover:bg-red-700 disabled:opacity-50 text-white rounded-lg text-sm transition-colors"
+          className="flex items-center gap-2 px-4 py-2 bg-accent-red hover:bg-accent-red/80 disabled:opacity-50 text-white rounded-lg text-sm transition-colors"
         >
           {stopMutation.isPending ? <RefreshCw size={14} className="animate-spin" /> : <Square size={14} />}
           Stop

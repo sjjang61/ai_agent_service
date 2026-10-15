@@ -17,6 +17,41 @@ _MAX_CONVERSATIONS = 200
 _todo_store: "OrderedDict[str, list[dict]]" = OrderedDict()
 
 
+def complete_all_todos(conversation_id: str) -> None:
+    """
+    새 사용자 요청 시작 시 이전 작업의 미완료 todo를 모두 completed로 변경한다.
+    이전 대화 컨텍스트가 에이전트에게 전달되더라도, 이전 작업을 다시 수행하지 않도록 한다.
+    """
+    import logging
+    logger = logging.getLogger(__name__)
+
+    key = conversation_id or "_"
+    current = _todo_store.get(key, [])
+
+    print(f"\n[COMPLETE_ALL_TODOS] Called for conversation: {conversation_id[:16]}...")
+    print(f"  Current todos in store: {len(current)}")
+
+    if not current:
+        print(f"  -> No todos found, skipping")
+        return
+
+    incomplete_count = sum(1 for todo in current if todo["status"] != "completed")
+    print(f"  Incomplete todos: {incomplete_count}")
+
+    if incomplete_count > 0:
+        print(f"  -> Marking {incomplete_count} todos as completed:")
+        for todo in current:
+            if todo["status"] != "completed":
+                print(f"     - [{todo['id']}] {todo['content'][:60]} ... ({todo['status']} -> completed)")
+                todo["status"] = "completed"
+
+        _todo_store[key] = current
+        _todo_store.move_to_end(key)
+        logger.info(f"[todo] 새 요청 시작 - {incomplete_count}개의 미완료 todo를 자동 완료 처리 (conversation: {conversation_id[:8]}...)")
+    else:
+        print(f"  -> All todos already completed, no action needed")
+
+
 class _Base(BaseTool):
     def _run(self, *args, **kwargs) -> str:
         return "This tool supports async execution only"

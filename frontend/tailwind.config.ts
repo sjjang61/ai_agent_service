@@ -10,9 +10,14 @@ export default {
         accent: {
           primary: 'var(--accent-primary)',
           hover: 'var(--accent-hover)',
+          blue: 'var(--accent-blue)',
           green: 'var(--accent-green)',
           yellow: 'var(--accent-yellow)',
+          orange: 'var(--accent-orange)',
           red: 'var(--accent-red)',
+          purple: 'var(--accent-purple)',
+          amber: 'var(--accent-amber)',
+          cyan: 'var(--accent-cyan)',
         },
         // Theme-aware colors
         surface: {

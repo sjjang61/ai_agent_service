@@ -28,16 +28,16 @@ function WidgetBody({ widget }: { widget: Widget }) {
     case 'table':
       return <TableWidget spec={widget.spec} />
     case 'chart':
-      return <ChartWidget spec={widget.spec} />
+      return <ChartWidget spec={widget.spec} title={widget.title} />
     case 'flow':
       return (
-        <Suspense fallback={<p className="text-xs text-slate-500">불러오는 중...</p>}>
+        <Suspense fallback={<p className="text-xs text-content-muted">불러오는 중...</p>}>
           <FlowWidget spec={widget.spec} />
         </Suspense>
       )
     case 'map':
       return (
-        <Suspense fallback={<p className="text-xs text-slate-500">지도를 불러오는 중...</p>}>
+        <Suspense fallback={<p className="text-xs text-content-muted">지도를 불러오는 중...</p>}>
           <MapWidget spec={widget.spec} />
         </Suspense>
       )
@@ -51,8 +51,8 @@ export default function WidgetRenderer({ widgets }: { widgets: Widget[] }) {
   return (
     <div className="space-y-3 mb-3">
       {widgets.map((w, i) => (
-        <div key={i} className="rounded-xl border border-slate-600 bg-slate-900/60 p-3">
-          {w.title && <h4 className="text-sm font-semibold text-slate-100 mb-2">{w.title}</h4>}
+        <div key={i} className="rounded-[var(--radius-lg)] border border-border bg-surface-secondary p-4 shadow-sm">
+          {w.title && <h4 className="text-sm font-semibold text-content-primary mb-2">{w.title}</h4>}
           <WidgetBody widget={w} />
         </div>
       ))}
