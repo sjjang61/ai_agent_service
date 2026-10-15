@@ -1,5 +1,5 @@
 import logging
-from typing import AsyncIterator, Optional
+from typing import AsyncIterator, List, Optional
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -10,6 +10,29 @@ from app.config import normalize_llm_type, settings
 from app.tools.skill_tool import RegisterSkillTool, build_skills_prompt
 
 logger = logging.getLogger(__name__)
+
+
+def _build_memory_context(long_term: List, short_term: dict) -> str:
+    """Build memory context section for system prompt."""
+    sections = []
+
+    if long_term:
+        items = []
+        for m in long_term:
+            items.append(f"- [{m.category}] {m.key}: {m.value}")
+        sections.append(
+            "## User Information (Long-term Memory)\n" + "\n".join(items)
+        )
+
+    if short_term:
+        items = [f"- {k}: {v}" for k, v in short_term.items()]
+        sections.append(
+            "## Current Task Context (Short-term)\n" + "\n".join(items)
+        )
+
+    if sections:
+        return "\n\n" + "\n\n".join(sections) + "\n\n"
+    return ""
 
 
 class AgentOrchestrator:
@@ -37,7 +60,9 @@ class AgentOrchestrator:
             return []
         return [s for s in skills if s.is_active]
 
-    async def _get_tools(self, db: AsyncSession, skills: list, conversation_id: str = "") -> tuple[list, str]:
+    async def _get_tools(
+        self, db: AsyncSession, skills: list, conversation_id: str = ""
+    ) -> tuple[list, str]:
         """(에이전트 도구 목록, 시스템 프롬프트에 덧붙일 MCP 도구 목록)"""
         from app.tools import get_builtin_tools
         from app.tools.mcp_tools import (
@@ -48,8 +73,13 @@ class AgentOrchestrator:
         from app.tools.skill_tool import LoadSkillTool
         from app.tools.sub_agent_tool import CallSubAgentTool
         from app.mcp.manager import MCPSessionManager
+        from app.db.session import get_session_context
 
-        tools = await get_builtin_tools(self.user_id)
+        tools = await get_builtin_tools(
+            self.user_id,
+            conversation_id=conversation_id,
+            db_session_factory=get_session_context,
+        )
         tools.append(RegisterSkillTool(user_id=self.user_id))
         tools += [
             TodoTool(conversation_id=conversation_id),
@@ -90,13 +120,31 @@ class AgentOrchestrator:
         self, user_input: str, conversation_id: str, db: AsyncSession
     ) -> AsyncIterator[dict]:
         from app.services.chat_service import ChatService
+        from app.services.memory_service import MemoryService, ShortTermMemoryService
 
         messages = await ChatService.get_messages(conversation_id, db)
         memory = ConversationMemory.from_db_messages(messages)
 
+        # Load user memories for context injection
+        try:
+            long_term_memories = await MemoryService.get_context_memories(
+                self.user_id, db, limit=15
+            )
+        except Exception:
+            long_term_memories = []
+
+        try:
+            short_term_memories = await ShortTermMemoryService.get_all(
+                self.user_id, conversation_id
+            )
+        except Exception:
+            short_term_memories = {}
+
+        memory_context = _build_memory_context(long_term_memories, short_term_memories)
+
         skills = await self._get_active_skills(db)
         tools, mcp_prompt = await self._get_tools(db, skills, conversation_id)
-        system_prompt = SYSTEM_PROMPT + build_skills_prompt(skills) + mcp_prompt
+        system_prompt = SYSTEM_PROMPT + memory_context + build_skills_prompt(skills) + mcp_prompt
 
         if settings.AGENT_ENGINE == "agno":
             from app.agent.agno_engine import AgnoRunner

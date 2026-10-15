@@ -163,6 +163,23 @@ async def send_message(
             )
             yield f"data: {json.dumps({'type': 'done', 'message_id': msg.id})}\n\n"
 
+            # 메모리 자동 추출 (백그라운드 — 새 세션 사용)
+            if full_response and not has_error:
+                from app.services.memory_extractor import maybe_extract_memories
+                from app.db.session import AsyncSessionLocal
+
+                async def extract_with_new_session():
+                    async with AsyncSessionLocal() as new_db:
+                        await maybe_extract_memories(
+                            user_id=current_user.id,
+                            conversation_id=conversation_id,
+                            user_message=user_input,
+                            agent_response=full_response,
+                            db=new_db,
+                        )
+
+                asyncio.create_task(extract_with_new_session())
+
     return StreamingResponse(event_stream(), media_type="text/event-stream")
 
 

@@ -1,9 +1,13 @@
-from typing import List
+from typing import Callable, List, Optional
 
 from langchain_core.tools import BaseTool
 
 
-async def get_builtin_tools(user_id: str) -> List[BaseTool]:
+async def get_builtin_tools(
+    user_id: str,
+    conversation_id: str = "",
+    db_session_factory: Optional[Callable] = None,
+) -> List[BaseTool]:
     from app.tools.web_search import WebSearchTool
     from app.tools.crawler import WebCrawlerTool
     from app.tools.code_executor import CodeExecutorTool
@@ -22,7 +26,11 @@ async def get_builtin_tools(user_id: str) -> List[BaseTool]:
         CodeExecutorTool(user_id=user_id),
         FileManagerTool(user_id=user_id),
         ShellExecutorTool(user_id=user_id),
-        MemoryTool(user_id=user_id),
+        MemoryTool(
+            user_id=user_id,
+            conversation_id=conversation_id,
+            db_session_factory=db_session_factory,
+        ),
         ReadFileTool(user_id=user_id),
         WriteFileTool(user_id=user_id),
         EditFileTool(user_id=user_id),

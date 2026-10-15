@@ -23,7 +23,7 @@ export default function ToolCallCard({ step }: { step: AgentStepData }) {
           {step.tool || step.type}
         </span>
       </div>
-      {step.input && (
+      {step.input != null && (
         <p className="text-slate-500 truncate font-mono">
           {JSON.stringify(step.input)}
         </p>
