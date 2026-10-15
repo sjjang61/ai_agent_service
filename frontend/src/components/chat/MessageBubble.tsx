@@ -1,3 +1,4 @@
+import { useState } from 'react'
 import ReactMarkdown from 'react-markdown'
 import type { Message } from '../../types/chat'
 import StepProgressItem from './StepProgressItem'
@@ -10,6 +11,9 @@ import { useChatStore } from '../../store/chatStore'
 import { Paperclip, Bot, User } from 'lucide-react'
 import { formatSize } from '../sandbox/ArtifactsPanel'
 import { useAuthStore } from '../../store/authStore'
+import { useTextSelection } from '../../hooks/useTextSelection'
+import SelectionTooltip from '../wiki/SelectionTooltip'
+import WikiQuickAddDialog from '../wiki/WikiQuickAddDialog'
 
 function formatKoreanDateTime(dateString: string): string {
   const date = new Date(dateString)
@@ -32,6 +36,9 @@ export default function MessageBubble({ message }: { message: Message }) {
   const { isRunning } = useAgentStore()
   const { messages, currentConversationId } = useChatStore()
   const { user } = useAuthStore()
+  const { selectedText, position, clearSelection } = useTextSelection()
+  const [showWikiDialog, setShowWikiDialog] = useState(false)
+  const [savedSelectedText, setSavedSelectedText] = useState('')
 
   const msgs = currentConversationId ? messages[currentConversationId] || [] : []
   const isLastAssistant = !isUser && msgs[msgs.length - 1]?.id === message.id
@@ -39,6 +46,23 @@ export default function MessageBubble({ message }: { message: Message }) {
   const todos = isUser ? null : extractLatestTodos(message.agent_steps)
   const form = isUser ? null : extractLatestForm(message.agent_steps)
   const showCursor = isLastAssistant && isRunning && !message.content
+
+  const handleSaveToWiki = () => {
+    console.log('[MessageBubble] Opening Wiki dialog with selectedText:', {
+      length: selectedText?.length,
+      preview: selectedText?.substring(0, 50),
+    })
+    // Save the selected text before opening dialog
+    setSavedSelectedText(selectedText)
+    setShowWikiDialog(true)
+  }
+
+  const handleCloseWikiDialog = () => {
+    console.log('[MessageBubble] Closing Wiki dialog')
+    setShowWikiDialog(false)
+    setSavedSelectedText('')
+    clearSelection()
+  }
 
   return (
     <div className="message">
@@ -134,6 +158,26 @@ export default function MessageBubble({ message }: { message: Message }) {
           </div>
         )}
       </div>
+
+      {/* Text Selection Tooltip (only for assistant messages) */}
+      {!isUser && selectedText && position && (
+        <SelectionTooltip
+          selectedText={selectedText}
+          position={position}
+          onSaveToWiki={handleSaveToWiki}
+          onClose={clearSelection}
+        />
+      )}
+
+      {/* Wiki Quick Add Dialog */}
+      {showWikiDialog && (
+        <WikiQuickAddDialog
+          selectedText={savedSelectedText}
+          messageId={message.id}
+          conversationId={message.conversation_id}
+          onClose={handleCloseWikiDialog}
+        />
+      )}
     </div>
   )
 }

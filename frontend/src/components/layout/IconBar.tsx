@@ -10,6 +10,8 @@ import {
   Sliders,
   LayoutGrid,
   LogOut,
+  BookOpen,
+  Brain,
 } from 'lucide-react'
 import { useThemeStore } from '../../store/themeStore'
 import { useAuthStore } from '../../store/authStore'
@@ -108,6 +110,18 @@ export default function IconBar() {
       </button>
 
       {/* Settings */}
+      <IconButton
+        icon={<Brain size={20} />}
+        title="Memory"
+        active={isActive('/memory')}
+        onClick={() => navigate('/memory')}
+      />
+      <IconButton
+        icon={<BookOpen size={20} />}
+        title="Wiki"
+        active={isActive('/wiki')}
+        onClick={() => navigate('/wiki')}
+      />
       <IconButton
         icon={<Sliders size={20} />}
         title="MCP Settings"
