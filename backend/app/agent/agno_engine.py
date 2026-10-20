@@ -31,7 +31,7 @@ CODER_TOOLS = {
 }
 EXPLORER_TOOLS = {"read_file", "grep_file", "exec_command"}
 MCP_TOOLS = {"load_mcp_tool", "call_mcp_tool", "run_mcp_code"}
-INTERACTION_TOOLS = {"todo", "narrate", "form_ask_user", "cli_browser_agent"}
+INTERACTION_TOOLS = {"todo", "narrate", "form_ask_user", "cli_browser_agent", "manage_schedule"}
 LEADER_TOOLS = {"load_skill", "register_skill", "memory_tool", "read_image", "create_widget"} | MCP_TOOLS | INTERACTION_TOOLS
 LEGACY_TOOLS = {"file_manager", "shell_executor"}
 # Team 에서는 위임이 delegate_task_to_member 로 이미 제공되므로 call_sub_agent 는 제외한다

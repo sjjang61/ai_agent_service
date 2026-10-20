@@ -159,6 +159,17 @@ class Settings(BaseSettings):
     RAG_TOP_K: int = 5  # 검색 시 상위 K개 청크
     RAG_MAX_FILE_SIZE_MB: int = 50  # 문서 최대 크기
 
+    # 예약 작업 (스케줄러)
+    SCHEDULER_ENABLED: bool = True
+    SCHEDULER_POLL_SECONDS: int = 30  # 실행 시각이 된 작업을 찾는 주기
+    SCHEDULER_MAX_CONCURRENT: int = 3  # 동시에 실행할 예약 작업 수
+    SCHEDULER_MISFIRE_GRACE_SECONDS: int = 3600  # 서버 중단 등으로 이 시간 넘게 늦으면 실행하지 않고 건너뜀
+    SCHEDULER_RUN_TIMEOUT_SECONDS: int = 600  # 회차당 최대 실행 시간
+    SCHEDULER_MAX_TASKS_PER_USER: int = 10
+    SCHEDULER_MAX_CONSECUTIVE_FAILURES: int = 3  # 연속 실패 시 자동 일시중지
+    SCHEDULER_MIN_INTERVAL_HOURS: int = 1  # '매 N시간' 반복의 최소 간격
+    SCHEDULER_DEFAULT_TIMEZONE: str = "Asia/Seoul"
+
     # CORS
     CORS_ORIGINS: list[str] = [
         "http://localhost:5173",

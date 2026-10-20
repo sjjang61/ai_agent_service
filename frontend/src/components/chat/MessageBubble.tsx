@@ -10,6 +10,7 @@ import StreamingCursor from './StreamingCursor'
 import WidgetRenderer, { extractWidgets } from '../widgets/WidgetRenderer'
 import TodoCard, { extractLatestTodos } from './TodoCard'
 import FormCard, { extractLatestForm } from './FormCard'
+import ScheduleCard, { extractScheduleResults } from './ScheduleCard'
 import { useAgentStore } from '../../store/agentStore'
 import { useChatStore } from '../../store/chatStore'
 import { Paperclip, Bot, User, Copy, Check } from 'lucide-react'
@@ -128,6 +129,7 @@ export default function MessageBubble({ message }: { message: Message }) {
   const widgets = isUser ? [] : extractWidgets(message.agent_steps)
   const todos = isUser ? null : extractLatestTodos(message.agent_steps)
   const form = isUser ? null : extractLatestForm(message.agent_steps)
+  const scheduleResults = isUser ? [] : extractScheduleResults(message.agent_steps)
   const showCursor = isLastAssistant && isRunning && !message.content
 
   // 워크플로우 다이어그램 표시 여부 (자동)
@@ -226,6 +228,10 @@ export default function MessageBubble({ message }: { message: Message }) {
         )}
 
         <WidgetRenderer widgets={widgets} />
+
+        {scheduleResults.map((r, i) => (
+          <ScheduleCard key={i} result={r} />
+        ))}
 
         {/* Attachments */}
         {message.attachments && message.attachments.length > 0 && (

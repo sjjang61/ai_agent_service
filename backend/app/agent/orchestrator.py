@@ -35,13 +35,56 @@ def _build_memory_context(long_term: List, short_term: dict) -> str:
     return ""
 
 
+def _valid_timezone(name: Optional[str]) -> str:
+    """클라이언트가 보낸 시간대가 올바르지 않으면 기본 시간대로 대체한다."""
+    from zoneinfo import ZoneInfo
+
+    for cand in (name, settings.SCHEDULER_DEFAULT_TIMEZONE, "UTC"):
+        try:
+            if cand:
+                ZoneInfo(cand)
+                return cand
+        except Exception:
+            continue
+    return "UTC"
+
+
+def _time_context(tz_name: str) -> str:
+    """'내일 9시' 같은 상대 표현을 해석할 수 있도록 현재 시각을 알려준다."""
+    from datetime import datetime
+    from zoneinfo import ZoneInfo
+
+    now = datetime.now(ZoneInfo(tz_name))
+    weekday = "월화수목금토일"[now.weekday()]
+    return f"\n\n## Current time\n{now:%Y-%m-%d %H:%M} ({weekday}요일, {tz_name})\n"
+
+
+# 예약 작업처럼 사용자가 지켜보지 않는 실행에 덧붙이는 지침
+HEADLESS_PROMPT = """
+
+## Unattended run
+이 실행은 예약된 작업이며 사용자가 지켜보고 있지 않습니다.
+- 사용자에게 질문하지 마세요. 정보가 부족하면 합리적으로 가정해 끝까지 진행하고, 가정한 내용을 결과에 밝히세요.
+- 결과는 나중에 읽는 사람을 위한 완결된 보고서로 작성하세요 (무엇을 확인했는지, 핵심 결과, 필요한 후속 조치).
+- 같은 대화의 이전 실행 결과가 있으면 비교해서 달라진 점을 알려주세요.
+"""
+
+
 class AgentOrchestrator:
     def __init__(
         self,
         user_id: str,
         llm_provider: Optional[str] = None,
         model: Optional[str] = None,
+        headless: bool = False,
+        allow_mcp: bool = True,
+        allow_browser: bool = True,
+        user_timezone: Optional[str] = None,
     ):
+        self.user_timezone = _valid_timezone(user_timezone)
+        self.headless = headless
+        self.allow_mcp = allow_mcp
+        self.allow_browser = allow_browser
         self.user_id = user_id
         self.llm_provider = normalize_llm_type(llm_provider or settings.LLM_TYPE)
         self.model = model or settings.default_model_for(self.llm_provider)
@@ -61,7 +104,7 @@ class AgentOrchestrator:
         return [s for s in skills if s.is_active]
 
     async def _get_tools(
-        self, db: AsyncSession, skills: list, conversation_id: str = ""
+        self, db: AsyncSession, skills: list, conversation_id: str = "", current_message: str = ""
     ) -> tuple[list, str]:
         """(에이전트 도구 목록, 시스템 프롬프트에 덧붙일 MCP 도구 목록)"""
         from app.tools import get_builtin_tools
@@ -69,8 +112,9 @@ class AgentOrchestrator:
             CallMcpToolTool, LoadMcpToolTool, RunMcpCodeTool, build_mcp_catalog_prompt,
         )
         from app.tools.browser_tools import CliBrowserAgentTool
-        from app.tools.interaction_tools import FormAskUserTool, NarrateTool, TodoTool
+        from app.tools.interaction_tools import FormAskUserTool, HeadlessAskUserTool, NarrateTool, TodoTool
         from app.tools.skill_tool import LoadSkillTool
+        from app.tools.schedule_tool import ManageScheduleTool
         from app.tools.sub_agent_tool import CallSubAgentTool
         from app.mcp.manager import MCPSessionManager
         from app.db.session import get_session_context
@@ -84,14 +128,27 @@ class AgentOrchestrator:
         tools += [
             TodoTool(conversation_id=conversation_id),
             NarrateTool(),
-            FormAskUserTool(user_id=self.user_id, conversation_id=conversation_id),
-            CliBrowserAgentTool(user_id=self.user_id, llm_provider=self.llm_provider, model=self.model),
+            # 사용자가 없는 실행에서는 응답을 기다리며 멈추지 않도록 질문 도구를 대체한다
+            HeadlessAskUserTool()
+            if self.headless
+            else FormAskUserTool(user_id=self.user_id, conversation_id=conversation_id),
         ]
+        if not self.headless:
+            # 예약 실행 안에서는 새 예약을 만들 수 없다 (예약이 예약을 만드는 연쇄 방지)
+            tools.append(ManageScheduleTool(
+                user_id=self.user_id, default_timezone=self.user_timezone, current_message=current_message
+            ))
+        if self.allow_browser:
+            tools.append(
+                CliBrowserAgentTool(user_id=self.user_id, llm_provider=self.llm_provider, model=self.model)
+            )
         if skills:
             tools.append(LoadSkillTool(skills={s.name: s.install_path for s in skills}))
 
         mcp_prompt = ""
-        if settings.MCP_TOOL_MODE == "lazy":
+        if not self.allow_mcp:
+            pass  # 예약 작업은 작업별로 MCP 사용을 허용한 경우에만 MCP 도구를 노출한다
+        elif settings.MCP_TOOL_MODE == "lazy":
             # 스키마 전체를 싣지 않고 load_mcp_tool / call_mcp_tool / run_mcp_code 로 필요할 때만 조회·호출
             try:
                 clients = await MCPSessionManager.get_clients(self.user_id, db)
@@ -164,8 +221,8 @@ class AgentOrchestrator:
         memory_context = _build_memory_context(long_term_memories, short_term_memories)
 
         skills = await self._get_active_skills(db)
-        tools, mcp_prompt = await self._get_tools(db, skills, conversation_id)
-        system_prompt = SYSTEM_PROMPT + memory_context + build_skills_prompt(skills) + mcp_prompt
+        tools, mcp_prompt = await self._get_tools(db, skills, conversation_id, user_input)
+        system_prompt = SYSTEM_PROMPT + _time_context(self.user_timezone) + memory_context + build_skills_prompt(skills) + mcp_prompt + (HEADLESS_PROMPT if self.headless else "")
 
         if settings.AGENT_ENGINE == "agno":
             from app.agent.agno_engine import AgnoRunner

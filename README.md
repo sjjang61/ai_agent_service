@@ -415,6 +415,24 @@ curl -X POST http://localhost:8500/api/auth/login \
 | `POST` | `/api/sandbox/artifacts/publish` | 파일을 공개 다운로드 링크로 발행 |
 | `POST` | `/api/sandbox/uploads` | 채팅 첨부 파일을 sandbox `/workspace/uploads/` 에 업로드 (multipart, 파일당 `UPLOAD_MAX_MB`) |
 
+### 예약 작업 API
+
+프롬프트와 반복 일정을 저장해 두면 시각이 되었을 때 사용자 없이 에이전트가 실행하고, 결과를 전용 대화와 이력에 남깁니다.
+
+**채팅으로 예약**: 채팅에서 "매일 아침 9시에 AI 뉴스 요약해줘"처럼 말하면 에이전트가 `manage_schedule` 도구로 예약을 만들고(조회·수정·일시중지·재개·삭제 포함) 말풍선에 예약 카드를 보여줍니다.
+- 사용자의 브라우저 시간대를 기본값으로 쓰고, 시스템 프롬프트에 현재 시각을 알려 "10분 뒤" 같은 상대 표현을 해석합니다.
+- 안전장치: 변경·삭제 호출은 사용자의 **마지막 메시지**에서 인용한 문구(`request_quote`)가 있어야 하고(과거 요청의 재실행 방지), 같은 이름·같은 내용의 최근 예약은 중복으로 거부합니다. 이 도구로는 MCP·브라우저 허용을 켤 수 없고(예약 화면에서 직접 설정), 예약 실행(headless) 안에서는 도구가 제공되지 않습니다.
+
+| Method | Path | 설명 |
+|--------|------|------|
+| `GET` / `POST` | `/api/schedules` | 예약 작업 목록 / 생성 (한 번·N시간마다·매일·평일·매주·매월) |
+| `GET` / `PUT` / `DELETE` | `/api/schedules/{id}` | 조회 / 수정(일정이 바뀌면 다음 실행 재계산) / 삭제 |
+| `POST` | `/api/schedules/{id}/enabled` | 일시중지·재개 (재개 시 연속 실패 수 초기화) |
+| `POST` | `/api/schedules/{id}/run` | 지금 실행 (예약 일정은 그대로) |
+| `GET` | `/api/schedules/{id}/runs` | 실행 이력 |
+| `GET` | `/api/schedules/unread-count` | 확인하지 않은 실행 결과 수 (아이콘 바의 파란 점) |
+| `POST` | `/api/schedules/{id}/read`, `/api/schedules/runs/{run_id}/read` | 읽음 처리 (결과 대화를 열면 자동으로도 처리) |
+
 ---
 
 ## WebSocket 프로토콜
@@ -501,6 +519,12 @@ curl -X POST http://localhost:8500/api/mcp/configs \
 | `PUBLIC_BASE_URL` | ❌ | `http://localhost:8500` | `publish_file` 공개 링크에 붙는 백엔드 외부 주소 |
 | `PUBLISH_EXPIRE_HOURS` / `PUBLISH_MAX_MB` / `DOWNLOAD_MAX_MB` | ❌ | `24` / `100` / `50` | 공개 링크 유효시간·최대 크기, `download_file` 최대 크기 |
 | `UPLOAD_MAX_MB` | ❌ | `50` | 채팅 첨부 파일 1개당 최대 크기 |
+| `SCHEDULER_ENABLED` | ❌ | `true` | 예약 작업 자동 실행 (끄면 '지금 실행'만 동작) |
+| `SCHEDULER_POLL_SECONDS` / `SCHEDULER_MAX_CONCURRENT` | ❌ | `30` / `3` | 실행 시각 확인 주기(초) / 동시에 실행할 작업 수 |
+| `SCHEDULER_MISFIRE_GRACE_SECONDS` | ❌ | `3600` | 서버 중단 등으로 이만큼 넘게 늦은 회차는 실행하지 않고 건너뜀 |
+| `SCHEDULER_RUN_TIMEOUT_SECONDS` | ❌ | `600` | 회차당 최대 실행 시간 |
+| `SCHEDULER_MAX_TASKS_PER_USER` / `SCHEDULER_MAX_CONSECUTIVE_FAILURES` | ❌ | `10` / `3` | 사용자당 작업 수 / 연속 실패 시 자동 일시중지 |
+| `SCHEDULER_MIN_INTERVAL_HOURS` / `SCHEDULER_DEFAULT_TIMEZONE` | ❌ | `1` / `Asia/Seoul` | 'N시간마다' 최소 간격 / 기본 시간대 |
 | `PET_STREAMING` | ❌ | `false` | PetAgent 가 SSE 스트리밍을 지원하면 `true` |
 | `OPENAI_MODEL` / `GEMINI_MODEL` / `ANTHROPIC_MODEL` | ❌ | `gpt-4o` / `gemini-2.5-flash` / `claude-sonnet-4-5` | LLM_TYPE 별 모델 (pet 은 `PET_MODEL_ID`) |
 | `MINIO_ENDPOINT` / `MINIO_ACCESS_KEY` / `MINIO_SECRET_KEY` | ❌ | (비활성) | Sandbox 백업용 MinIO. 비우면 자동 백업/종료 꺼짐 |

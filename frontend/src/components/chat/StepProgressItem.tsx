@@ -1,4 +1,4 @@
-import { Brain, Wrench, CheckCircle2, Code2, FileText, Globe, Search, Terminal, ChevronRight, Loader2, Image as ImageIcon, Link2, LayoutDashboard, Bot, Plug, ListChecks, Megaphone, MessageCircleQuestion, AppWindow } from 'lucide-react'
+import { Brain, Wrench, CheckCircle2, Code2, FileText, Globe, Search, Terminal, ChevronRight, Loader2, Image as ImageIcon, Link2, LayoutDashboard, Bot, Plug, ListChecks, Megaphone, MessageCircleQuestion, AppWindow, Clock } from 'lucide-react'
 import { useAgentStore } from '../../store/agentStore'
 import type { SelectedStepDetail } from '../../types/agent'
 
@@ -28,6 +28,7 @@ const TOOL_LABELS: Record<string, string> = {
   narrate: '진행 안내',
   form_ask_user: '사용자 질문',
   cli_browser_agent: '브라우저 작업',
+  manage_schedule: '예약 관리',
 }
 
 function StepIcon({ type, tool, isActive }: { type: string; tool?: string; isActive?: boolean }) {
@@ -45,6 +46,7 @@ function StepIcon({ type, tool, isActive }: { type: string; tool?: string; isAct
     case 'todo': return <ListChecks size={13} className="text-accent-green flex-shrink-0" />
     case 'narrate': return <Megaphone size={13} className="text-accent-purple flex-shrink-0" />
     case 'form_ask_user': return <MessageCircleQuestion size={13} className="text-accent-primary flex-shrink-0" />
+    case 'manage_schedule': return <Clock size={13} className="text-accent-primary flex-shrink-0" />
     case 'cli_browser_agent': return <AppWindow size={13} className="text-accent-amber flex-shrink-0" />
     case 'create_widget': return <LayoutDashboard size={13} className="text-accent-purple flex-shrink-0" />
     case 'call_sub_agent': return <Bot size={13} className="text-accent-amber flex-shrink-0" />

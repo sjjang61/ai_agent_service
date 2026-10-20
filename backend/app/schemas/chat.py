@@ -41,3 +41,4 @@ class SendMessageRequest(BaseModel):
     attachments: List[Attachment] = []
     llm_provider: Optional[str] = None
     model: Optional[str] = None
+    timezone: Optional[str] = None  # 브라우저 시간대(IANA). 예약 도구의 기본값과 '현재 시각' 안내에 쓴다

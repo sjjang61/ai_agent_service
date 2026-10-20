@@ -84,6 +84,13 @@ async def list_messages(
     db: AsyncSession = Depends(get_session),
 ):
     messages = await ChatService.get_messages(conversation_id, db)
+    try:
+        # 예약 작업의 결과 대화를 열었다면 그 실행 결과는 읽은 것으로 처리한다 (아이콘 바의 읽지 않음 표시 해제)
+        from app.services.schedule_service import ScheduleService
+
+        await ScheduleService.mark_conversation_read(conversation_id, current_user.id, db)
+    except Exception:
+        logger.exception("[chat] 예약 결과 읽음 처리 실패")
     return [
         MessageResponse(
             id=m.id,
@@ -126,6 +133,7 @@ async def send_message(
             current_user.id,
             llm_provider=data.llm_provider,
             model=data.model,
+            user_timezone=data.timezone,
         )
         full_response = ""
         agent_steps = []

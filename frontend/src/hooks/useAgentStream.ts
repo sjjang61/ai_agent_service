@@ -15,7 +15,7 @@ function nextStepId() {
 const controllers = new Map<string, AbortController>()
 const CANCEL_NOTE = '_(사용자가 실행을 중단했습니다)_'
 
-const MESSAGE_RENDERED_TOOLS = new Set(['create_widget', 'todo', 'form_ask_user'])
+const MESSAGE_RENDERED_TOOLS = new Set(['create_widget', 'todo', 'form_ask_user', 'manage_schedule'])
 const SANDBOX_TOOLS = new Set([
   'code_executor', 'file_manager', 'shell_executor',
   'write_file', 'edit_file', 'delete_file', 'download_file', 'exec_command',
@@ -66,7 +66,12 @@ export function useAgentStream(conversationId: string) {
               'Content-Type': 'application/json',
               Authorization: `Bearer ${token}`,
             },
-            body: JSON.stringify({ content, attachments }),
+            body: JSON.stringify({
+              content,
+              attachments,
+              // 예약 도구의 기본 시간대와 '현재 시각' 안내에 쓴다
+              timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+            }),
             signal: controller.signal,
           }
         )

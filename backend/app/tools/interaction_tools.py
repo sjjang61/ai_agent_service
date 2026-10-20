@@ -171,3 +171,23 @@ class FormAskUserTool(_Base):
             return f"Error: invalid form - {e}. Fix the questions and call form_ask_user again."
         result = await PendingForms.ask(self.conversation_id, self.user_id, qs, FORM_TIMEOUT_SECONDS)
         return json.dumps(result, ensure_ascii=False)
+
+
+class HeadlessAskUserTool(_Base):
+    """예약 실행처럼 사용자가 없을 때 form_ask_user 를 대신한다 (응답을 기다리며 멈추지 않는다)."""
+
+    name: str = "form_ask_user"
+    description: str = (
+        "Unavailable in this unattended (scheduled) run: there is no user to answer. "
+        "Do not rely on it; make reasonable assumptions and state them in the final report."
+    )
+    args_schema: type[BaseModel] = FormAskUserInput
+
+    async def _arun(self, title: str = "", questions: Optional[list] = None, description: Optional[str] = None) -> str:
+        return json.dumps(
+            {
+                "unavailable": True,
+                "message": "예약 실행 중이라 사용자에게 질문할 수 없습니다. 필요한 정보는 합리적으로 가정해 진행하고, 가정한 내용을 결과에 명시하세요.",
+            },
+            ensure_ascii=False,
+        )

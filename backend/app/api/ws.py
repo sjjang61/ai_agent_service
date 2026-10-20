@@ -52,6 +52,7 @@ async def chat_websocket(conversation_id: str, websocket: WebSocket):
                         current_user.id,
                         llm_provider=data.get("llm_provider"),
                         model=data.get("model"),
+                        user_timezone=data.get("timezone"),
                     )
                     full_response = ""
                     agent_steps = []
