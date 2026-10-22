@@ -3,6 +3,8 @@ import type { AgentStepData } from '../../types/chat'
 import type { Widget } from '../../types/widget'
 import TableWidget from './TableWidget'
 import ChartWidget from './ChartWidget'
+import StatsWidget from './StatsWidget'
+import ProcessWidget from './ProcessWidget'
 
 // mermaid / leaflet 은 용량이 커서 위젯이 실제로 나올 때만 불러온다
 const FlowWidget = lazy(() => import('./FlowWidget'))
@@ -41,6 +43,10 @@ function WidgetBody({ widget }: { widget: Widget }) {
           <MapWidget spec={widget.spec} />
         </Suspense>
       )
+    case 'stats':
+      return <StatsWidget spec={widget.spec} />
+    case 'process':
+      return <ProcessWidget spec={widget.spec} />
     default:
       return null
   }
@@ -51,8 +57,20 @@ export default function WidgetRenderer({ widgets }: { widgets: Widget[] }) {
   return (
     <div className="space-y-3 mb-3">
       {widgets.map((w, i) => (
-        <div key={i} className="rounded-[var(--radius-lg)] border border-border bg-surface-secondary p-4 shadow-sm">
-          {w.title && <h4 className="text-sm font-semibold text-content-primary mb-2">{w.title}</h4>}
+        <div
+          key={i}
+          // 수치 카드·프로세스는 자체 테두리가 있어 바깥 상자 없이 제목만 붙인다
+          className={
+            w.type === 'stats' || w.type === 'process'
+              ? ''
+              : 'rounded-[var(--radius-lg)] border border-border bg-surface-secondary p-4 shadow-sm'
+          }
+        >
+          {w.title && (
+            <h4 className={`font-semibold text-content-primary ${w.type === 'stats' || w.type === 'process' ? 'text-[15px] mb-3' : 'text-sm mb-2'}`}>
+              {w.title}
+            </h4>
+          )}
           <WidgetBody widget={w} />
         </div>
       ))}

@@ -1,4 +1,4 @@
-"""create_widget: 답변 내용을 표·차트·흐름도·지도 위젯으로 만든다.
+"""create_widget: 답변 내용을 표·차트·흐름도·지도·핵심 수치 카드·프로세스 다이어그램 위젯으로 만든다.
 
 LLM 이 만든 spec 을 검증·정규화해서 JSON 으로 돌려주고, 프론트엔드가 이 결과(tool_result)를 읽어
 채팅 말풍선 안에 위젯으로 렌더링한다. 검증에 실패하면 오류 문장을 반환해 LLM 이 고쳐 다시 호출하게 한다.
@@ -93,12 +93,59 @@ class MapSpec(BaseModel):
     zoom: Optional[int] = Field(default=None, ge=1, le=18)
 
 
-_SPECS = {"table": TableSpec, "chart": ChartSpec, "flow": FlowSpec, "map": MapSpec}
+class StatItem(BaseModel):
+    label: str = Field(max_length=60)
+    value: str = Field(max_length=30)  # "44개", "약 100배", "1/100" 처럼 단위가 붙은 표시용 문자열
+    note: Optional[str] = Field(default=None, max_length=100)
+    tone: Literal["default", "positive", "negative", "accent"] = "default"
+
+    @field_validator("value", mode="before")
+    @classmethod
+    def _value(cls, v):
+        return str(v)
+
+
+class StatsSpec(BaseModel):
+    items: list[StatItem] = Field(min_length=1, max_length=12)
+    columns: Optional[int] = Field(default=None, ge=1, le=4)  # 한 줄에 놓을 카드 수 (생략하면 자동)
+    caption: Optional[str] = Field(default=None, max_length=300)
+
+
+ProcessIcon = Literal[
+    "bot", "user", "users", "file", "check", "search", "database", "chart", "mail", "code",
+    "clock", "settings", "globe", "shield", "star", "none",
+]
+
+
+class ProcessItem(BaseModel):
+    title: str = Field(max_length=60)
+    description: Optional[str] = Field(default=None, max_length=120)
+    icon: ProcessIcon = "none"
+    highlight: bool = False  # 강조 배경 (예: 평가 대상인 쪽)
+
+
+class ProcessStage(BaseModel):
+    items: list[ProcessItem] = Field(min_length=1, max_length=4)  # 2개 이상이면 나란히(병렬) 배치
+    kind: Literal["step", "result"] = "step"  # result: 테두리 상자로 표시 (최종 결과/판정)
+
+
+class ProcessSpec(BaseModel):
+    stages: list[ProcessStage] = Field(min_length=2, max_length=8)  # 위에서 아래로 화살표로 이어진다
+    caption: Optional[str] = Field(default=None, max_length=300)
+
+
+_SPECS = {
+    "table": TableSpec, "chart": ChartSpec, "flow": FlowSpec, "map": MapSpec,
+    "stats": StatsSpec, "process": ProcessSpec,
+}
 
 
 class CreateWidgetInput(BaseModel):
-    widget_type: Literal["table", "chart", "flow", "map"] = Field(
-        description="Kind of widget: table (comparison table), chart (bar/line/pie), flow (flowchart/diagram), map (markers on a map)"
+    widget_type: Literal["table", "chart", "flow", "map", "stats", "process"] = Field(
+        description=(
+            "Kind of widget: table (comparison table), chart (bar/line/pie), flow (Mermaid diagram), map (markers), "
+            "stats (key-number cards), process (simple step-by-step diagram, optionally with parallel branches)"
+        )
     )
     title: str = Field(description="Short widget title shown above it")
     spec: dict = Field(
@@ -109,7 +156,12 @@ class CreateWidgetInput(BaseModel):
             "\"series\": [{\"name\": \"매출\", \"values\": [10, 20]}], \"unit\": optional}; "
             "flow -> {\"mermaid\": \"flowchart TD\\n  A[시작] --> B{조건}\\n  B -->|예| C[처리]\"} (Mermaid syntax); "
             "map -> {\"markers\": [{\"lat\": 37.5665, \"lon\": 126.978, \"label\": \"서울시청\", \"description\": optional}], "
-            "\"center\": [lat, lon] optional, \"zoom\": 1-18 optional}"
+            "\"center\": [lat, lon] optional, \"zoom\": 1-18 optional}; "
+            "stats -> {\"items\": [{\"label\": \"평가 대상 직업\", \"value\": \"44개\", \"note\": \"9개 주요 산업 분야\", "
+            "\"tone\": \"default\"|\"positive\"|\"negative\"|\"accent\"}], \"columns\": 1-4 optional}; "
+            "process -> {\"stages\": [{\"items\": [{\"title\": \"AI 모델\", \"description\": \"결과물 생성\", "
+            "\"icon\": \"bot\", \"highlight\": false}, {\"title\": \"인간 전문가\", \"icon\": \"user\"}], "
+            "\"kind\": \"step\"|\"result\"}]} (stages are drawn top to bottom joined by arrows; items inside one stage sit side by side)"
         )
     )
 
@@ -118,8 +170,9 @@ class CreateWidgetTool(BaseTool):
     name: str = "create_widget"
     description: str = (
         "Turn part of the answer into a visual widget shown in the chat: a comparison table, a bar/line/pie chart, "
-        "a flowchart/diagram (Mermaid) or a map with markers. Use it when data is easier to grasp visually "
-        "(comparisons, trends, processes, locations). The widget is displayed to the user automatically; "
+        "a flowchart/diagram (Mermaid), a map with markers, key-number cards (stats) or a simple step diagram "
+        "(process). Use it when content is easier to grasp visually (comparisons, trends, processes, locations, "
+        "headline numbers). The widget is displayed to the user automatically; "
         "do not repeat its full data in the text, just summarize the key point."
     )
     args_schema: type[BaseModel] = CreateWidgetInput
