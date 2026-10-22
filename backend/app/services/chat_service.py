@@ -66,6 +66,7 @@ class ChatService:
         agent_steps: list = None,
         tool_calls: list = None,
         attachments: list = None,
+        references: list = None,
     ) -> Message:
         msg = Message(
             conversation_id=conversation_id,
@@ -73,7 +74,7 @@ class ChatService:
             content=content,
             agent_steps=agent_steps or [],
             tool_calls=tool_calls or [],
-            metadata_={"attachments": attachments} if attachments else {},
+            metadata_={k: v for k, v in (("attachments", attachments), ("references", references)) if v},
         )
         db.add(msg)
 
@@ -94,10 +95,31 @@ class ChatService:
     async def delete_conversation(
         conversation_id: str, user_id: str, db: AsyncSession
     ):
-        # 벡터 컬렉션 삭제 (RAG 문서)
+        from fastapi import HTTPException
+        from sqlalchemy import update
+
         from app.core.vector_store import VectorStoreManager
+        from app.models.token_usage import TokenUsage
+        from app.models.tool_execution import ToolExecution
+
+        owned = await db.execute(
+            select(Conversation.id).where(Conversation.id == conversation_id, Conversation.user_id == user_id)
+        )
+        if owned.scalar_one_or_none() is None:
+            raise HTTPException(status_code=404, detail="대화를 찾을 수 없습니다")
+
+        # 벡터 컬렉션 삭제 (RAG 문서)
         VectorStoreManager.delete_collection(conversation_id)
 
+        msg_ids = select(Message.id).where(Message.conversation_id == conversation_id)
+        # 토큰 사용량은 통계로 남기고 대화·메시지 연결만 끊는다 (FK 때문에 이걸 안 하면 삭제가 실패한다)
+        await db.execute(
+            update(TokenUsage)
+            .where(TokenUsage.conversation_id == conversation_id)
+            .values(conversation_id=None, message_id=None)
+        )
+        await db.execute(update(TokenUsage).where(TokenUsage.message_id.in_(msg_ids)).values(message_id=None))
+        await db.execute(delete(ToolExecution).where(ToolExecution.message_id.in_(msg_ids)))
         await db.execute(
             delete(Message).where(Message.conversation_id == conversation_id)
         )

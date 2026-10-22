@@ -32,6 +32,7 @@ async def init_db():
         await conn.run_sync(_ensure_memory_columns)
         await conn.run_sync(_ensure_conversation_columns)
         await conn.run_sync(_ensure_agent_columns)
+        await conn.run_sync(_ensure_token_usage_nullable)
 
 
 def _ensure_memory_columns(sync_conn) -> None:
@@ -77,3 +78,12 @@ def _ensure_agent_columns(sync_conn) -> None:
     task = {c["name"] for c in insp.get_columns("scheduled_tasks")}
     if "agent_id" not in task:
         sync_conn.execute(text("ALTER TABLE scheduled_tasks ADD COLUMN agent_id VARCHAR(36) NULL"))
+
+
+def _ensure_token_usage_nullable(sync_conn) -> None:
+    """token_usages.conversation_id 를 NULL 허용으로 (대화 삭제 후에도 사용량 기록 유지, alembic h8a1b2c3d4e5 와 같은 변경)."""
+    from sqlalchemy import inspect, text
+
+    col = next((c for c in inspect(sync_conn).get_columns("token_usages") if c["name"] == "conversation_id"), None)
+    if col is not None and not col["nullable"]:
+        sync_conn.execute(text("ALTER TABLE token_usages MODIFY conversation_id VARCHAR(36) NULL"))

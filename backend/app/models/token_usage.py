@@ -12,7 +12,7 @@ class TokenUsage(Base):
     id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
     message_id = Column(String(36), ForeignKey("messages.id"), nullable=True, index=True)
     user_id = Column(String(36), ForeignKey("users.id"), nullable=False, index=True)
-    conversation_id = Column(String(36), ForeignKey("conversations.id"), nullable=False, index=True)
+    conversation_id = Column(String(36), ForeignKey("conversations.id"), nullable=True, index=True)  # 대화를 지워도 사용량 기록은 남긴다
 
     llm_provider = Column(String(50), nullable=False)
     model_name = Column(String(100), nullable=False)
