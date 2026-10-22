@@ -1,9 +1,26 @@
-import { useEffect, useState } from 'react'
+import { lazy, Suspense, useEffect, useMemo, useState } from 'react'
 import type { FlowSpec } from '../../types/widget'
+import { parseMermaidFlow } from '../workflow/mermaidFlow'
+
+// React Flow 는 용량이 커서 흐름도가 실제로 나올 때만 불러온다
+const FlowGraph = lazy(() => import('../workflow/FlowGraph'))
 
 let counter = 0
 
+/** flowchart/graph 는 React Flow 다이어그램으로, 그 밖의 Mermaid(시퀀스·간트 등)이나 해석 실패는 Mermaid 렌더러로 그린다. */
 export default function FlowWidget({ spec }: { spec: FlowSpec }) {
+  const parsed = useMemo(() => parseMermaidFlow(spec.mermaid), [spec.mermaid])
+  if (parsed) {
+    return (
+      <Suspense fallback={<p className="text-xs text-content-muted">흐름도를 그리는 중...</p>}>
+        <FlowGraph flow={parsed} />
+      </Suspense>
+    )
+  }
+  return <MermaidFlow spec={spec} />
+}
+
+function MermaidFlow({ spec }: { spec: FlowSpec }) {
   const [svg, setSvg] = useState<string>('')
   const [error, setError] = useState<string | null>(null)
 

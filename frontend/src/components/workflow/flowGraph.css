@@ -1,0 +1,12 @@
+/* React Flow 를 앱의 테마 변수(--bg-*, --text-*, --border-color)에 맞춘다 */
+.flow-graph .react-flow__background { background-color: var(--bg-secondary); }
+.flow-graph .react-flow__node { font-family: inherit; }
+.flow-graph .react-flow__handle { width: 6px; height: 6px; min-width: 0; min-height: 0; background: var(--border-light); border: none; }
+.flow-graph .react-flow__edge-path { stroke: var(--text-tertiary); stroke-width: 1.6; }
+.flow-graph .react-flow__edge-text { fill: var(--text-primary); font-size: 11px; }
+.flow-graph .react-flow__edge-textbg { fill: var(--bg-secondary); fill-opacity: 1; }
+.flow-graph .react-flow__controls { background: var(--bg-tertiary); border: 1px solid var(--border-color); border-radius: var(--radius-md); box-shadow: none; overflow: hidden; }
+.flow-graph .react-flow__controls-button { background: var(--bg-tertiary); border: none; border-bottom: 1px solid var(--border-color); color: var(--text-primary); fill: var(--text-primary); }
+.flow-graph .react-flow__controls-button:hover { background: var(--bg-hover); }
+.flow-graph .react-flow__controls-button:last-child { border-bottom: none; }
+.flow-graph .react-flow__attribution { display: none; }
