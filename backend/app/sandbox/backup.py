@@ -76,6 +76,17 @@ class SandboxBackup:
             raise
 
     # ── public ───────────────────────────────────────────────────────────────
+    def _remove(self, session_id: str):
+        try:
+            self._get_client().remove_object(settings.MINIO_BUCKET, self.object_key(session_id))
+        except Exception:
+            logger.warning("[sandbox] 백업 삭제 실패 session=%s", session_id, exc_info=True)
+
+    async def delete(self, session_id: str) -> None:
+        """이 세션의 백업을 지운다 (대화방을 삭제할 때). 없거나 실패해도 예외를 던지지 않는다."""
+        if self.enabled:
+            await asyncio.to_thread(self._remove, session_id)
+
     async def exists(self, session_id: str) -> bool:
         return self.enabled and await asyncio.to_thread(self._exists, session_id)
 

@@ -18,6 +18,8 @@ class Conversation(Base):
     agent_id = Column(String(36), nullable=True, index=True)
     agent_version_id = Column(String(36), nullable=True)
     is_test = Column(Boolean, nullable=False, default=False)
+    # 스페이스(프로젝트)에서 시작한 대화: 사용자 단위 공용 sandbox 를 쓴다. 비어 있으면 이 대화방 전용 sandbox
+    space_id = Column(String(36), nullable=True, index=True)
     # 롤링 요약: 컨텍스트 창(최근 N개)에서 밀려난 오래된 메시지를 요약해 둔다
     summary = Column(Text, nullable=True)
     summary_count = Column(Integer, nullable=False, default=0)  # 요약에 반영된 메시지 수 (시간순 앞에서부터)

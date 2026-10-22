@@ -103,6 +103,7 @@ def build_mcp_catalog_prompt(clients: dict, max_tools: int = 150) -> str:
 
 class _AsyncTool(BaseTool):
     user_id: str = ""
+    sandbox_cid: str = ""  # 비어 있으면 사용자 공용 sandbox
     mcp_policy: Optional[dict] = None  # 커스텀 에이전트의 MCP 허용 정책 (None 이면 제한 없음)
 
     def _run(self, *args, **kwargs) -> str:
@@ -239,7 +240,7 @@ class RunMcpCodeTool(_AsyncTool):
             return {"result": result.encode("utf-8")[:MAX_RPC_RESULT_BYTES].decode("utf-8", errors="ignore")}
 
         try:
-            cid = await _container(self.user_id)
+            cid = await _container(self.user_id, self.sandbox_cid)
             import uuid
 
             code_path = f"/tmp/_mcp_code_{uuid.uuid4().hex[:8]}.py"

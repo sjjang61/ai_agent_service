@@ -35,6 +35,10 @@ class ShellInput(BaseModel):
         default=None,
         description="Working directory inside sandbox (default: /workspace)",
     )
+    purpose: str = Field(
+        default="",
+        description="Why you run this, in Korean, one short phrase (max 30 chars) shown to the user as the step title, e.g. '패키지 설치', '순위 데이터 추출', '결과 파일 변환'. Always provide it.",
+    )
 
 
 class ShellExecutorTool(BaseTool):
@@ -48,8 +52,9 @@ class ShellExecutorTool(BaseTool):
     )
     args_schema: type[BaseModel] = ShellInput
     user_id: str = ""
+    sandbox_cid: str = ""  # 비어 있으면 사용자 공용 sandbox
 
-    def _run(self, command: str, timeout: int = 120, workdir: Optional[str] = None) -> str:
+    def _run(self, command: str, timeout: int = 120, workdir: Optional[str] = None, purpose: str = "") -> str:
         import asyncio
         try:
             loop = asyncio.get_event_loop()
@@ -63,7 +68,7 @@ class ShellExecutorTool(BaseTool):
             return f"Shell execution error: {e}"
 
     async def _arun(
-        self, command: str, timeout: int = 120, workdir: Optional[str] = None
+        self, command: str, timeout: int = 120, workdir: Optional[str] = None, purpose: str = ""
     ) -> str:
         if _is_blocked(command):
             return f"Error: 차단된 명령어입니다: {command[:80]}"
@@ -78,7 +83,7 @@ class ShellExecutorTool(BaseTool):
 
             manager = SandboxManager()
             async with AsyncSessionLocal() as db:
-                sb = await SandboxService.get_or_create_sandbox(self.user_id, db)
+                sb = await SandboxService.get_or_create_sandbox(self.user_id, db, self.sandbox_cid or None)
 
             # workdir 지정 시 cd 후 실행
             wd = workdir.rstrip("/") if workdir else "/workspace"

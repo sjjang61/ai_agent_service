@@ -145,9 +145,14 @@ export default function ChatLayout() {
         </RightPanel>
       )}
       {!selectedStep && rightPanel === 'artifacts' && (
-        <RightPanel title="Sandbox Artifacts" icon={<FolderOpen size={15} />} onClose={closePanel}>
+        <RightPanel
+          title="Sandbox Artifacts"
+          subtitle={currentConversation?.space_id ? '공용 sandbox (스페이스 대화)' : '이 대화 전용 sandbox'}
+          icon={<FolderOpen size={15} />}
+          onClose={closePanel}
+        >
           <div className="px-4 py-4">
-            <ArtifactsPanel compact refreshTick={workspaceRefreshTick} />
+            <ArtifactsPanel compact refreshTick={workspaceRefreshTick} conversationId={currentConversationId} />
           </div>
         </RightPanel>
       )}

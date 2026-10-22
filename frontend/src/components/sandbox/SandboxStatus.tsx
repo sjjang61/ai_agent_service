@@ -2,6 +2,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import axios from 'axios'
 import { useAuthStore } from '../../store/authStore'
 import { Play, Square, Terminal, RefreshCw } from 'lucide-react'
+import { T } from '../skills/typography'
 
 export default function SandboxStatus() {
   const { token } = useAuthStore()
@@ -34,8 +35,8 @@ export default function SandboxStatus() {
             <Terminal size={20} className="text-accent-blue" />
           </div>
           <div>
-            <h3 className="font-semibold text-content-primary">Sandbox Container</h3>
-            <p className="text-xs text-content-muted">Isolated execution environment</p>
+            <h3 className={T.itemTitle}>Sandbox Container</h3>
+            <p className={T.itemDesc}>Isolated execution environment</p>
           </div>
         </div>
         <div className="flex items-center gap-2">

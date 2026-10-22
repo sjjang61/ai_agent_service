@@ -10,6 +10,7 @@ class ConversationCreate(BaseModel):
     model_name: Optional[str] = None
     agent_id: Optional[str] = None  # 커스텀 에이전트로 시작 (발행된 버전에 고정된다)
     is_test: bool = False  # 에이전트 빌더의 미리보기 대화 (목록에 나타나지 않고 초안으로 실행된다)
+    space_id: Optional[str] = None  # 스페이스(프로젝트)에서 시작한 대화 — 사용자 단위 공용 sandbox 를 쓴다
 
 
 class ConversationResponse(BaseModel):
@@ -22,6 +23,7 @@ class ConversationResponse(BaseModel):
     agent_icon: Optional[str] = None
     agent_version: Optional[int] = None
     is_test: bool = False
+    space_id: Optional[str] = None
     created_at: datetime
     updated_at: datetime
 

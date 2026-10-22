@@ -77,14 +77,14 @@ def _time_context(tz_name: str) -> str:
 _restore_tasks: set = set()  # 실행 중인 복구 작업 (참조를 유지해 가비지 수집을 막는다)
 
 
-def _spawn_sandbox_restore(user_id: str) -> None:
+def _spawn_sandbox_restore(user_id: str, sandbox_cid: str = "") -> None:
     import asyncio
 
     from app.services.sandbox_service import SandboxService
 
     async def _run():
         try:
-            await SandboxService.restore_if_backed_up(user_id)
+            await SandboxService.restore_if_backed_up(user_id, sandbox_cid or None)
         except Exception:
             logger.exception("[sandbox] 요청 시작 시 복구 실패 — 도구 사용 시 다시 시도됩니다")
 
@@ -115,12 +115,12 @@ class AgentOrchestrator:
         self.llm_provider = normalize_llm_type(provider or settings.LLM_TYPE)
         self.model = model_id or settings.default_model_for(self.llm_provider)
 
-    async def _get_active_skills(self, db: AsyncSession) -> list:
+    async def _get_active_skills(self, db: AsyncSession, sandbox_cid: str = "") -> list:
         from app.services.skill_service import SkillService
 
         try:
             # 에이전트가 sandbox 에 만들어 두고 등록하지 않은 skill 을 자동 등록
-            await SkillService.import_from_sandbox(self.user_id, db)
+            await SkillService.import_from_sandbox(self.user_id, db, conversation_id=sandbox_cid or None)
         except Exception:
             logger.exception("[skills] sandbox skill 자동 등록 실패")
         try:
@@ -130,7 +130,7 @@ class AgentOrchestrator:
         return filter_skills([s for s in skills if s.is_active], self.runtime)
 
     async def _get_tools(
-        self, db: AsyncSession, skills: list, conversation_id: str = "", current_message: str = ""
+        self, db: AsyncSession, skills: list, conversation_id: str = "", current_message: str = "", sandbox_cid: str = ""
     ) -> tuple[list, str]:
         """(에이전트 도구 목록, 시스템 프롬프트에 덧붙일 MCP 도구 목록)"""
         from app.tools import get_builtin_tools
@@ -149,8 +149,9 @@ class AgentOrchestrator:
             self.user_id,
             conversation_id=conversation_id,
             db_session_factory=get_session_context,
+            sandbox_cid=sandbox_cid,
         )
-        tools.append(RegisterSkillTool(user_id=self.user_id))
+        tools.append(RegisterSkillTool(user_id=self.user_id, sandbox_cid=sandbox_cid))
         tools += [
             TodoTool(conversation_id=conversation_id),
             NarrateTool(),
@@ -166,10 +167,10 @@ class AgentOrchestrator:
             ))
         if self.allow_browser:
             tools.append(
-                CliBrowserAgentTool(user_id=self.user_id, llm_provider=self.llm_provider, model=self.model)
+                CliBrowserAgentTool(user_id=self.user_id, sandbox_cid=sandbox_cid, llm_provider=self.llm_provider, model=self.model)
             )
         if skills:
-            tools.append(LoadSkillTool(skills={s.name: s.install_path for s in skills}, user_id=self.user_id))
+            tools.append(LoadSkillTool(skills={s.name: s.install_path for s in skills}, user_id=self.user_id, sandbox_cid=sandbox_cid))
 
         mcp_prompt = ""
         if not self.allow_mcp:
@@ -187,7 +188,7 @@ class AgentOrchestrator:
                 tools += [
                     LoadMcpToolTool(user_id=self.user_id, mcp_policy=policy),
                     CallMcpToolTool(user_id=self.user_id, mcp_policy=policy),
-                    RunMcpCodeTool(user_id=self.user_id, mcp_policy=policy),
+                    RunMcpCodeTool(user_id=self.user_id, sandbox_cid=sandbox_cid, mcp_policy=policy),
                 ]
                 mcp_prompt = build_mcp_catalog_prompt(clients)
         else:
@@ -232,7 +233,11 @@ class AgentOrchestrator:
 
         # 이 세션의 sandbox 가 유휴로 백업·종료된 상태면 요청이 시작되는 즉시 MinIO 백업에서 복구한다 (백그라운드).
         # sandbox 도구가 필요하면 같은 락을 쓰므로 복구가 끝날 때까지 기다린다.
-        _spawn_sandbox_restore(self.user_id)
+        # 이 요청이 쓸 sandbox: 대화방 전용(대화방 id) 또는 사용자 공용(스페이스에서 시작한 대화). 도구와 복구가 같은 sandbox 를 가리킨다.
+        from app.services.sandbox_service import resolve_scope
+
+        sandbox_cid = await resolve_scope(conversation_id, self.user_id, db) or ""
+        _spawn_sandbox_restore(self.user_id, sandbox_cid)
 
         # 새 요청 시작 시 이전 작업의 미완료 todo를 모두 completed로 변경
         # 이전 대화가 컨텍스트로 포함되더라도 이전 작업을 다시 수행하지 않도록 함
@@ -257,7 +262,16 @@ class AgentOrchestrator:
         route_note = ""
         if should_route(user_input, self.headless):
             earlier = prior_history(memory.get_messages(), user_input)
-            route = await route_request(user_input, earlier)
+            try:  # 라우터가 '맞는 스킬이 있는지'를 볼 수 있게 설치된 스킬 목록을 넘긴다 (가벼운 조회만)
+                from app.services.skill_service import SkillService
+
+                router_skills = [
+                    f"- {s.name}: {' '.join((s.description or '').split())[:120]}"
+                    for s in filter_skills([s for s in await SkillService.list_skills(self.user_id, db) if s.is_active], self.runtime)
+                ][:40]
+            except Exception:
+                router_skills = []
+            route = await route_request(user_input, earlier, router_skills)
             logger.info("[orchestrator] 요청 분류: %s (계획 %d단계)", route.kind, len(route.plan))
             if route.kind == "statement":
                 yield {"type": "token", "content": route.reply}
@@ -300,8 +314,8 @@ class AgentOrchestrator:
         except Exception:
             logger.exception("[orchestrator] 대화 요약 로드 실패")
 
-        skills = await self._get_active_skills(db)
-        tools, mcp_prompt = await self._get_tools(db, skills, conversation_id, user_input)
+        skills = await self._get_active_skills(db, sandbox_cid)
+        tools, mcp_prompt = await self._get_tools(db, skills, conversation_id, user_input, sandbox_cid)
         system_prompt = compose_prompt(SYSTEM_PROMPT, self.runtime) + _time_context(self.user_timezone) + memory_context + build_skills_prompt(skills) + mcp_prompt + route_note + ("\n\n" + load("headless") if self.headless else "")
 
         if settings.AGENT_ENGINE == "agno":

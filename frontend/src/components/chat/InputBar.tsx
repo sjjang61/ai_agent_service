@@ -114,7 +114,7 @@ export default function InputBar({ conversationId }: { conversationId: string })
       }
       setFiles((l) => [...l, { id, name: file.name, size: file.size, status: 'uploading', progress: 0 }])
       sandboxApi
-        .uploadFile(file, (percent) => patch(id, { progress: percent }))
+        .uploadFile(file, (percent) => patch(id, { progress: percent }), conversationId)
         .then((res) => {
           patch(id, { status: 'done', progress: 100, attachment: res.data.files[0] })
           triggerWorkspaceRefresh()
@@ -144,7 +144,7 @@ export default function InputBar({ conversationId }: { conversationId: string })
     if (total > FOLDER_MAX_MB * 1024 * 1024) return fail(`${FOLDER_MAX_MB}MB 초과`)
     setFiles((l) => [...l, { id, name: folderName, size: total, status: 'uploading', progress: 0, folder: true }])
     sandboxApi
-      .uploadFolder(kept, kept.map(rel), (percent) => patch(id, { progress: percent }))
+      .uploadFolder(kept, kept.map(rel), (percent) => patch(id, { progress: percent }), conversationId)
       .then((res) => {
         patch(id, { status: 'done', progress: 100, attachment: res.data.files[0] })
         triggerWorkspaceRefresh()

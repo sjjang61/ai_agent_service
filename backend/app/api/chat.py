@@ -50,7 +50,7 @@ async def _conversation_responses(convs: list, db: AsyncSession) -> List[Convers
         out.append(ConversationResponse(
             id=c.id, title=c.title, llm_provider=c.llm_provider, model_name=c.model_name,
             agent_id=c.agent_id if a else None, agent_name=a.name if a else None, agent_icon=a.icon if a else None,
-            agent_version=versions.get(c.agent_version_id), is_test=bool(c.is_test),
+            agent_version=versions.get(c.agent_version_id), is_test=bool(c.is_test), space_id=c.space_id,
             created_at=c.created_at, updated_at=c.updated_at,
         ))
     return out

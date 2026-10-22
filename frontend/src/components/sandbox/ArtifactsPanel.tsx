@@ -45,8 +45,8 @@ function errorMessage(e: unknown, fallback: string) {
   return fallback
 }
 
-export async function saveBlob(path: string, name: string) {
-  const res = await sandboxApi.fetchArtifactBlob(path, true)
+export async function saveBlob(path: string, name: string, conversationId?: string | null) {
+  const res = await sandboxApi.fetchArtifactBlob(path, true, conversationId)
   const url = URL.createObjectURL(res.data)
   const a = document.createElement('a')
   a.href = url
@@ -58,7 +58,7 @@ export async function saveBlob(path: string, name: string) {
 }
 
 // ─── 미리보기 ────────────────────────────────────────────────────────────────
-function Preview({ file }: { file: Artifact }) {
+function Preview({ file, conversationId }: { file: Artifact; conversationId?: string | null }) {
   const [preview, setPreview] = useState<ArtifactPreview | null>(null)
   const [imgUrl, setImgUrl] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
@@ -72,13 +72,13 @@ function Preview({ file }: { file: Artifact }) {
     ;(async () => {
       try {
         if (file.kind === 'image') {
-          const res = await sandboxApi.fetchArtifactBlob(file.path, false)
+          const res = await sandboxApi.fetchArtifactBlob(file.path, false, conversationId)
           if (cancelled) return
           objectUrl = URL.createObjectURL(res.data)
           setImgUrl(objectUrl)
           setPreview({ kind: 'image' })
         } else if (file.kind === 'text' || file.kind === 'other') {
-          const res = await sandboxApi.previewArtifact(file.path)
+          const res = await sandboxApi.previewArtifact(file.path, conversationId)
           if (!cancelled) setPreview(res.data)
         } else if (!cancelled) {
           setPreview({ kind: 'binary' })
@@ -91,7 +91,7 @@ function Preview({ file }: { file: Artifact }) {
       cancelled = true
       if (objectUrl) URL.revokeObjectURL(objectUrl)
     }
-  }, [file.path])
+  }, [file.path, conversationId])
 
   if (error) return <p className="text-xs text-accent-red px-2 py-2">{error}</p>
   if (!preview) return <p className="text-xs text-content-muted px-2 py-2">불러오는 중...</p>
@@ -157,9 +157,11 @@ interface Props {
   compact?: boolean
   /** 값이 바뀌면 목록을 다시 불러온다 (에이전트가 파일을 바꿨을 때) */
   refreshTick?: number
+  /** 이 대화방의 sandbox 를 보여 준다. 없으면 사용자 공용 sandbox (스페이스 대화는 서버가 공용으로 연결한다) */
+  conversationId?: string | null
 }
 
-export default function ArtifactsPanel({ compact = false, refreshTick = 0 }: Props) {
+export default function ArtifactsPanel({ compact = false, refreshTick = 0, conversationId }: Props) {
   const [showHidden, setShowHidden] = useState(false)
   const [filter, setFilter] = useState('')
   const [sort, setSort] = useState<Sort>('recent')
@@ -170,8 +172,8 @@ export default function ArtifactsPanel({ compact = false, refreshTick = 0 }: Pro
   const [busyPath, setBusyPath] = useState<string | null>(null)
 
   const { data, isLoading, isFetching, refetch, error } = useQuery({
-    queryKey: ['sandbox-artifacts', showHidden, refreshTick],
-    queryFn: async () => (await sandboxApi.getArtifacts(showHidden)).data,
+    queryKey: ['sandbox-artifacts', conversationId ?? 'shared', showHidden, refreshTick],
+    queryFn: async () => (await sandboxApi.getArtifacts(showHidden, conversationId)).data,
     retry: false,
   })
 
@@ -184,7 +186,7 @@ export default function ArtifactsPanel({ compact = false, refreshTick = 0 }: Pro
   const startSandbox = async () => {
     setStarting(true)
     try {
-      await sandboxApi.startSandbox()
+      await sandboxApi.startSandbox(conversationId)
       await refetch()
     } catch (e) {
       setNotice({ kind: 'error', text: errorMessage(e, 'Sandbox 를 시작하지 못했습니다') })
@@ -196,7 +198,7 @@ export default function ArtifactsPanel({ compact = false, refreshTick = 0 }: Pro
   const download = async (f: Artifact) => {
     setBusyPath(f.path)
     try {
-      await saveBlob(f.path, f.name)
+      await saveBlob(f.path, f.name, conversationId)
     } catch (e) {
       setNotice({ kind: 'error', text: errorMessage(e, '다운로드하지 못했습니다') })
     } finally {
@@ -208,7 +210,7 @@ export default function ArtifactsPanel({ compact = false, refreshTick = 0 }: Pro
     if (!confirm(`'${f.name}' 의 공개 다운로드 링크를 만들까요?\n링크를 아는 사람은 누구나 만료 전까지 내려받을 수 있습니다.`)) return
     setBusyPath(f.path)
     try {
-      const res = await sandboxApi.publishArtifact(f.path)
+      const res = await sandboxApi.publishArtifact(f.path, undefined, conversationId)
       try {
         await navigator.clipboard.writeText(res.data.url)
         setNotice({ kind: 'ok', text: `링크를 복사했습니다 (만료: ${new Date(res.data.expires_at).toLocaleString()})\n${res.data.url}` })
@@ -244,7 +246,7 @@ export default function ArtifactsPanel({ compact = false, refreshTick = 0 }: Pro
             <Link2 size={12} />
           </button>
         </div>
-        {open && <Preview file={f} />}
+        {open && <Preview file={f} conversationId={conversationId} />}
       </div>
     )
   }

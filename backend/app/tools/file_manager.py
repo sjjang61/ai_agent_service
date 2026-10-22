@@ -21,6 +21,7 @@ class FileManagerTool(BaseTool):
     )
     args_schema: type[BaseModel] = FileOperationInput
     user_id: str = ""
+    sandbox_cid: str = ""  # 비어 있으면 사용자 공용 sandbox
 
     def _run(self, operation: str, path: str, content: str = None) -> str:
         import asyncio
@@ -43,7 +44,7 @@ class FileManagerTool(BaseTool):
 
             manager = SandboxManager()
             async with AsyncSessionLocal() as db:
-                sb = await SandboxService.get_or_create_sandbox(self.user_id, db)
+                sb = await SandboxService.get_or_create_sandbox(self.user_id, db, self.sandbox_cid or None)
                 full_path = f"/workspace/{path.lstrip('/')}"
 
                 if operation == "read":

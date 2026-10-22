@@ -8,6 +8,7 @@ export const chatApi = {
     model_name?: string
     agent_id?: string
     is_test?: boolean
+    space_id?: string
   }) => apiClient.post('/chat/conversations', data),
   deleteConversation: (id: string) => apiClient.delete(`/chat/conversations/${id}`),
   answerForm: (id: string, data: { answers?: Record<string, string | string[]>; cancelled?: boolean }) =>

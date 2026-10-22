@@ -118,6 +118,7 @@ class Settings(BaseSettings):
     MINIO_SECRET_KEY: str = ""
     MINIO_SECURE: bool = False
     MINIO_BUCKET: str = "sandbox-sessions"
+    SANDBOX_MAX_RUNNING_PER_USER: int = 5  # 한 사용자가 동시에 실행할 수 있는 sandbox 수 (넘으면 가장 오래 쓰지 않은 것을 백업 후 종료)
     SANDBOX_IDLE_MINUTES: int = 5  # last_used_at 기준 미사용 시간이 지나면 백업 후 종료
     SANDBOX_REAPER_INTERVAL_SECONDS: int = 60
     SANDBOX_BACKUP_MAX_MB: int = 500  # 초과하면 백업 실패 처리 (sandbox 는 종료하지 않음)

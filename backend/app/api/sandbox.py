@@ -2,58 +2,64 @@ import posixpath
 from typing import List, Optional
 from urllib.parse import quote
 
-from fastapi import APIRouter, Depends, File, Form, HTTPException, Response, UploadFile
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Response, UploadFile
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.session import get_session
 from app.dependencies import get_current_user
+from app.models.sandbox import Sandbox
 from app.models.user import User
 from app.config import settings
 from app.services import artifact_service, publish_service
 from app.services.attachment_service import MAX_ATTACHMENTS, UPLOAD_DIR
 from app.tools.workspace_tools import WORKSPACE, resolve_path
-from app.services.sandbox_service import SandboxService, sandbox_backup, sandbox_manager
+from app.services.sandbox_service import SandboxService, backup_key, resolve_scope, sandbox_backup, sandbox_manager
 
 router = APIRouter()
 
 
 @router.get("/status")
 async def get_status(
+    conversation_id: Optional[str] = Query(None, description="대화방 id. 없으면 사용자 공용 sandbox"),
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_session),
 ):
-    sb = await SandboxService.get_sandbox(current_user.id, db)
+    sb = await SandboxService.get_sandbox(current_user.id, db, await resolve_scope(conversation_id, current_user.id, db))
     if not sb:
         return {"status": "not_created", "container_id": None}
     return {
         "status": sb.status,
         "container_id": sb.container_id,
-        "session_id": sb.id,
+        "session_id": backup_key(sb),
+        "scope": "conversation" if sb.conversation_id else "shared",
         "last_used_at": sb.last_used_at,
     }
 
 
 @router.post("/start")
 async def start_sandbox(
+    conversation_id: Optional[str] = Query(None, description="대화방 id. 없으면 사용자 공용 sandbox"),
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_session),
 ):
-    sb = await SandboxService.get_or_create_sandbox(current_user.id, db)
+    sb = await SandboxService.get_or_create_sandbox(current_user.id, db, await resolve_scope(conversation_id, current_user.id, db))
     return {
         "status": sb.status,
         "container_id": sb.container_id,
-        "session_id": sb.id,
+        "session_id": backup_key(sb),
+        "scope": "conversation" if sb.conversation_id else "shared",
         "restored": getattr(sb, "restored", False),  # MinIO 백업에서 환경을 복구했는지
     }
 
 
 @router.post("/stop")
 async def stop_sandbox(
+    conversation_id: Optional[str] = Query(None, description="대화방 id. 없으면 사용자 공용 sandbox"),
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_session),
 ):
-    sb = await SandboxService.get_sandbox(current_user.id, db)
+    sb = await SandboxService.get_sandbox(current_user.id, db, await resolve_scope(conversation_id, current_user.id, db))
     if not sb or not sb.container_id:
         raise HTTPException(status_code=404, detail="No active sandbox")
     try:
@@ -66,13 +72,63 @@ async def stop_sandbox(
     return {"status": "stopped", "backed_up": sandbox_backup.enabled}
 
 
-@router.get("/files")
-async def list_files(
-    path: str = "/workspace",
+@router.get("/instances")
+async def list_instances(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_session),
 ):
-    sb = await SandboxService.get_sandbox(current_user.id, db)
+    """내 sandbox 전체: 사용자 공용 1개(스페이스 대화·기존 파일)와 대화방별 sandbox 들."""
+    return [
+        {
+            "id": sb.id,
+            "scope": "conversation" if sb.conversation_id else "shared",
+            "conversation_id": sb.conversation_id,
+            "conversation_title": title,
+            "status": sb.status,
+            "last_used_at": sb.last_used_at,
+            "has_backup": None,  # 목록에서는 MinIO 를 조회하지 않는다
+        }
+        for sb, title in await SandboxService.list_for_user(current_user.id, db)
+    ]
+
+
+@router.post("/instances/{sandbox_id}/stop")
+async def stop_instance(
+    sandbox_id: str,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_session),
+):
+    """특정 sandbox 를 (백업 후) 중지한다."""
+    sb = await db.get(Sandbox, sandbox_id)
+    if not sb or sb.user_id != current_user.id:
+        raise HTTPException(status_code=404, detail="sandbox 를 찾을 수 없습니다")
+    try:
+        await SandboxService.suspend(sb.id, db)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"백업에 실패해 sandbox 를 유지합니다: {e}")
+    return {"status": "stopped", "backed_up": sandbox_backup.enabled}
+
+
+@router.delete("/instances/{sandbox_id}")
+async def delete_instance(
+    sandbox_id: str,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_session),
+):
+    """sandbox 를 컨테이너·백업·기록까지 완전히 삭제한다 (되돌릴 수 없음)."""
+    if not await SandboxService.delete_sandbox(sandbox_id, current_user.id, db):
+        raise HTTPException(status_code=404, detail="sandbox 를 찾을 수 없습니다")
+    return {"status": "deleted"}
+
+
+@router.get("/files")
+async def list_files(
+    path: str = "/workspace",
+    conversation_id: Optional[str] = Query(None, description="대화방 id. 없으면 사용자 공용 sandbox"),
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_session),
+):
+    sb = await SandboxService.get_sandbox(current_user.id, db, await resolve_scope(conversation_id, current_user.id, db))
     if not sb or sb.status != "running":
         raise HTTPException(status_code=404, detail="No running sandbox")
     _, stdout, _ = await sandbox_manager.exec_command(sb.container_id, f"ls -la {path}")
@@ -82,10 +138,11 @@ async def list_files(
 @router.get("/files/{file_path:path}")
 async def get_file(
     file_path: str,
+    conversation_id: Optional[str] = Query(None, description="대화방 id. 없으면 사용자 공용 sandbox"),
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_session),
 ):
-    sb = await SandboxService.get_sandbox(current_user.id, db)
+    sb = await SandboxService.get_sandbox(current_user.id, db, await resolve_scope(conversation_id, current_user.id, db))
     if not sb or sb.status != "running":
         raise HTTPException(status_code=404, detail="No running sandbox")
     await SandboxService.touch(sb, db)  # 사용자가 파일을 열람 = 사용 이력
@@ -99,11 +156,12 @@ async def get_file(
 
 @router.get("/workspace-tree")
 async def workspace_tree(
+    conversation_id: Optional[str] = Query(None, description="대화방 id. 없으면 사용자 공용 sandbox"),
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_session),
 ):
     """워크스페이스 내 파일 목록을 JSON으로 반환."""
-    sb = await SandboxService.get_sandbox(current_user.id, db)
+    sb = await SandboxService.get_sandbox(current_user.id, db, await resolve_scope(conversation_id, current_user.id, db))
     if not sb or sb.status != "running":
         return {"files": []}
     _, stdout, _ = await sandbox_manager.exec_command(
@@ -115,8 +173,8 @@ async def workspace_tree(
 
 
 # ── 산출물(artifacts) ─────────────────────────────────────────────────────────
-async def _running_sandbox(user_id: str, db: AsyncSession):
-    sb = await SandboxService.get_sandbox(user_id, db)
+async def _running_sandbox(user_id: str, db: AsyncSession, conversation_id: Optional[str] = None):
+    sb = await SandboxService.get_sandbox(user_id, db, await resolve_scope(conversation_id, user_id, db))
     if not sb or sb.status != "running" or not sb.container_id:
         raise HTTPException(status_code=404, detail="실행 중인 sandbox 가 없습니다")
     return sb
@@ -146,17 +204,18 @@ async def _read_artifact(sb, full: str, max_bytes: int) -> tuple[bytes, int]:
 @router.get("/artifacts")
 async def list_artifacts(
     hidden: bool = False,
+    conversation_id: Optional[str] = Query(None, description="대화방 id. 없으면 사용자 공용 sandbox"),
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_session),
 ):
     """sandbox 작업공간의 산출물 목록 (크기·수정시각·종류 포함, 최근 수정순)."""
-    sb = await SandboxService.get_sandbox(current_user.id, db)
+    sb = await SandboxService.get_sandbox(current_user.id, db, await resolve_scope(conversation_id, current_user.id, db))
     if not sb or sb.status != "running" or not sb.container_id:
         # 유휴 종료된 sandbox 는 시작하면 MinIO 백업에서 복구된다
         restorable = False
         if sb and sandbox_backup.enabled:
             try:
-                restorable = await sandbox_backup.exists(sb.id)
+                restorable = await sandbox_backup.exists(backup_key(sb))
             except Exception:
                 restorable = False
         return {"status": sb.status if sb else "not_created", "files": [], "truncated": False, "restorable": restorable}
@@ -168,11 +227,12 @@ async def list_artifacts(
 @router.get("/artifacts/preview")
 async def preview_artifact(
     path: str,
+    conversation_id: Optional[str] = Query(None, description="대화방 id. 없으면 사용자 공용 sandbox"),
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_session),
 ):
     """텍스트 파일 미리보기 (이미지/바이너리는 kind 만 알려준다)."""
-    sb = await _running_sandbox(current_user.id, db)
+    sb = await _running_sandbox(current_user.id, db, conversation_id)
     full = _artifact_path(path)
     await SandboxService.touch(sb, db)
     kind, _ = artifact_service.classify(full)
@@ -201,11 +261,12 @@ async def preview_artifact(
 async def raw_artifact(
     path: str,
     download: bool = True,
+    conversation_id: Optional[str] = Query(None, description="대화방 id. 없으면 사용자 공용 sandbox"),
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_session),
 ):
     """파일 원본(바이너리 안전). download=false 는 이미지 미리보기용 (이미지 형식만 inline)."""
-    sb = await _running_sandbox(current_user.id, db)
+    sb = await _running_sandbox(current_user.id, db, conversation_id)
     full = _artifact_path(path)
     await SandboxService.touch(sb, db)
     name = full.rsplit("/", 1)[-1]
@@ -227,11 +288,12 @@ class PublishArtifactRequest(BaseModel):
 @router.post("/artifacts/publish")
 async def publish_artifact(
     data: PublishArtifactRequest,
+    conversation_id: Optional[str] = Query(None, description="대화방 id. 없으면 사용자 공용 sandbox"),
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_session),
 ):
     """파일을 공개 다운로드 링크로 발행한다 (링크를 아는 사람은 누구나 만료 전까지 내려받을 수 있음)."""
-    sb = await _running_sandbox(current_user.id, db)
+    sb = await _running_sandbox(current_user.id, db, conversation_id)
     full = _artifact_path(data.path)
     content, _ = await _read_artifact(sb, full, settings.PUBLISH_MAX_MB * 1024 * 1024)
     try:
@@ -257,6 +319,7 @@ def _unique_name(name: str, existing: set[str]) -> str:
 @router.post("/uploads")
 async def upload_files(
     files: List[UploadFile] = File(...),
+    conversation_id: Optional[str] = Form(None),
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_session),
 ):
@@ -274,7 +337,7 @@ async def upload_files(
         payloads.append((publish_service.safe_filename(f.filename or "file"), data))
 
     try:
-        sb = await SandboxService.get_or_create_sandbox(current_user.id, db)
+        sb = await SandboxService.get_or_create_sandbox(current_user.id, db, await resolve_scope(conversation_id, current_user.id, db))
         _, listing, _ = await sandbox_manager.exec_command(
             sb.container_id, f"ls -1A {UPLOAD_DIR} 2>/dev/null", timeout=15
         )
@@ -304,6 +367,7 @@ def _safe_relative_path(raw: str) -> list[str]:
 async def upload_folder(
     files: List[UploadFile] = File(...),
     paths: List[str] = Form(...),
+    conversation_id: Optional[str] = Form(None),
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_session),
 ):
@@ -342,7 +406,7 @@ async def upload_folder(
             target.parent.mkdir(parents=True, exist_ok=True)
             target.write_bytes(data)
         try:
-            sb = await SandboxService.get_or_create_sandbox(current_user.id, db)
+            sb = await SandboxService.get_or_create_sandbox(current_user.id, db, await resolve_scope(conversation_id, current_user.id, db))
             _, listing, _ = await sandbox_manager.exec_command(sb.container_id, f"ls -1A {UPLOAD_DIR} 2>/dev/null", timeout=15)
             final = _unique_name(root, {n for n in listing.splitlines() if n})
             await sandbox_manager.put_directory(sb.container_id, base, UPLOAD_DIR, final)

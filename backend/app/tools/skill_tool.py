@@ -30,6 +30,7 @@ class LoadSkillTool(BaseTool):
     skills: Dict[str, str] = {}
 
     user_id: str = ""  # sandbox 에 skill 파일이 있는지 확인·복사하는 데 쓴다
+    sandbox_cid: str = ""  # 비어 있으면 사용자 공용 sandbox
 
     def _load(self, name: str, file: str = "SKILL.md") -> tuple[str, bool]:
         """호스트에 설치된 skill 파일을 읽는다. 반환: (텍스트, 성공 여부)."""
@@ -80,7 +81,7 @@ class LoadSkillTool(BaseTool):
             from app.services.skill_service import SkillService
 
             async with AsyncSessionLocal() as db:
-                sb = await SandboxService.get_sandbox(self.user_id, db)
+                sb = await SandboxService.get_sandbox(self.user_id, db, self.sandbox_cid or None)
                 if not sb or sb.status != "running" or not sb.container_id or not await sandbox_manager.is_running(sb.container_id):
                     return "\n\n" + render("tool_result_skill_no_sandbox", path=path)
                 mine = [s for s in await SkillService.list_skills(self.user_id, db) if s.name == name]
@@ -114,6 +115,7 @@ class RegisterSkillTool(BaseTool):
     )
     args_schema: type[BaseModel] = RegisterSkillInput
     user_id: str = ""
+    sandbox_cid: str = ""
 
     def _run(self, name: str) -> str:
         return "register_skill supports async execution only"
@@ -124,7 +126,8 @@ class RegisterSkillTool(BaseTool):
 
         async with AsyncSessionLocal() as db:
             imported, errors = await SkillService.import_from_sandbox(
-                self.user_id, db, names=[name.strip().strip("/")], overwrite=True
+                self.user_id, db, names=[name.strip().strip("/")], overwrite=True,
+                conversation_id=self.sandbox_cid or None,
             )
         if imported:
             s = imported[0]

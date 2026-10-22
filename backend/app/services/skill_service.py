@@ -304,15 +304,18 @@ class SkillService:
 
     @staticmethod
     async def sync_to_sandbox(user_id: str, skills: list[Skill], db: AsyncSession) -> Optional[str]:
-        """skill 을 사용자 sandbox 의 /workspace/skills/{name} 으로 복사. 실패 시 오류 메시지 반환."""
+        """skill 을 사용자의 **실행 중인 모든 sandbox**(공용 + 대화방별)의 /workspace/skills/{name} 으로 복사. 실패 시 오류 메시지 반환.
+        꺼져 있는 sandbox 는 건드리지 않는다 — 새로 만들어질 때 활성 skill 이 자동으로 채워진다."""
         if not skills:
             return None
         try:
-            sb = await SandboxService.get_or_create_sandbox(user_id, db)
-            for s in skills:
-                await sandbox_manager.put_directory(
-                    sb.container_id, Path(s.install_path), SANDBOX_SKILLS_DIR, s.name
-                )
+            for sb, _ in await SandboxService.list_for_user(user_id, db):
+                if sb.status != "running" or not sb.container_id or not await sandbox_manager.is_running(sb.container_id):
+                    continue
+                for s in skills:
+                    await sandbox_manager.put_directory(
+                        sb.container_id, Path(s.install_path), SANDBOX_SKILLS_DIR, s.name
+                    )
             return None
         except Exception as e:  # Docker 미실행 등 — 설치 자체는 성공으로 유지
             return f"{type(e).__name__}: {str(e)[:300]}"
@@ -516,13 +519,14 @@ class SkillService:
         db: AsyncSession,
         names: Optional[list[str]] = None,
         overwrite: bool = False,
+        conversation_id: Optional[str] = None,
     ) -> tuple[list[Skill], list[str]]:
         """sandbox /workspace/skills/<dir> (에이전트가 직접 만든 skill)을 플랫폼에 등록한다.
 
         names 가 없으면 SKILL.md 가 있는 모든 하위 디렉터리를 대상으로 하며, 이미 등록된
         skill 은 덮어쓰지 않는다 (overwrite=False). 반환: (등록된 skill, 오류 메시지 목록)
         """
-        sb = await SandboxService.get_sandbox(user_id, db)
+        sb = await SandboxService.get_sandbox(user_id, db, conversation_id)
         if not sb or sb.status != "running" or not sb.container_id:
             return [], ["실행 중인 sandbox 가 없습니다"] if names else []
         if not await sandbox_manager.is_running(sb.container_id):
@@ -596,11 +600,11 @@ class SkillService:
         if not skill:
             raise HTTPException(404, "Skill not found")
         await asyncio.to_thread(shutil.rmtree, skill.install_path, True)
-        sb = await SandboxService.get_sandbox(user_id, db)
-        if sb and sb.status == "running":
-            try:
-                await sandbox_manager.remove_path(sb.container_id, f"{SANDBOX_SKILLS_DIR}/{skill.name}")
-            except Exception:
-                pass
+        for sb, _ in await SandboxService.list_for_user(user_id, db):
+            if sb.status == "running" and sb.container_id:
+                try:
+                    await sandbox_manager.remove_path(sb.container_id, f"{SANDBOX_SKILLS_DIR}/{skill.name}")
+                except Exception:
+                    pass
         await db.delete(skill)
         await db.commit()

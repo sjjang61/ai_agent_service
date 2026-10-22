@@ -179,12 +179,12 @@ def _truncate(s: str, limit: int) -> str:
     return s if len(s) <= limit else s[:limit] + f"...[{len(s) - limit} chars truncated]"
 
 
-async def browser_call(user_id: str, payload: dict, timeout: int = 90) -> dict:
+async def browser_call(user_id: str, payload: dict, timeout: int = 90, sandbox_cid: str = "") -> dict:
     """sandbox 의 브라우저 데몬에 명령을 보내고 결과(dict)를 받는다. 데몬이 없으면 시작한다."""
     from app.services.sandbox_service import sandbox_manager
     from app.tools.workspace_tools import _container
 
-    cid = await _container(user_id)
+    cid = await _container(user_id, sandbox_cid)
     url = f"http://127.0.0.1:{DAEMON_PORT}"
     if payload.get("cmd") != "close":
         await sandbox_manager.write_file(cid, DAEMON_PATH, DAEMON_SOURCE.encode("utf-8"))
@@ -247,6 +247,7 @@ class BrowserActionTool(BaseTool):
     )
     args_schema: type[BaseModel] = BrowserActionInput
     user_id: str = ""
+    sandbox_cid: str = ""  # 비어 있으면 사용자 공용 sandbox
 
     def _run(self, *args, **kwargs) -> str:
         return "This tool supports async execution only"
@@ -257,7 +258,7 @@ class BrowserActionTool(BaseTool):
         payload = {"cmd": action, "url": url, "ref": ref, "text": text, "key": key,
                    "direction": direction, "submit": submit, "seconds": seconds, "name": text}
         try:
-            return _format(await browser_call(self.user_id, {k: v for k, v in payload.items() if v is not None}))
+            return _format(await browser_call(self.user_id, {k: v for k, v in payload.items() if v is not None}, sandbox_cid=self.sandbox_cid))
         except Exception as e:
             return f"Error: {type(e).__name__}: {e}"
 
@@ -280,6 +281,7 @@ class CliBrowserAgentTool(BaseTool):
     )
     args_schema: type[BaseModel] = CliBrowserAgentInput
     user_id: str = ""
+    sandbox_cid: str = ""  # 비어 있으면 사용자 공용 sandbox
     llm_provider: str = ""
     model: Optional[str] = None
 
@@ -294,14 +296,14 @@ class CliBrowserAgentTool(BaseTool):
 
             if new_session:
                 try:
-                    await browser_call(self.user_id, {"cmd": "close"}, timeout=10)
+                    await browser_call(self.user_id, {"cmd": "close"}, timeout=10, sandbox_cid=self.sandbox_cid)
                 except Exception:
                     pass
                 await asyncio.sleep(1)
             agent = Agent(
                 name="BrowserAgent",
                 model=build_agno_model(self.llm_provider or settings.LLM_TYPE, self.model),
-                tools=[to_agno_function(BrowserActionTool(user_id=self.user_id))],
+                tools=[to_agno_function(BrowserActionTool(user_id=self.user_id, sandbox_cid=self.sandbox_cid))],
                 tool_call_limit=settings.BROWSER_MAX_STEPS,
                 instructions=BROWSER_INSTRUCTIONS,
             )

@@ -34,8 +34,18 @@ class ChatService:
                 agent, ver = await AgentService.require_published(user_id, data.agent_id, db)
                 agent_version_id = ver.id
             agent_id = agent.id
+        space_id = None
+        if data.space_id:
+            from fastapi import HTTPException
+            from app.models.space import Space
+
+            owned = await db.execute(select(Space.id).where(Space.id == data.space_id, Space.user_id == user_id))
+            if owned.scalar_one_or_none() is None:
+                raise HTTPException(status_code=404, detail="스페이스를 찾을 수 없습니다")
+            space_id = data.space_id
         conv = Conversation(
             user_id=user_id,
+            space_id=space_id,
             title=data.title,
             llm_provider=llm_type,
             model_name=data.model_name or settings.default_model_for(llm_type),
@@ -130,3 +140,8 @@ class ChatService:
             )
         )
         await db.commit()
+
+        # 이 대화방 전용 sandbox(컨테이너·MinIO 백업)도 함께 지운다. 공용 sandbox 는 건드리지 않는다.
+        from app.services.sandbox_service import SandboxService
+
+        await SandboxService.delete_for_conversation(conversation_id, user_id, db)

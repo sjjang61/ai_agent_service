@@ -9,6 +9,10 @@ class CodeInput(BaseModel):
     code: str = Field(description="Python code to execute")
     filename: str = Field(default="", description="Optional filename to save as (e.g. 'analysis.py')")
     timeout: int = Field(default=30, description="Execution timeout in seconds")
+    purpose: str = Field(
+        default="",
+        description="Why you run this, in Korean, one short phrase (max 30 chars) shown to the user as the step title, e.g. '패키지 설치', '순위 데이터 추출', '결과 파일 변환'. Always provide it.",
+    )
 
 
 class CodeExecutorTool(BaseTool):
@@ -20,8 +24,9 @@ class CodeExecutorTool(BaseTool):
     )
     args_schema: type[BaseModel] = CodeInput
     user_id: str = ""
+    sandbox_cid: str = ""  # 비어 있으면 사용자 공용 sandbox
 
-    def _run(self, code: str, filename: str = "", timeout: int = 30) -> str:
+    def _run(self, code: str, filename: str = "", timeout: int = 30, purpose: str = "") -> str:
         import asyncio
         try:
             loop = asyncio.get_event_loop()
@@ -34,7 +39,7 @@ class CodeExecutorTool(BaseTool):
         except Exception as e:
             return f"Code execution error: {e}"
 
-    async def _arun(self, code: str, filename: str = "", timeout: int = 30) -> str:
+    async def _arun(self, code: str, filename: str = "", timeout: int = 30, purpose: str = "") -> str:
         try:
             from app.sandbox.manager import SandboxManager
             from app.db.session import AsyncSessionLocal
@@ -42,7 +47,7 @@ class CodeExecutorTool(BaseTool):
 
             manager = SandboxManager()
             async with AsyncSessionLocal() as db:
-                sb = await SandboxService.get_or_create_sandbox(self.user_id, db)
+                sb = await SandboxService.get_or_create_sandbox(self.user_id, db, self.sandbox_cid or None)
 
                 # 파일명 결정 (지정 없으면 타임스탬프 사용)
                 if filename:

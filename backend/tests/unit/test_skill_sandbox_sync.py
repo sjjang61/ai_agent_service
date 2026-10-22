@@ -79,7 +79,7 @@ def patch_tool_env(monkeypatch, skill_dirs, manager, sandbox):
     monkeypatch.setattr(sbs_mod, "sandbox_manager", manager)
     monkeypatch.setattr(sk_mod, "sandbox_manager", manager)
 
-    async def get_sandbox(user_id, db):
+    async def get_sandbox(user_id, db, conversation_id=None):
         return sandbox
 
     async def list_skills(user_id, db):

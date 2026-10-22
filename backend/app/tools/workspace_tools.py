@@ -61,12 +61,13 @@ def _truncate(text: str, limit: int = MAX_OUTPUT_CHARS) -> str:
     return f"{text[:head]}\n...[{len(text) - head - tail} chars truncated]...\n{text[-tail:]}"
 
 
-async def _container(user_id: str) -> str:
+async def _container(user_id: str, sandbox_cid: str = "") -> str:
+    """이 요청의 sandbox 컨테이너 id. sandbox_cid 가 있으면 그 대화방 전용, 비어 있으면 사용자 공용 sandbox."""
     from app.db.session import AsyncSessionLocal
     from app.services.sandbox_service import SandboxService
 
     async with AsyncSessionLocal() as db:
-        sb = await SandboxService.get_or_create_sandbox(user_id, db)
+        sb = await SandboxService.get_or_create_sandbox(user_id, db, sandbox_cid or None)
         return sb.container_id
 
 
@@ -76,10 +77,10 @@ def _manager():
     return sandbox_manager
 
 
-async def _read_text(user_id: str, path: str) -> tuple[str, str, int]:
+async def _read_text(user_id: str, path: str, sandbox_cid: str = "") -> tuple[str, str, int]:
     """(절대경로, 텍스트, mode). 바이너리면 ValueError."""
     full = resolve_path(path)
-    data, mode = await _manager().read_file(await _container(user_id), full, MAX_READ_BYTES)
+    data, mode = await _manager().read_file(await _container(user_id, sandbox_cid), full, MAX_READ_BYTES)
     if b"\x00" in data[:8192]:
         raise ValueError("바이너리 파일입니다 (이미지는 read_image, 그 외는 exec_command 를 사용하세요)")
     return full, data.decode("utf-8", errors="replace"), mode
@@ -99,6 +100,7 @@ def _numbered(lines: list[str], start: int) -> str:
 
 class _AsyncTool(BaseTool):
     user_id: str = ""
+    sandbox_cid: str = ""  # 대화방 전용 sandbox 의 대화방 id. 비어 있으면 사용자 공용 sandbox
 
     def _run(self, *args, **kwargs) -> str:  # 에이전트는 비동기 경로(_arun)만 사용한다
         return "This tool supports async execution only"
@@ -121,7 +123,7 @@ class ReadFileTool(_AsyncTool):
 
     async def _arun(self, path: str, start_line: Optional[int] = None, end_line: Optional[int] = None) -> str:
         try:
-            full, text, _ = await _read_text(self.user_id, path)
+            full, text, _ = await _read_text(self.user_id, path, self.sandbox_cid)
             lines = text.splitlines(keepends=True)
             total = len(lines)
             s = max(start_line or 1, 1)
@@ -161,7 +163,7 @@ class WriteFileTool(_AsyncTool):
             data = content.encode("utf-8")
             if len(data) > MAX_WRITE_BYTES:
                 return f"Error: 한 번에 쓸 수 있는 최대 크기는 {MAX_WRITE_BYTES // (1024 * 1024)}MB 입니다"
-            await _manager().write_file(await _container(self.user_id), full, data)
+            await _manager().write_file(await _container(self.user_id, self.sandbox_cid), full, data)
             msg = f"Saved {len(data)} bytes to {full}"
             if publish:
                 from app.services.publish_service import publish as do_publish
@@ -191,7 +193,7 @@ class EditFileTool(_AsyncTool):
 
     async def _arun(self, path: str, start_line: int, new_content: str, end_line: Optional[int] = None) -> str:
         try:
-            full, text, mode = await _read_text(self.user_id, path)
+            full, text, mode = await _read_text(self.user_id, path, self.sandbox_cid)
             lines = text.splitlines(keepends=True)
             total = len(lines)
             # end_line 생략: 한 줄 교체 (단, 파일 끝+1 위치면 추가)
@@ -213,7 +215,7 @@ class EditFileTool(_AsyncTool):
             data = "".join(result).encode("utf-8")
             if len(data) > MAX_WRITE_BYTES:
                 return "Error: 결과 파일이 너무 큽니다"
-            await _manager().write_file(await _container(self.user_id), full, data, mode=mode & 0o777 or 0o644)
+            await _manager().write_file(await _container(self.user_id, self.sandbox_cid), full, data, mode=mode & 0o777 or 0o644)
 
             ctx_s = max(start_line - 2, 1)
             ctx_e = min(start_line - 1 + len(new_lines) + 2, len(result))
@@ -247,7 +249,7 @@ class GrepFileTool(_AsyncTool):
             limit = min(max(max_results, 1), 500)
             flags = "-rnI" + ("i" if ignore_case else "") + ("E" if regex else "F")
             cmd = f"cd {WORKSPACE} && grep {flags} --color=never -- {shlex.quote(pattern)} {shlex.quote(target)}"
-            code, out, err = await _manager().exec_command(await _container(self.user_id), cmd, timeout=30)
+            code, out, err = await _manager().exec_command(await _container(self.user_id, self.sandbox_cid), cmd, timeout=30)
             if code == 1:
                 return "No matches found."
             if code not in (0, 1):
@@ -275,7 +277,7 @@ class DeleteFileTool(_AsyncTool):
             full = resolve_path(path)
             if full == WORKSPACE:
                 return "Error: 작업공간 루트는 삭제할 수 없습니다"
-            cid = await _container(self.user_id)
+            cid = await _container(self.user_id, self.sandbox_cid)
             code, _, _ = await _manager().exec_command(cid, f"test -e {shlex.quote(full)}", timeout=15)
             if code != 0:
                 return f"Error: 파일 또는 경로를 찾을 수 없습니다: {full}"
@@ -339,7 +341,7 @@ class DownloadFileTool(_AsyncTool):
             full = resolve_path(name)
             if full == WORKSPACE:
                 return "Error: 저장할 파일 경로를 지정하세요"
-            await _manager().write_file(await _container(self.user_id), full, data)
+            await _manager().write_file(await _container(self.user_id, self.sandbox_cid), full, data)
             return f"Downloaded {len(data)} bytes ({ctype or 'unknown type'}) to {full}"
         except Exception as e:
             return _fmt_err(e)
@@ -365,7 +367,7 @@ class PublishFileTool(_AsyncTool):
 
             full = resolve_path(path)
             data, _ = await _manager().read_file(
-                await _container(self.user_id), full, settings.PUBLISH_MAX_MB * 1024 * 1024
+                await _container(self.user_id, self.sandbox_cid), full, settings.PUBLISH_MAX_MB * 1024 * 1024
             )
             info = publish(self.user_id, posixpath.basename(full), data, expires_hours)
             return f"Public download link (expires {info['expires_at']}, {info['size']} bytes): {info['url']}"
@@ -378,6 +380,10 @@ class ExecCommandInput(BaseModel):
     command: str = Field(description="Shell command to run in the sandbox (bash). Use for build, lint, test, convert, pip install, unzip, etc.")
     timeout: int = Field(default=120, description="Timeout in seconds (default 120, max 600)")
     workdir: Optional[str] = Field(default=None, description="Working directory (default /workspace)")
+    purpose: str = Field(
+        default="",
+        description="Why you run this, in Korean, one short phrase (max 30 chars) shown to the user as the step title, e.g. '패키지 설치', '순위 데이터 추출', '결과 파일 변환'. Always provide it.",
+    )
 
 
 class ExecCommandTool(_AsyncTool):
@@ -388,7 +394,7 @@ class ExecCommandTool(_AsyncTool):
     )
     args_schema: type[BaseModel] = ExecCommandInput
 
-    async def _arun(self, command: str, timeout: int = 120, workdir: Optional[str] = None) -> str:
+    async def _arun(self, command: str, timeout: int = 120, workdir: Optional[str] = None, purpose: str = "") -> str:
         if command.strip().startswith(_BLOCKED_PREFIXES):
             return f"Error: 차단된 명령어입니다: {command[:80]}"
         try:
@@ -397,7 +403,7 @@ class ExecCommandTool(_AsyncTool):
             inner = f"cd {shlex.quote(wd)} && {command}"
             run_id = uuid.uuid4().hex  # 취소 시 이 실행의 프로세스만 찾아 종료하기 위한 표식
             wrapped = f"AGENT_RUN_ID={run_id} timeout -k 5 {t} bash -c {shlex.quote(inner)}"
-            cid = await _container(self.user_id)
+            cid = await _container(self.user_id, self.sandbox_cid)
             try:
                 code, out, err = await _manager().exec_command(cid, wrapped, timeout=t + 15)
             except asyncio.CancelledError:
@@ -451,7 +457,7 @@ class ReadImageTool(_AsyncTool):
             from app.agent.agno_engine import build_agno_model
 
             full = resolve_path(path)
-            data, _ = await _manager().read_file(await _container(self.user_id), full, MAX_IMAGE_BYTES)
+            data, _ = await _manager().read_file(await _container(self.user_id, self.sandbox_cid), full, MAX_IMAGE_BYTES)
             fmt = _image_format(data)
             if not fmt:
                 return "Error: 지원하지 않는 이미지 형식입니다 (png, jpg, gif, webp)"

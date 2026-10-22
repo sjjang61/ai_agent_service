@@ -10,6 +10,7 @@ import {
   RefreshCw,
   Search,
   Trash2,
+  Layers,
   Settings,
   Sparkles,
   Box,
@@ -299,6 +300,8 @@ function ConversationItem({ conversation, isActive, onClick, onDelete }: Convers
     >
       {conversation.agent_icon ? (
         <span className="text-sm flex-shrink-0" title={`${conversation.agent_name} v${conversation.agent_version ?? ''}`}>{conversation.agent_icon}</span>
+      ) : conversation.space_id ? (
+        <Layers size={14} className="flex-shrink-0 text-accent-primary" aria-label="스페이스 대화 (공용 sandbox)" />
       ) : (
         <MessageSquare size={14} className="flex-shrink-0" />
       )}

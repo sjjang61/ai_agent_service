@@ -9,6 +9,8 @@ export interface Conversation {
   agent_icon?: string | null
   agent_version?: number | null
   is_test?: boolean
+  /** 스페이스에서 시작한 대화 — 사용자 공용 sandbox 를 쓴다 */
+  space_id?: string | null
   created_at: string
   updated_at: string
 }

@@ -125,9 +125,9 @@ function convertSandboxLinks(text: string): string {
   return text.replace(SANDBOX_LINK, (_m, path: string) => `](${SANDBOX_HREF}${encodeURIComponent(path)})`)
 }
 
-async function downloadSandboxFile(path: string) {
+async function downloadSandboxFile(path: string, conversationId?: string) {
   try {
-    await saveBlob(path, path.split('/').pop() || 'file')
+    await saveBlob(path, path.split('/').pop() || 'file', conversationId)
   } catch (e) {
     const detail = axios.isAxiosError(e) ? e.response?.data?.detail : null
     alert(typeof detail === 'string' ? detail : '파일을 내려받지 못했습니다. sandbox 가 종료됐거나 파일이 삭제됐을 수 있습니다.')
@@ -310,7 +310,7 @@ export default function MessageBubble({ message }: { message: Message }) {
                         href={href}
                         onClick={(e) => {
                           e.preventDefault()
-                          downloadSandboxFile(path)
+                          downloadSandboxFile(path, message.conversation_id)
                         }}
                         title={`sandbox 파일 다운로드: ${path}`}
                         className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-accent-primary/10 border border-accent-primary/30 text-accent-primary hover:bg-accent-primary/20 transition-colors no-underline font-medium cursor-pointer"
@@ -447,9 +447,11 @@ export default function MessageBubble({ message }: { message: Message }) {
       {/* Wiki Quick Add Dialog */}
       {showWikiDialog && (
         <WikiQuickAddDialog
-          isOpen={showWikiDialog}
+          selectedText={savedSelectedText}
+          // 스트리밍 중에 만든 임시 id(assistant-123 등)는 서버 메시지 id 가 아니므로 보내지 않는다
+          messageId={/^[0-9a-f]{8}-/.test(message.id) ? message.id : undefined}
+          conversationId={message.conversation_id}
           onClose={handleCloseWikiDialog}
-          initialContent={savedSelectedText}
         />
       )}
     </div>

@@ -1,11 +1,14 @@
 import { useEffect, useRef, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { ChevronDown, FileText, LayoutGrid, List, RotateCcw, Search, Star, Trash2 } from 'lucide-react'
+import { ChevronDown, FileText, LayoutGrid, List, MessageSquare, RotateCcw, Search, Star, Trash2 } from 'lucide-react'
 import SpacesLayout from '../components/spaces/SpacesLayout'
 import { TEMPLATES, type PageTemplate } from '../components/spaces/templates'
 import { relativeTime } from '../components/spaces/utils'
 import { spacesApi } from '../api/spaces'
+import { chatApi } from '../api/chat'
+import { useChatStore } from '../store/chatStore'
+import type { Conversation } from '../types/chat'
 import type { PageDetail, PageSummary, Space } from '../types/space'
 
 type Tab = 'recommended' | 'favorites' | 'mine'
@@ -58,6 +61,17 @@ export default function SpacesPage() {
     queryFn: async () => (await spacesApi.listSpaces()).data,
   })
   const spaceName = spaces.find((s) => s.id === spaceId)?.name
+  const addConversation = useChatStore((s) => s.addConversation)
+
+  /** 이 스페이스에서 대화 시작: 공용 sandbox 를 쓰는 대화방을 만들고 채팅 화면으로 이동한다 */
+  const startChat = useMutation({
+    mutationFn: async () =>
+      (await chatApi.createConversation({ title: spaceName ? `${spaceName} 작업` : 'New Conversation', space_id: spaceId ?? undefined })).data as Conversation,
+    onSuccess: (c) => {
+      addConversation(c)
+      navigate(`/chat/${c.id}`)
+    },
+  })
 
   const refresh = () => {
     queryClient.invalidateQueries({ queryKey: ['pages'] })
@@ -130,6 +144,16 @@ export default function SpacesPage() {
             <Search size={15} className="text-content-tertiary" />
             <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="검색" className="flex-1 bg-transparent border-none outline-none text-[13px] text-content-primary placeholder:text-content-muted" />
           </div>
+          {!trash && spaceId && (
+            <button
+              onClick={() => startChat.mutate()}
+              disabled={startChat.isPending}
+              title="이 스페이스의 공용 sandbox 에서 에이전트와 작업합니다"
+              className="flex items-center gap-1.5 px-4 py-2.5 rounded-full border border-border text-[14px] text-content-primary bg-transparent cursor-pointer hover:bg-surface-hover disabled:opacity-50"
+            >
+              <MessageSquare size={15} /> AI 와 작업
+            </button>
+          )}
           {trash ? (
             <button onClick={emptyTrash} disabled={pages.length === 0} className="px-4 py-2 rounded-full border border-border text-[14px] text-content-primary bg-transparent cursor-pointer hover:bg-surface-hover disabled:opacity-40 disabled:cursor-not-allowed">
               휴지통 비우기

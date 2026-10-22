@@ -25,14 +25,41 @@ class SandboxManager:
             self._client = docker.from_env()
         return self._client
 
-    async def create_sandbox(self, user_id: str) -> str:
+    def _ensure_network(self) -> str | None:
+        """sandbox 전용 네트워크. 컨테이너끼리의 통신(icc)을 막아 사용자·대화방 간 접근을 차단한다 (외부 인터넷은 그대로).
+        만들 수 없으면 None (기본 bridge 로 폴백, 경고)."""
+        name = settings.SANDBOX_NETWORK
+        if not name:
+            return None
+        client = self._get_client()
+        try:
+            client.networks.get(name)
+            return name
+        except Exception:
+            pass
+        try:
+            client.networks.create(name, driver="bridge", options={"com.docker.network.bridge.enable_icc": "false"})
+            return name
+        except Exception:
+            import logging
+
+            logging.getLogger(__name__).warning("[sandbox] 전용 네트워크 %s 를 만들지 못했습니다 — 기본 bridge 사용", name, exc_info=True)
+            return None
+
+    async def create_sandbox(self, user_id: str, conversation_id: str | None = None) -> str:
         loop = asyncio.get_event_loop()
         client = self._get_client()
 
         def _create():
+            import uuid as _uuid
+
+            network = self._ensure_network()
+            scope = (conversation_id or "shared")[:8]
             return client.containers.run(
                 image=settings.SANDBOX_IMAGE,
-                name=f"sandbox-{user_id[:8]}-{id(object()) % 100000}",
+                name=f"sandbox-{user_id[:8]}-{scope}-{_uuid.uuid4().hex[:6]}",
+                labels={"agent-sandbox": "1", "agent-sandbox-user": user_id, "agent-sandbox-conversation": conversation_id or ""},
+                **({"network": network} if network else {}),
                 detach=True,
                 remove=False,
                 mem_limit=settings.SANDBOX_MEMORY_LIMIT,
