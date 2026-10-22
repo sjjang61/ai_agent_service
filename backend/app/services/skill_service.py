@@ -1,6 +1,7 @@
 """GitHub URL 로부터 skill(SKILL.md 포함 디렉터리)을 내려받아 사용자별로 설치한다."""
 import asyncio
 import io
+import json
 import os
 import re
 import shutil
@@ -17,10 +18,13 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
+from app.models.plugin import Plugin
 from app.models.skill import Skill
 from app.services.sandbox_service import SandboxService, sandbox_manager
 
 MAX_SKILLS_PER_INSTALL = 20
+MAX_PLUGINS_PER_INSTALL = 10
+MAX_CUSTOM_SKILL_BYTES = 200 * 1024
 # sandbox 컨테이너 내 skill 저장 위치: /workspace/skills/{name}
 SANDBOX_SKILLS_DIR = "/workspace/skills"
 _GITHUB_HOSTS = {"github.com", "www.github.com"}
@@ -89,10 +93,21 @@ def _parse_frontmatter(text: str) -> dict[str, str]:
     if not m:
         return {}
     meta: dict[str, str] = {}
-    for line in m.group(1).splitlines():
-        km = re.match(r"^([A-Za-z_-]+):\s*(.*)$", line)
-        if km:
-            meta[km.group(1)] = km.group(2).strip().strip("\"'")
+    lines = m.group(1).splitlines()
+    i = 0
+    while i < len(lines):
+        km = re.match(r"^([A-Za-z_-]+):\s*(.*)$", lines[i])
+        i += 1
+        if not km:
+            continue
+        key, value = km.group(1), km.group(2).strip()
+        if value in (">", "|", ">-", "|-"):  # YAML 블록 스칼라: 들여쓴 다음 줄들을 한 줄로 합친다
+            parts = []
+            while i < len(lines) and (not lines[i].strip() or lines[i][:1] in (" ", "\t")):
+                parts.append(lines[i].strip())
+                i += 1
+            value = " ".join(p for p in parts if p)
+        meta[key] = value.strip("\"'")
     return meta
 
 
@@ -100,7 +115,9 @@ def _safe_name(raw: str) -> str:
     return _NAME_RE.sub("-", raw.strip().lower()).strip("-")[:100]
 
 
-def _extract_skills(data: bytes, g: GithubRef, dest_root: Path) -> list[dict]:
+def _extract_skills(
+    data: bytes, g: GithubRef, dest_root: Path, base_override: Optional[str] = None
+) -> list[dict]:
     """zip 에서 SKILL.md 가 있는 디렉터리를 찾아 dest_root/<name> 에 추출한다."""
     try:
         zf = zipfile.ZipFile(io.BytesIO(data))
@@ -111,6 +128,8 @@ def _extract_skills(data: bytes, g: GithubRef, dest_root: Path) -> list[dict]:
     # zipball 은 단일 최상위 디렉터리(<owner>-<repo>-<sha>/)로 감싸져 있다
     prefix = infos[0].filename.split("/", 1)[0] + "/" if infos else ""
     base = f"{prefix}{g.subpath.strip('/')}/" if g.subpath else prefix
+    if base_override is not None:  # 플러그인 루트 등 zip 내부의 특정 디렉터리로 한정
+        base = base_override
 
     skill_dirs = sorted(
         {
@@ -168,6 +187,65 @@ def _extract_skills(data: bytes, g: GithubRef, dest_root: Path) -> list[dict]:
             {"name": name, "description": meta.get("description", ""), "path": str(target)}
         )
     return results
+
+
+def _read_json(zf: zipfile.ZipFile, name: str) -> dict:
+    try:
+        data = json.loads(zf.read(name).decode("utf-8", errors="replace"))
+        return data if isinstance(data, dict) else {}
+    except (ValueError, KeyError):
+        return {}
+
+
+def _find_plugins(data: bytes, g: GithubRef) -> list[dict]:
+    """zip 에서 플러그인 루트를 찾는다. (.claude-plugin/plugin.json 이 있는 디렉터리,
+    없으면 .claude-plugin/marketplace.json 이 가리키는 상대 경로 소스)"""
+    try:
+        zf = zipfile.ZipFile(io.BytesIO(data))
+    except zipfile.BadZipFile as e:
+        raise HTTPException(502, "잘못된 zip 응답입니다") from e
+    infos = [i for i in zf.infolist() if not i.is_dir()]
+    prefix = infos[0].filename.split("/", 1)[0] + "/" if infos else ""
+    base = f"{prefix}{g.subpath.strip('/')}/" if g.subpath else prefix
+    names = {i.filename for i in infos}
+
+    found: dict[str, dict] = {}
+    for fn in sorted(names):
+        if fn.startswith(base) and fn.endswith(".claude-plugin/plugin.json"):
+            root = fn[: -len(".claude-plugin/plugin.json")]
+            manifest = _read_json(zf, fn)
+            fallback = root.rstrip("/").rsplit("/", 1)[-1] if root != prefix else g.repo
+            found[root] = {"root": root, "manifest": manifest, "fallback": fallback}
+    for fn in sorted(names):
+        if fn.startswith(base) and fn.endswith(".claude-plugin/marketplace.json"):
+            mroot = fn[: -len(".claude-plugin/marketplace.json")]
+            for entry in _read_json(zf, fn).get("plugins", []) or []:
+                src = entry.get("source") if isinstance(entry, dict) else None
+                if not isinstance(src, str) or not src.startswith("./"):
+                    continue  # git/npm 등 외부 소스는 지원하지 않음
+                rel = str(PurePosixPath(src.strip("/")))
+                root = mroot if rel == "." else f"{mroot}{rel}/"
+                if ".." in root.split("/") or root in found:
+                    continue
+                found[root] = {"root": root, "manifest": entry, "fallback": entry.get("name") or rel}
+    if not found:
+        raise HTTPException(404, ".claude-plugin/plugin.json 을 찾을 수 없습니다 (플러그인이 아닌 저장소입니다)")
+    if len(found) > MAX_PLUGINS_PER_INSTALL:
+        raise HTTPException(400, f"한 번에 최대 {MAX_PLUGINS_PER_INSTALL}개까지 설치할 수 있습니다. 하위 경로 URL을 지정하세요")
+    out = []
+    for root, item in found.items():
+        m = item["manifest"]
+        name = _safe_name(str(m.get("name") or item["fallback"]))
+        if name:
+            out.append(
+                {
+                    "root": root,
+                    "name": name,
+                    "description": str(m.get("description") or ""),
+                    "version": str(m.get("version") or "") or None,
+                }
+            )
+    return out
 
 
 _DIRNAME_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,99}$")
@@ -240,12 +318,10 @@ class SkillService:
             return f"{type(e).__name__}: {str(e)[:300]}"
 
     @staticmethod
-    async def install(user_id: str, url: str, db: AsyncSession) -> tuple[list[Skill], Optional[str]]:
-        g = parse_github_url(url)
-        data = await _download_zip(g)
-        dest_root = Path(settings.SKILLS_DIR) / user_id
-        extracted = await asyncio.to_thread(_extract_skills, data, g, dest_root)
-
+    async def _save_skills(
+        user_id: str, extracted: list[dict], url: str, db: AsyncSession
+    ) -> list[Skill]:
+        """추출된 skill 을 DB 에 등록 (이미 있으면 업데이트). commit/refresh 까지 수행."""
         installed: list[Skill] = []
         for item in extracted:
             r = await db.execute(
@@ -269,8 +345,148 @@ class SkillService:
         await db.commit()
         for s in installed:
             await db.refresh(s)
+        return installed
+
+    @staticmethod
+    async def install(user_id: str, url: str, db: AsyncSession) -> tuple[list[Skill], Optional[str]]:
+        g = parse_github_url(url)
+        data = await _download_zip(g)
+        dest_root = Path(settings.SKILLS_DIR) / user_id
+        extracted = await asyncio.to_thread(_extract_skills, data, g, dest_root)
+        installed = await SkillService._save_skills(user_id, extracted, url, db)
         sandbox_error = await SkillService.sync_to_sandbox(user_id, installed, db)
         return installed, sandbox_error
+
+    @staticmethod
+    async def create_custom(
+        user_id: str, name: str, description: str, content: str, db: AsyncSession
+    ) -> tuple[Skill, Optional[str]]:
+        """직접 작성한 SKILL.md 로 skill 을 만든다. content 가 frontmatter(---)로 시작하면 그대로 쓴다."""
+        safe = _safe_name(name)
+        if not safe:
+            raise HTTPException(400, "이름은 영문 소문자/숫자/-/_ 로 지정하세요")
+        content = content.strip()
+        if not content:
+            raise HTTPException(400, "SKILL.md 내용이 비어 있습니다")
+        if content.startswith("---"):
+            meta = _parse_frontmatter(content)
+            if not meta.get("name"):
+                raise HTTPException(400, "frontmatter 에 name 이 필요합니다")
+            safe = _safe_name(meta["name"]) or safe
+            description = meta.get("description") or description
+            text = content + "\n"
+        else:
+            if not description.strip():
+                raise HTTPException(400, "설명(description)이 필요합니다")
+            desc = " ".join(description.split())
+            text = f"---\nname: {safe}\ndescription: {desc}\n---\n\n{content}\n"
+        if len(text.encode("utf-8")) > MAX_CUSTOM_SKILL_BYTES:
+            raise HTTPException(413, "SKILL.md 가 너무 큽니다 (최대 200KB)")
+        existing = await db.execute(select(Skill).where(Skill.user_id == user_id, Skill.name == safe))
+        if existing.scalar_one_or_none():
+            raise HTTPException(409, f"이미 같은 이름의 skill 이 있습니다: {safe}")
+
+        dest_root = Path(settings.SKILLS_DIR) / user_id
+        target = dest_root / safe
+        await asyncio.to_thread(shutil.rmtree, target, True)
+        target.mkdir(parents=True)
+        (target / "SKILL.md").write_text(text, encoding="utf-8")
+        skill = Skill(
+            user_id=user_id, name=safe, description=" ".join(description.split()),
+            source_url="manual:direct", install_path=str(target),
+        )
+        db.add(skill)
+        await db.commit()
+        await db.refresh(skill)
+        return skill, await SkillService.sync_to_sandbox(user_id, [skill], db)
+
+    @staticmethod
+    async def set_active(skill_id: str, user_id: str, active: bool, db: AsyncSession) -> Skill:
+        r = await db.execute(select(Skill).where(Skill.id == skill_id, Skill.user_id == user_id))
+        skill = r.scalar_one_or_none()
+        if not skill:
+            raise HTTPException(404, "Skill not found")
+        skill.is_active = active
+        await db.commit()
+        await db.refresh(skill)
+        return skill
+
+    # ---------------- plugins ----------------
+
+    @staticmethod
+    async def list_plugins(user_id: str, db: AsyncSession) -> list[Plugin]:
+        r = await db.execute(
+            select(Plugin).where(Plugin.user_id == user_id).order_by(Plugin.created_at.desc())
+        )
+        return list(r.scalars().all())
+
+    @staticmethod
+    async def install_plugin(
+        user_id: str, url: str, db: AsyncSession
+    ) -> tuple[list[Plugin], list[Skill], Optional[str]]:
+        g = parse_github_url(url)
+        data = await _download_zip(g)
+        found = await asyncio.to_thread(_find_plugins, data, g)
+        dest_root = Path(settings.SKILLS_DIR) / user_id
+
+        plugins: list[Plugin] = []
+        all_skills: list[Skill] = []
+        for pl in found:
+            try:
+                extracted = await asyncio.to_thread(_extract_skills, data, g, dest_root, pl["root"])
+            except HTTPException as e:
+                if e.status_code == 404:  # skill 이 없는 플러그인(commands/agents 전용 등)은 건너뜀
+                    continue
+                raise
+            skills = await SkillService._save_skills(user_id, extracted, url, db)
+            r = await db.execute(select(Plugin).where(Plugin.user_id == user_id, Plugin.name == pl["name"]))
+            plugin = r.scalar_one_or_none()
+            names = [s.name for s in skills]
+            if plugin:
+                plugin.description, plugin.version, plugin.source_url, plugin.skill_names = (
+                    pl["description"], pl["version"], url, names,
+                )
+            else:
+                plugin = Plugin(
+                    user_id=user_id, name=pl["name"], description=pl["description"],
+                    version=pl["version"], source_url=url, skill_names=names,
+                )
+                db.add(plugin)
+            await db.commit()
+            await db.refresh(plugin)
+            plugins.append(plugin)
+            all_skills.extend(skills)
+        if not plugins:
+            raise HTTPException(404, "skill(SKILL.md)이 포함된 플러그인을 찾을 수 없습니다")
+        return plugins, all_skills, await SkillService.sync_to_sandbox(user_id, all_skills, db)
+
+    @staticmethod
+    async def _get_plugin(plugin_id: str, user_id: str, db: AsyncSession) -> Plugin:
+        r = await db.execute(select(Plugin).where(Plugin.id == plugin_id, Plugin.user_id == user_id))
+        plugin = r.scalar_one_or_none()
+        if not plugin:
+            raise HTTPException(404, "Plugin not found")
+        return plugin
+
+    @staticmethod
+    async def set_plugin_active(plugin_id: str, user_id: str, active: bool, db: AsyncSession) -> Plugin:
+        plugin = await SkillService._get_plugin(plugin_id, user_id, db)
+        plugin.is_active = active
+        for s in await SkillService.list_skills(user_id, db):
+            if s.name in (plugin.skill_names or []):
+                s.is_active = active
+        await db.commit()
+        await db.refresh(plugin)
+        return plugin
+
+    @staticmethod
+    async def delete_plugin(plugin_id: str, user_id: str, db: AsyncSession) -> None:
+        plugin = await SkillService._get_plugin(plugin_id, user_id, db)
+        for s in await SkillService.list_skills(user_id, db):
+            if s.name in (plugin.skill_names or []):
+                await SkillService.delete(s.id, user_id, db)
+        await db.delete(plugin)
+        await db.commit()
 
     @staticmethod
     async def import_from_sandbox(

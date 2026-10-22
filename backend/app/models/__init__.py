@@ -5,6 +5,7 @@ from app.models.memory import Memory
 from app.models.mcp_config import MCPServerConfig
 from app.models.sandbox import Sandbox
 from app.models.skill import Skill
+from app.models.plugin import Plugin
 from app.models.token_usage import TokenUsage
 from app.models.tool_execution import ToolExecution
 from app.models.document import Document
@@ -18,6 +19,7 @@ __all__ = [
     "MCPServerConfig",
     "Sandbox",
     "Skill",
+    "Plugin",
     "TokenUsage",
     "ToolExecution",
     "Document",

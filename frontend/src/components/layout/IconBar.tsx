@@ -13,6 +13,7 @@ import {
   LogOut,
   BookOpen,
   Brain,
+  Package,
 } from 'lucide-react'
 import { useThemeStore } from '../../store/themeStore'
 import { useAuthStore } from '../../store/authStore'
@@ -114,6 +115,13 @@ export default function IconBar() {
         active={isActive('/schedules')}
         badge={(unread ?? 0) > 0}
         onClick={() => navigate('/schedules')}
+      />
+      <IconButton
+        icon={<Package size={20} />}
+        title="스킬"
+        description="스킬과 플러그인을 설치하고 관리해 에이전트의 능력을 확장합니다"
+        active={isActive('/skills') || isActive('/plugins')}
+        onClick={() => navigate('/skills')}
       />
       <IconButton
         icon={<Globe size={20} />}
