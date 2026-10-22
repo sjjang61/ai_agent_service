@@ -23,6 +23,16 @@ RUN pip install \
 ENV PLAYWRIGHT_BROWSERS_PATH=/ms-playwright
 RUN playwright install chromium --with-deps && chmod -R a+rX /ms-playwright
 
+# Node.js (npx/npm): k-skill 같은 스킬이 `npx ...`, `npm install -g ...` 로 지침과 패키지를 받아온다
+COPY --from=node:22-slim /usr/local/bin/node /usr/local/bin/node
+COPY --from=node:22-slim /usr/local/lib/node_modules /usr/local/lib/node_modules
+RUN ln -s ../lib/node_modules/npm/bin/npm-cli.js /usr/local/bin/npm \
+    && ln -s ../lib/node_modules/npm/bin/npx-cli.js /usr/local/bin/npx \
+    && mkdir -p /home/sandbox-npm && chmod 777 /home/sandbox-npm
+# non-root 유저가 `npm install -g` 할 수 있도록 전역 설치 위치를 쓰기 가능한 경로로 둔다
+ENV NPM_CONFIG_PREFIX=/home/sandbox-npm/global
+ENV PATH=/home/sandbox-npm/global/bin:$PATH
+
 # Workspace directory
 WORKDIR /workspace
 RUN chmod 777 /workspace
