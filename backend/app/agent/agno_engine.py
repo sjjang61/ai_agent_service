@@ -254,15 +254,22 @@ async def stream_team(
     llm_provider: str = "",
     model: str = "",
 ) -> AsyncIterator[dict]:
-    from agno.models.message import Message
 
     # 호출 전에 사용자 메시지가 이미 DB(=history)에 저장되므로 중복 제거
     if history and isinstance(history[-1], HumanMessage) and history[-1].content == user_input:
         history = history[:-1]
     from app.agent.scope import with_scope_reminder
 
-    messages = _history_to_agno(history) + [Message(role="user", content=with_scope_reminder(user_input, bool(history)))]
-    kwargs = dict(input=messages, user_id=user_id, session_id=session_id)
+    # 이전 대화는 input 이 아니라 additional_input 으로 넘긴다.
+    # Team.arun(input=[Message...]) 은 리더에게 user 메시지만 이어 붙인 한 덩어리 텍스트로 전달해 assistant 답변이 사라지므로
+    # 매 턴마다 이전 질문에 모두 다시 답하게 된다 (예: "서울", "스킬 없음", "현재 시각"을 누적해서 반복).
+    # additional_input 은 system 뒤에 user/assistant 턴을 그대로 이어 붙인다.
+    team.additional_input = _history_to_agno(history) or None
+    kwargs = dict(
+        input=with_scope_reminder(user_input, bool(history)),
+        user_id=user_id,
+        session_id=session_id,
+    )
 
     total_input_tokens = 0
     total_output_tokens = 0
