@@ -192,6 +192,8 @@ def build_team(tools: List[BaseTool], llm_type: str, model: Optional[str], instr
         tool_call_limit=limit,
         instructions=[
             instructions,
+            "응답 범위: 마지막 사용자 메시지가 요청한 것에만 답하세요. 이전 대화에서 이미 처리한 요청을 다시 위임·조회·시각화하지 마세요. "
+            "요청이 없는 서술(선호·사실 공유 등)에는 팀원 위임 없이 짧게 반응하세요.",
             "단순한 질문은 팀원에게 위임하지 말고 직접 답하세요.",
             "도구가 필요한 작업만 적합한 팀원에게 위임하고, 팀원의 결과를 확인한 뒤 사용자에게 최종 답변을 한국어(사용자 언어)로 정리하세요.",
             "skill 도구(load_skill, register_skill), create_widget, MCP 도구(load_mcp_tool, call_mcp_tool, run_mcp_code), "
@@ -257,7 +259,9 @@ async def stream_team(
     # 호출 전에 사용자 메시지가 이미 DB(=history)에 저장되므로 중복 제거
     if history and isinstance(history[-1], HumanMessage) and history[-1].content == user_input:
         history = history[:-1]
-    messages = _history_to_agno(history) + [Message(role="user", content=user_input)]
+    from app.agent.scope import with_scope_reminder
+
+    messages = _history_to_agno(history) + [Message(role="user", content=with_scope_reminder(user_input, bool(history)))]
     kwargs = dict(input=messages, user_id=user_id, session_id=session_id)
 
     total_input_tokens = 0

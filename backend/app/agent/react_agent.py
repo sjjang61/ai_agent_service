@@ -90,7 +90,9 @@ class AgentRunner:
         - 스트리밍 없는 LLM → ainvoke 폴백
         - 모든 실패 → error 이벤트 yield
         """
-        messages = list(chat_history) + [HumanMessage(content=user_input)]
+        from app.agent.scope import with_scope_reminder
+
+        messages = list(chat_history) + [HumanMessage(content=with_scope_reminder(user_input, bool(chat_history)))]
         token_yielded = False
         stream_error: Exception | None = None
 

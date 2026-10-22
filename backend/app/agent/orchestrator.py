@@ -231,6 +231,18 @@ class AgentOrchestrator:
             role = "user" if msg.__class__.__name__ == "HumanMessage" else ("system" if msg.__class__.__name__ == "SystemMessage" else "assistant")
             logger.info(f"  [{i}] {role}: {msg.content[:100]}...")
 
+        # 질문·요청이 없는 서술("나는 테니스를 좋아해")에는 도구·팀 없이 짧게 반응한다.
+        # 이전 요청(예: 주가 조회)을 모델이 다시 수행하는 문제를 구조적으로 막는다. 불확실하면 요청으로 처리한다.
+        from app.agent.intent import prior_history, should_gate, statement_reply
+
+        earlier = prior_history(memory.get_messages(), user_input)
+        if should_gate(user_input, earlier, self.headless):
+            reply = await statement_reply(user_input, earlier)
+            if reply:
+                logger.info("[orchestrator] 요청 없는 서술로 판별 — 에이전트 실행 생략")
+                yield {"type": "token", "content": reply}
+                return
+
         # Load user memories for context injection
         try:
             long_term_memories = await MemoryService.get_prompt_memories(
