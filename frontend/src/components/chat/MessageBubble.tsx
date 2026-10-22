@@ -18,15 +18,16 @@ import { formatSize } from '../sandbox/ArtifactsPanel'
 import { useAuthStore } from '../../store/authStore'
 import WorkflowDiagram from '../workflow/WorkflowDiagram'
 import { shouldShowWorkflow } from '../workflow/WorkflowDetector'
-import { useState } from 'react'
+import { cloneElement, isValidElement, useState } from 'react'
 import { useTypingAnimation } from '../../hooks/useTypingAnimation'
 import { getTypingSpeed } from '../../config/animation'
 import { useTextSelection } from '../../hooks/useTextSelection'
 import SelectionTooltip from '../wiki/SelectionTooltip'
 import WikiQuickAddDialog from '../wiki/WikiQuickAddDialog'
 
-// 코드 블록 컴포넌트
-function CodeBlock({ inline, className, children, ...props }: any) {
+// 코드 컴포넌트: 인라인 `code` 는 한 줄 강조로, 펜스 코드 블록(```)은 복사 버튼이 있는 블록으로 그린다.
+// react-markdown v9 에는 `inline` prop 이 없다. 블록 여부는 부모 <pre> 가 `block` 으로 알려 준다 (아래 components.pre).
+function CodeBlock({ block, className, children, ...props }: any) {
   const [copied, setCopied] = useState(false)
   const match = /language-(\w+)/.exec(className || '')
   const language = match ? match[1] : ''
@@ -41,6 +42,7 @@ function CodeBlock({ inline, className, children, ...props }: any) {
     setTimeout(() => setCopied(false), 2000)
   }
 
+  const inline = !block && !language
   if (inline) {
     return (
       <code className="px-1.5 py-0.5 rounded bg-surface-tertiary text-accent-primary font-mono text-sm" {...props}>
@@ -129,6 +131,7 @@ export default function MessageBubble({ message }: { message: Message }) {
   const { user } = useAuthStore()
   const { selectedText, position, clearSelection } = useTextSelection()
   const [showWikiDialog, setShowWikiDialog] = useState(false)
+  const [copied, setCopied] = useState(false)
   const [savedSelectedText, setSavedSelectedText] = useState('')
 
   const msgs = currentConversationId ? messages[currentConversationId] || [] : []
@@ -138,6 +141,25 @@ export default function MessageBubble({ message }: { message: Message }) {
   const form = isUser ? null : extractLatestForm(message.agent_steps)
   const scheduleResults = isUser ? [] : extractScheduleResults(message.agent_steps)
   const showThinking = isLastAssistant && isRunning && message.content !== '__error__'
+  // 답변이 끝난 뒤(실행 중이 아닐 때)에만 복사 버튼을 보여 준다
+  const canCopy = !isUser && !(isLastAssistant && isRunning) && !!message.content && message.content !== '__error__'
+
+  const copyAnswer = async () => {
+    try {
+      await navigator.clipboard.writeText(message.content)
+    } catch {
+      // 클립보드 권한이 없으면(비보안 컨텍스트 등) 임시 textarea 로 복사한다
+      const ta = document.createElement('textarea')
+      ta.value = message.content
+      ta.style.position = 'fixed'
+      ta.style.opacity = '0'
+      document.body.appendChild(ta)
+      ta.select()
+      try { document.execCommand('copy') } finally { document.body.removeChild(ta) }
+    }
+    setCopied(true)
+    setTimeout(() => setCopied(false), 2000)
+  }
 
   // 워크플로우 다이어그램 표시 여부 (자동)
   const showWorkflowDiagram = !isUser && shouldShowWorkflow(message.agent_steps || [])
@@ -269,6 +291,8 @@ export default function MessageBubble({ message }: { message: Message }) {
               rehypePlugins={[rehypeRaw, rehypeSanitize]}
               components={{
                 code: CodeBlock,
+                // 펜스 코드 블록의 <pre> 는 껍데기를 없애고 안의 code 에 block 표시를 넘긴다
+                pre: ({ children }: any) => (isValidElement(children) ? cloneElement(children as any, { block: true }) : <>{children}</>),
                 // 링크 스타일링
                 a: ({ node, ...props }) => {
                   const href = props.href || ''
@@ -355,6 +379,20 @@ export default function MessageBubble({ message }: { message: Message }) {
           )}
         </div>
         {showThinking && <ThinkingIndicator settled={displayContent.length >= message.content.length} />}
+        {canCopy && (
+          <div className="mt-2">
+            <button
+              onClick={copyAnswer}
+              title="답변을 마크다운 원문으로 복사"
+              aria-label={copied ? '복사됨' : '답변 복사'}
+              className="flex items-center gap-1.5 px-2 py-1 -ml-2 rounded-[var(--radius-md)] text-xs text-content-tertiary
+                hover:text-content-primary hover:bg-surface-hover transition-colors border-none bg-transparent cursor-pointer"
+            >
+              {copied ? <Check size={13} className="text-accent-green" /> : <Copy size={13} />}
+              {copied ? '복사됨' : '복사'}
+            </button>
+          </div>
+        )}
         {!isUser && message.memory_saved && message.memory_saved.length > 0 && (
           <div
             className="mt-2 text-[11px] text-content-tertiary flex items-center gap-1"
