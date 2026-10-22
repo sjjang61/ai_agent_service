@@ -22,6 +22,7 @@ LLM 에 보내는 모든 프롬프트는 이 폴더의 `.md` 파일입니다. �
 | `time_context.md` | 현재 시각 `{{now}}` | `agent/orchestrator.py` |
 | `memory_facts.md` `memory_procedures.md` `memory_episodes.md` `memory_short_term.md` | 메모리 구역 머리말 `{{items}}` | `agent/orchestrator.py` |
 | `summary_context.md` | 대화 앞부분 요약 구역 `{{summary}}` | `services/conversation_summary.py` |
+| `skills_installed.md` `skills_none.md` | 스킬 안내 (`{{skills}}`) | `tools/skill_tool.py` |
 | `mcp_catalog.md` | MCP 도구 목록 머리말 `{{tools}}` | `tools/mcp_tools.py` |
 | `headless.md` | 예약(무인) 실행 지침 | `agent/orchestrator.py` |
 | `scope_reminder.md` | 마지막 사용자 메시지 끝에 붙는 응답 범위 안내 (LLM 입력에만) | `agent/scope.py` |
@@ -49,6 +50,7 @@ LLM 에 보내는 모든 프롬프트는 이 폴더의 `.md` 파일입니다. �
 |---|---|
 | `tool_error_quote_missing.md` `tool_error_quote_mismatch.md` | `tools/schedule_tool.py` (이전 요청 재실행 방지) |
 | `tool_result_headless_ask.md` | `tools/interaction_tools.py` (예약 실행 중 질문 불가) |
+| `tool_result_skill_in_sandbox.md` `tool_result_skill_copied_to_sandbox.md` `tool_result_skill_no_sandbox.md` `tool_result_skill_sandbox_error.md` | `tools/skill_tool.py` (`load_skill` 결과 뒤에 붙는 sandbox 상태 안내) |
 
 ## 이 폴더에 없는 것
 도구의 `description`과 인자 설명(`tools/*.py`의 Field description)은 도구 스키마의 일부라서 각 도구 코드에 있습니다.

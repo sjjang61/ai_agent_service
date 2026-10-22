@@ -529,7 +529,7 @@ curl -X POST http://localhost:8500/api/mcp/configs \
 | `OPENAI_MODEL` / `GEMINI_MODEL` / `ANTHROPIC_MODEL` | ❌ | `gpt-4o` / `gemini-2.5-flash` / `claude-sonnet-4-5` | LLM_TYPE 별 모델 (pet 은 `PET_MODEL_ID`) |
 | `MINIO_ENDPOINT` / `MINIO_ACCESS_KEY` / `MINIO_SECRET_KEY` | ❌ | (비활성) | Sandbox 백업용 MinIO. 비우면 자동 백업/종료 꺼짐 |
 | `MINIO_BUCKET` | ❌ | `sandbox-sessions` | 백업 버킷 (`{세션id}/workspace.tar.gz`) |
-| `SANDBOX_IDLE_MINUTES` | ❌ | `10` | 미사용 시간이 지나면 백업 후 sandbox 종료 |
+| `SANDBOX_IDLE_MINUTES` | ❌ | `5` | 미사용 시간이 지나면 백업 후 sandbox 종료 |
 | `SANDBOX_BACKUP_MAX_MB` | ❌ | `500` | `/workspace` 백업 크기 제한 |
 | `AGENT_MAX_ITERATIONS` | ❌ | `25` | Agent 최대 반복 횟수 |
 | `SANDBOX_IMAGE` | ❌ | `ai-agent-sandbox:latest` | Sandbox 이미지 이름 |

@@ -67,6 +67,17 @@ class SandboxService:
             except Exception:
                 logger.exception("[sandbox] session=%s 복구 실패 — 빈 workspace 로 시작", sb.id)
 
+            # 새 컨테이너의 /workspace 는 비어 있으므로(복구된 백업에 없는 경우 포함) 등록된 활성 skill 을 채운다
+            try:
+                from app.services.skill_service import SkillService
+
+                active = [s for s in await SkillService.list_skills(user_id, db) if s.is_active]
+                copied = await SkillService.ensure_in_sandbox(container_id, active)
+                if copied:
+                    logger.info("[sandbox] session=%s skill %d개를 새 sandbox 로 복사: %s", sb.id, len(copied), ", ".join(copied))
+            except Exception:
+                logger.exception("[sandbox] session=%s skill 자동 복사 실패 (sandbox 는 계속 사용 가능)", sb.id)
+
             sb.container_id = container_id
             sb.status = "running"
             sb.last_used_at = _utcnow()
@@ -74,6 +85,29 @@ class SandboxService:
             await db.refresh(sb)
             sb.restored = restored
             return sb
+
+    @staticmethod
+    async def restore_if_backed_up(user_id: str) -> bool:
+        """요청이 시작될 때 호출한다. sandbox 가 꺼져 있고 MinIO 에 이 세션(Sandbox.id)의 백업이 있으면
+        컨테이너를 만들어 백업을 복구한다 (등록된 skill 도 함께 채워진다). 복구했으면 True.
+
+        백업이 없으면 아무것도 하지 않는다 (sandbox 를 쓰지 않는 대화에서 컨테이너를 불필요하게 만들지 않는다).
+        """
+        if not sandbox_backup.enabled:
+            return False
+        from app.db.session import AsyncSessionLocal
+
+        async with AsyncSessionLocal() as db:
+            sb = await SandboxService._latest(user_id, db)
+            if sb is None:
+                return False
+            if sb.status == "running" and sb.container_id and await sandbox_manager.is_running(sb.container_id):
+                return False
+            if not await sandbox_backup.exists(sb.id):
+                return False
+            restored = await SandboxService.get_or_create_sandbox(user_id, db)
+            logger.info("[sandbox] 요청 시작 시 복구 session=%s restored=%s", restored.id, getattr(restored, "restored", None))
+            return True
 
     @staticmethod
     async def get_sandbox(user_id: str, db: AsyncSession) -> Optional[Sandbox]:

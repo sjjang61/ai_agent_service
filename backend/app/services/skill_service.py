@@ -318,6 +318,28 @@ class SkillService:
             return f"{type(e).__name__}: {str(e)[:300]}"
 
     @staticmethod
+    async def ensure_in_sandbox(container_id: str, skills: list[Skill]) -> list[str]:
+        """sandbox 에 SKILL.md 가 없는 skill 만 호스트 사본에서 복사한다. 반환: 새로 복사한 skill 이름.
+
+        컨테이너가 새로 만들어지면(Docker 재시작 등) /workspace 가 비어 skill 이 사라지므로 이 함수로 채운다.
+        이미 있는 skill 은 덮어쓰지 않아 sandbox 안에서 수정한 내용이 보존된다.
+        """
+        if not skills:
+            return []
+        _, out, _ = await sandbox_manager.exec_command(
+            container_id,
+            f'for d in {SANDBOX_SKILLS_DIR}/*/; do [ -f "$d/SKILL.md" ] && basename "$d"; done; true',
+        )
+        present = set(out.split())
+        copied: list[str] = []
+        for s in skills:
+            if s.name in present or not Path(s.install_path).is_dir():
+                continue
+            await sandbox_manager.put_directory(container_id, Path(s.install_path), SANDBOX_SKILLS_DIR, s.name)
+            copied.append(s.name)
+        return copied
+
+    @staticmethod
     async def _save_skills(
         user_id: str, extracted: list[dict], url: str, db: AsyncSession
     ) -> list[Skill]:

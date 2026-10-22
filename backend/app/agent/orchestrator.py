@@ -74,6 +74,25 @@ def _time_context(tz_name: str) -> str:
     return "\n\n" + render("time_context", now=f"{now:%Y-%m-%d %H:%M} ({weekday}요일, {tz_name})") + "\n"
 
 
+_restore_tasks: set = set()  # 실행 중인 복구 작업 (참조를 유지해 가비지 수집을 막는다)
+
+
+def _spawn_sandbox_restore(user_id: str) -> None:
+    import asyncio
+
+    from app.services.sandbox_service import SandboxService
+
+    async def _run():
+        try:
+            await SandboxService.restore_if_backed_up(user_id)
+        except Exception:
+            logger.exception("[sandbox] 요청 시작 시 복구 실패 — 도구 사용 시 다시 시도됩니다")
+
+    task = asyncio.create_task(_run())
+    _restore_tasks.add(task)
+    task.add_done_callback(_restore_tasks.discard)
+
+
 class AgentOrchestrator:
     def __init__(
         self,
@@ -150,7 +169,7 @@ class AgentOrchestrator:
                 CliBrowserAgentTool(user_id=self.user_id, llm_provider=self.llm_provider, model=self.model)
             )
         if skills:
-            tools.append(LoadSkillTool(skills={s.name: s.install_path for s in skills}))
+            tools.append(LoadSkillTool(skills={s.name: s.install_path for s in skills}, user_id=self.user_id))
 
         mcp_prompt = ""
         if not self.allow_mcp:
@@ -210,6 +229,10 @@ class AgentOrchestrator:
         print(f"  user_input: {user_input[:200]}")
         print(f"{'='*80}\n")
         logger.info(f"[orchestrator] 새 요청 시작 - conversation_id: {conversation_id[:8]}..., user_input: {user_input[:100]}")
+
+        # 이 세션의 sandbox 가 유휴로 백업·종료된 상태면 요청이 시작되는 즉시 MinIO 백업에서 복구한다 (백그라운드).
+        # sandbox 도구가 필요하면 같은 락을 쓰므로 복구가 끝날 때까지 기다린다.
+        _spawn_sandbox_restore(self.user_id)
 
         # 새 요청 시작 시 이전 작업의 미완료 todo를 모두 completed로 변경
         # 이전 대화가 컨텍스트로 포함되더라도 이전 작업을 다시 수행하지 않도록 함

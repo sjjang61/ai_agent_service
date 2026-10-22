@@ -5,6 +5,8 @@ from pydantic import BaseModel, Field
 
 from langchain_core.tools import BaseTool
 
+from app.agent.prompts import load, render
+
 MAX_READ_BYTES = 100 * 1024
 
 
@@ -27,18 +29,21 @@ class LoadSkillTool(BaseTool):
     # {skill_name: install_path} — 해당 사용자의 활성 skill 만 전달된다
     skills: Dict[str, str] = {}
 
-    def _run(self, name: str, file: str = "SKILL.md") -> str:
+    user_id: str = ""  # sandbox 에 skill 파일이 있는지 확인·복사하는 데 쓴다
+
+    def _load(self, name: str, file: str = "SKILL.md") -> tuple[str, bool]:
+        """호스트에 설치된 skill 파일을 읽는다. 반환: (텍스트, 성공 여부)."""
         install_path = self.skills.get(name)
         if not install_path:
             available = ", ".join(sorted(self.skills)) or "(none)"
-            return f"Skill '{name}' not found. Installed skills: {available}"
+            return f"Skill '{name}' not found. Installed skills: {available}", False
 
         root = Path(install_path).resolve()
         target = (root / file).resolve()
         if target != root and root not in target.parents:
-            return "Access denied: path is outside the skill directory"
+            return "Access denied: path is outside the skill directory", False
         if not target.is_file():
-            return f"File not found in skill '{name}': {file}"
+            return f"File not found in skill '{name}': {file}", False
 
         data = target.read_bytes()[: MAX_READ_BYTES + 1]
         truncated = len(data) > MAX_READ_BYTES
@@ -56,10 +61,41 @@ class LoadSkillTool(BaseTool):
                 text += "\n\n---\nOther files in this skill (read with the `file` argument):\n" + "\n".join(
                     f"- {o}" for o in others
                 )
-        return text
+        return text, True
+
+    def _run(self, name: str, file: str = "SKILL.md") -> str:
+        return self._load(name, file)[0]
+
+    async def _sandbox_note(self, name: str) -> str:
+        """SKILL.md 를 읽은 뒤 붙이는 sandbox 상태 안내. 실행 중인 sandbox 에 skill 이 없으면 그 자리에서 복사한다.
+        (load_skill 은 호스트 사본을 읽으므로, 이 확인이 없으면 sandbox 에 파일이 없어도 '성공'으로 보인다.)"""
+        from app.services.skill_service import SANDBOX_SKILLS_DIR
+
+        path = f"{SANDBOX_SKILLS_DIR}/{name}/"
+        if not self.user_id:
+            return ""
+        try:
+            from app.db.session import AsyncSessionLocal
+            from app.services.sandbox_service import SandboxService, sandbox_manager
+            from app.services.skill_service import SkillService
+
+            async with AsyncSessionLocal() as db:
+                sb = await SandboxService.get_sandbox(self.user_id, db)
+                if not sb or sb.status != "running" or not sb.container_id or not await sandbox_manager.is_running(sb.container_id):
+                    return "\n\n" + render("tool_result_skill_no_sandbox", path=path)
+                mine = [s for s in await SkillService.list_skills(self.user_id, db) if s.name == name]
+                copied = await SkillService.ensure_in_sandbox(sb.container_id, mine)
+            if copied:
+                return "\n\n" + render("tool_result_skill_copied_to_sandbox", path=path)
+            return "\n\n" + render("tool_result_skill_in_sandbox", path=path)
+        except Exception as e:  # noqa: BLE001 — 확인 실패가 skill 읽기 자체를 막지 않게 한다
+            return "\n\n" + render("tool_result_skill_sandbox_error", error=f"{type(e).__name__}: {str(e)[:120]}", path=path)
 
     async def _arun(self, name: str, file: str = "SKILL.md") -> str:
-        return self._run(name, file)
+        text, ok = self._load(name, file)
+        if ok and file == "SKILL.md":
+            text += await self._sandbox_note(name)
+        return text
 
 
 class RegisterSkillInput(BaseModel):
@@ -97,26 +133,11 @@ class RegisterSkillTool(BaseTool):
 
 
 def build_skills_prompt(skills: list) -> str:
-    """시스템 프롬프트에 붙일 skill 안내 섹션. skills: Skill 모델 목록."""
+    """시스템 프롬프트에 붙일 skill 안내 섹션 (문구는 prompts/skills_*.md). skills: Skill 모델 목록."""
     if not skills:
-        return (
-            "\n\n## Skills\n"
-            "새 skill을 만들면 sandbox의 `/workspace/skills/<name>/SKILL.md` (frontmatter에 name, description)에 "
-            "작성한 뒤 반드시 `register_skill` 도구로 설치하세요. 파일만 만들어서는 설치되지 않습니다."
-        )
-    lines = [
-        "",
-        "## Installed skills",
-        "사용자가 설치한 skill 목록입니다. 요청이 어떤 skill의 설명과 맞으면 "
-        "`load_skill` 도구로 SKILL.md 를 먼저 읽고 그 지침을 따르세요. "
-        "각 skill의 파일(스크립트 포함)은 sandbox의 `/workspace/skills/<name>/` 에도 복사되어 있으므로 "
-        "스크립트 실행은 exec_command/code_executor 로 그 경로에서 하세요. "
-        "새 skill을 만들 때는 `/workspace/skills/<name>/SKILL.md` 에 작성한 뒤 반드시 `register_skill` 도구로 "
-        "설치하세요 (파일만 만들어서는 설치되지 않으며 load_skill 로 읽을 수 없습니다). "
-        "사용 가능한 skill을 묻는 질문에는 이 목록으로 답하세요.",
-        "",
-    ]
+        return "\n\n" + load("skills_none")
+    lines = []
     for s in skills:
         desc = " ".join((s.description or "").split())[:300]
         lines.append(f"- {s.name}: {desc}" if desc else f"- {s.name}")
-    return "\n".join(lines)
+    return "\n" + render("skills_installed", skills="\n".join(lines))
