@@ -1,5 +1,12 @@
 import type { Config } from 'tailwindcss'
 
+/**
+ * 테마 변수(CSS 변수) 색에 `/40` 같은 투명도 접미사가 동작하도록 color-mix 로 감싼다.
+ * 그냥 'var(--x)' 로 두면 Tailwind 가 투명도 클래스(bg-accent-primary/15 등)를 아예 만들지 않아 배경·테두리가 사라진다.
+ * 투명도를 쓰지 않으면 <alpha-value> 가 1 로 치환되어 원래 색 그대로다.
+ */
+const token = (name: string) => `color-mix(in srgb, var(${name}) calc(<alpha-value> * 100%), transparent)`
+
 export default {
   content: ['./index.html', './src/**/*.{js,ts,jsx,tsx}'],
   darkMode: ['class', '[data-theme="dark"]'],
@@ -8,34 +15,34 @@ export default {
       colors: {
         // Accent colors
         accent: {
-          primary: 'var(--accent-primary)',
-          hover: 'var(--accent-hover)',
-          blue: 'var(--accent-blue)',
-          green: 'var(--accent-green)',
-          yellow: 'var(--accent-yellow)',
-          orange: 'var(--accent-orange)',
-          red: 'var(--accent-red)',
-          purple: 'var(--accent-purple)',
-          amber: 'var(--accent-amber)',
-          cyan: 'var(--accent-cyan)',
+          primary: token('--accent-primary'),
+          hover: token('--accent-hover'),
+          blue: token('--accent-blue'),
+          green: token('--accent-green'),
+          yellow: token('--accent-yellow'),
+          orange: token('--accent-orange'),
+          red: token('--accent-red'),
+          purple: token('--accent-purple'),
+          amber: token('--accent-amber'),
+          cyan: token('--accent-cyan'),
         },
         // Theme-aware colors
         surface: {
-          primary: 'var(--bg-primary)',
-          secondary: 'var(--bg-secondary)',
-          tertiary: 'var(--bg-tertiary)',
-          hover: 'var(--bg-hover)',
-          active: 'var(--bg-active)',
+          primary: token('--bg-primary'),
+          secondary: token('--bg-secondary'),
+          tertiary: token('--bg-tertiary'),
+          hover: token('--bg-hover'),
+          active: token('--bg-active'),
         },
         content: {
-          primary: 'var(--text-primary)',
-          secondary: 'var(--text-secondary)',
-          tertiary: 'var(--text-tertiary)',
-          muted: 'var(--text-muted)',
+          primary: token('--text-primary'),
+          secondary: token('--text-secondary'),
+          tertiary: token('--text-tertiary'),
+          muted: token('--text-muted'),
         },
         border: {
-          DEFAULT: 'var(--border-color)',
-          light: 'var(--border-light)',
+          DEFAULT: token('--border-color'),
+          light: token('--border-light'),
         },
       },
       borderRadius: {
