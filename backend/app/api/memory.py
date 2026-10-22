@@ -15,6 +15,7 @@ from app.schemas.memory import (
     ShortTermMemoryResponse,
 )
 from app.services.memory_service import MemoryService, ShortTermMemoryService
+from app.services.schedule_service import aware
 
 router = APIRouter()
 
@@ -24,6 +25,9 @@ def _to_response(memory) -> MemoryResponse:
     return MemoryResponse(
         id=memory.id,
         category=memory.category,
+        memory_type=memory.memory_type or "semantic",
+        occurred_at=aware(memory.occurred_at),
+        detail=memory.detail or None,
         key=memory.key,
         value=memory.value,
         tags=memory.tags or [],
@@ -39,6 +43,7 @@ def _to_response(memory) -> MemoryResponse:
 async def list_memories(
     query: Optional[str] = Query(None, description="Search keyword"),
     category: Optional[str] = Query(None),
+    memory_type: Optional[str] = Query(None, pattern="^(semantic|episodic|procedural)$"),
     min_importance: Optional[int] = Query(None, ge=1, le=10),
     limit: int = Query(50, le=200),
     offset: int = Query(0),
@@ -49,6 +54,7 @@ async def list_memories(
     params = MemorySearchParams(
         query=query,
         category=category,
+        memory_type=memory_type,
         min_importance=min_importance,
         limit=limit,
         offset=offset,

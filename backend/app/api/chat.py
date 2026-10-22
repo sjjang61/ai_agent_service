@@ -100,6 +100,7 @@ async def list_messages(
             agent_steps=m.agent_steps or [],
             tool_calls=m.tool_calls or [],
             attachments=(m.metadata_ or {}).get("attachments", []),
+            memory_saved=(m.metadata_ or {}).get("memory_saved", []),
             created_at=m.created_at,
         )
         for m in messages
@@ -171,22 +172,29 @@ async def send_message(
             )
             yield f"data: {json.dumps({'type': 'done', 'message_id': msg.id})}\n\n"
 
-            # 메모리 자동 추출 (백그라운드 — 새 세션 사용)
+            # 컨텍스트 창에서 밀려난 오래된 메시지를 백그라운드에서 요약 (응답과 무관하게 실행)
+            from app.services.conversation_summary import maybe_update_summary
+
+            asyncio.create_task(maybe_update_summary(conversation_id))
+
+            # 메모리 자동 추출: 응답은 이미 전달했으므로 사용자는 기다리지 않는다.
+            # 저장된 항목이 있으면 같은 스트림으로 알려 주고 메시지에도 남긴다 (새로고침 후에도 표시).
             if full_response and not has_error:
                 from app.services.memory_extractor import maybe_extract_memories
                 from app.db.session import AsyncSessionLocal
 
-                async def extract_with_new_session():
-                    async with AsyncSessionLocal() as new_db:
-                        await maybe_extract_memories(
-                            user_id=current_user.id,
-                            conversation_id=conversation_id,
-                            user_message=user_input,
-                            agent_response=full_response,
-                            db=new_db,
-                        )
-
-                asyncio.create_task(extract_with_new_session())
+                async with AsyncSessionLocal() as mem_db:
+                    saved = await maybe_extract_memories(
+                        user_id=current_user.id,
+                        conversation_id=conversation_id,
+                        user_message=user_input,
+                        agent_response=full_response,
+                        db=mem_db,
+                    )
+                if saved:
+                    msg.metadata_ = {**(msg.metadata_ or {}), "memory_saved": saved}
+                    await db.commit()
+                    yield f"data: {json.dumps({'type': 'memory_saved', 'items': saved, 'message_id': msg.id})}\n\n"
 
     return StreamingResponse(event_stream(), media_type="text/event-stream")
 

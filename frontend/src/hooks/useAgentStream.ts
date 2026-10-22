@@ -24,7 +24,7 @@ const SANDBOX_TOOLS = new Set([
 export function useAgentStream(conversationId: string) {
   const { token } = useAuthStore()
   const { setRunning, addStep, appendToken, clearSteps, triggerWorkspaceRefresh } = useAgentStore()
-  const { addMessage, updateLastAssistantMessage, appendStepToLastAssistantMessage } = useChatStore()
+  const { addMessage, updateLastAssistantMessage, appendStepToLastAssistantMessage, setLastAssistantMemorySaved } = useChatStore()
 
   const sendMessage = useCallback(
     async (content: string, attachments: Attachment[] = []) => {
@@ -140,6 +140,11 @@ export function useAgentStream(conversationId: string) {
                 // 서버가 실행을 중단함: 지금까지의 응답 뒤에 중단 안내를 붙인다 (서버에 저장된 내용과 같다)
                 fullContent += (fullContent ? '\n\n' : '') + CANCEL_NOTE
                 updateLastAssistantMessage(conversationId, fullContent)
+              } else if (event.type === 'done') {
+                // 응답은 끝났다. 서버가 메모리 추출을 이어서 하는 동안에도 입력을 막지 않는다
+                setRunning(false)
+              } else if (event.type === 'memory_saved' && event.items?.length) {
+                setLastAssistantMemorySaved(conversationId, event.items)
               } else if (event.type === 'error') {
                 const friendlyMsg = '비정상적인 에러 발생으로 잠시후에 다시 시도해주세요.'
                 updateLastAssistantMessage(conversationId, friendlyMsg)
@@ -159,7 +164,7 @@ export function useAgentStream(conversationId: string) {
         setRunning(false)
       }
     },
-    [conversationId, token, clearSteps, setRunning, addStep, appendToken, addMessage, updateLastAssistantMessage, appendStepToLastAssistantMessage, triggerWorkspaceRefresh]
+    [conversationId, token, clearSteps, setRunning, addStep, appendToken, addMessage, updateLastAssistantMessage, appendStepToLastAssistantMessage, setLastAssistantMemorySaved, triggerWorkspaceRefresh]
   )
 
   /** 실행 중인 에이전트를 중단한다. 서버가 `cancelled` 이벤트로 스트림을 끝내고, 응답이 없으면 연결을 직접 끊는다. */

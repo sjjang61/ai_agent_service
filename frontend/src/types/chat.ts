@@ -1,3 +1,4 @@
+import type { MemorySavedItem } from './agent'
 export interface Conversation {
   id: string
   title: string
@@ -29,5 +30,6 @@ export interface Message {
   agent_steps: AgentStepData[]
   tool_calls: unknown[]
   attachments?: Attachment[]
+  memory_saved?: MemorySavedItem[]
   created_at: string
 }

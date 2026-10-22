@@ -5,6 +5,10 @@ from langchain_core.messages import AIMessage, BaseMessage, HumanMessage
 from app.config import settings
 
 
+# 에이전트에게 원문 그대로 전달하는 최근 메시지 수. 이보다 오래된 메시지는 롤링 요약으로 대신한다.
+HISTORY_WINDOW = 20
+
+
 class ConversationMemory:
     def __init__(self, window: int = None):
         self.window = window or settings.AGENT_MEMORY_WINDOW
@@ -37,7 +41,7 @@ class ConversationMemory:
     @classmethod
     def from_db_messages(cls, db_messages: list) -> "ConversationMemory":
         mem = cls()
-        for m in db_messages[-20:]:
+        for m in db_messages[-HISTORY_WINDOW:]:
             if m.role == "user":
                 from app.services.attachment_service import compose_with_attachments
 

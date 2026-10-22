@@ -6,7 +6,7 @@ from pydantic import BaseModel, Field
 from langchain_core.tools import BaseTool
 
 from app.services.memory_service import MemoryService, ShortTermMemoryService
-from app.schemas.memory import MemoryCreate, MemoryUpdate
+from app.schemas.memory import EpisodeDetail, MemoryCreate, MemoryUpdate
 
 
 class MemoryInput(BaseModel):
@@ -31,6 +31,17 @@ class MemoryInput(BaseModel):
     importance: Optional[int] = Field(
         default=5, description="Importance 1-10 (higher = more likely to be recalled)"
     )
+    memory_type: Optional[Literal["semantic", "episodic", "procedural"]] = Field(
+        default=None,
+        description=(
+            "Long-term kind: semantic (stable fact about the user), procedural (how the agent should "
+            "act, phrased as an action), episodic (a past event/solved case; also give situation/resolution/outcome). "
+            "Omit to infer from category."
+        ),
+    )
+    situation: Optional[str] = Field(default=None, description="episodic: the situation or problem")
+    resolution: Optional[str] = Field(default=None, description="episodic: how it was resolved")
+    outcome: Optional[str] = Field(default=None, description="episodic: the result")
 
 
 class MemoryTool(BaseTool):
@@ -42,8 +53,10 @@ class MemoryTool(BaseTool):
         "Use store/retrieve for long-term facts (user preferences, important info). "
         "Use store_short/retrieve_short for current task context within this conversation. "
         "Use search to find memories by keyword. "
-        "Categories: preference (user preferences), fact (learned facts), "
-        "instruction (user instructions), general."
+        "Long-term memory has three kinds (memory_type): semantic = stable facts about the user; "
+        "procedural = how to act, written as an action (e.g. 'show example code first, then explain'); "
+        "episodic = a specific past event or solved case (provide situation, resolution, outcome). "
+        "Categories: preference, fact, instruction, general."
     )
     args_schema: type[BaseModel] = MemoryInput
     user_id: str = ""
@@ -58,10 +71,16 @@ class MemoryTool(BaseTool):
         category: str = "general",
         query: str = None,
         importance: int = 5,
+        memory_type: str = None,
+        situation: str = None,
+        resolution: str = None,
+        outcome: str = None,
     ) -> str:
         try:
             if action == "store":
-                return await self._store_long_term(key, value, category, importance)
+                return await self._store_long_term(
+                    key, value, category, importance, memory_type, situation, resolution, outcome
+                )
             elif action == "retrieve":
                 return await self._retrieve_long_term(key)
             elif action == "list":
@@ -84,21 +103,32 @@ class MemoryTool(BaseTool):
         category: str = "general",
         query: str = None,
         importance: int = 5,
+        memory_type: str = None,
+        situation: str = None,
+        resolution: str = None,
+        outcome: str = None,
     ) -> str:
         import asyncio
 
         return asyncio.get_event_loop().run_until_complete(
-            self._arun(action, key, value, category, query, importance)
+            self._arun(action, key, value, category, query, importance, memory_type, situation, resolution, outcome)
         )
 
     async def _store_long_term(
-        self, key: str, value: str, category: str, importance: int
+        self, key: str, value: str, category: str, importance: int,
+        memory_type: str = None, situation: str = None, resolution: str = None, outcome: str = None,
     ) -> str:
         if not key or not value:
             return "Error: key and value are required for store"
 
         if not self.db_session_factory:
             return "Error: Database session not available"
+
+        detail = None
+        if memory_type == "episodic":
+            if not situation or not resolution:
+                return "Error: episodic memory requires situation and resolution"
+            detail = EpisodeDetail(situation=situation, resolution=resolution, outcome=outcome or "")
 
         async with self.db_session_factory() as db:
             existing = await MemoryService.get_by_key(self.user_id, key, db)
@@ -108,7 +138,8 @@ class MemoryTool(BaseTool):
                     self.user_id,
                     existing.id,
                     MemoryUpdate(
-                        value=value, category=category, importance=importance
+                        value=value, category=category, importance=importance,
+                        memory_type=memory_type, detail=detail,
                     ),
                     db,
                 )
@@ -122,6 +153,8 @@ class MemoryTool(BaseTool):
                         value=value,
                         category=category,
                         importance=importance,
+                        memory_type=memory_type,
+                        detail=detail,
                     ),
                     db,
                     source="agent",
@@ -159,6 +192,7 @@ class MemoryTool(BaseTool):
                     {
                         "key": m.key,
                         "category": m.category,
+                        "memory_type": m.memory_type,
                         "importance": m.importance,
                     }
                     for m in memories
@@ -187,6 +221,7 @@ class MemoryTool(BaseTool):
                         "key": m.key,
                         "value": m.value[:200],
                         "category": m.category,
+                        "memory_type": m.memory_type,
                     }
                     for m in memories
                 ],

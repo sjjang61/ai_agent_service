@@ -1,5 +1,5 @@
 import logging
-from typing import AsyncIterator, List, Optional
+from typing import AsyncIterator, Optional
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -12,22 +12,50 @@ from app.tools.skill_tool import RegisterSkillTool, build_skills_prompt
 logger = logging.getLogger(__name__)
 
 
-def _build_memory_context(long_term: List, short_term: dict) -> str:
-    """Build memory context section for system prompt."""
+def _build_memory_context(long_term: dict, short_term: dict) -> str:
+    """시스템 프롬프트에 붙일 메모리 섹션.
+
+    사실(semantic)은 참고 정보, 작업 방식(procedural)은 반드시 따를 지침, 사례(episodic)는
+    현재 요청과 비슷한 과거 경험으로 역할을 구분해 넣는다.
+    """
     sections = []
 
-    if long_term:
-        items = []
-        for m in long_term:
-            items.append(f"- [{m.category}] {m.key}: {m.value}")
+    facts = long_term.get("semantic") or []
+    if facts:
         sections.append(
-            "## User Information (Long-term Memory)\n" + "\n".join(items)
+            "## 사용자 정보 (장기 기억 · 사실)\n"
+            "아래는 사용자에 대해 알고 있는 사실입니다. 관련이 있을 때 자연스럽게 반영하세요.\n"
+            + "\n".join(f"- {m.key}: {m.value}" for m in facts)
+        )
+
+    procedures = long_term.get("procedural") or []
+    if procedures:
+        sections.append(
+            "## 작업 방식 (장기 기억 · 절차) — 반드시 따르세요\n"
+            "사용자가 원하는 일하는 방식입니다. 해당되는 모든 응답에 적용하세요.\n"
+            + "\n".join(f"- {m.value}" for m in procedures)
+        )
+
+    episodes = long_term.get("episodic") or []
+    if episodes:
+        lines = []
+        for m in episodes:
+            d = m.detail or {}
+            when = (m.occurred_at or m.created_at)
+            head = f"- ({when.strftime('%Y-%m') if when else '시점 미상'}) {m.value}"
+            parts = [f"{label}: {d[k]}" for k, label in (("situation", "상황"), ("resolution", "해결"), ("outcome", "결과")) if d.get(k)]
+            lines.append(head + (" [" + " / ".join(parts) + "]" if parts else ""))
+        sections.append(
+            "## 관련 과거 사례 (장기 기억 · 경험)\n"
+            "현재 요청과 비슷한 이전 경험입니다. 참고만 하고, 지금 상황과 맞지 않으면 무시하세요.\n"
+            + "\n".join(lines)
         )
 
     if short_term:
-        items = [f"- {k}: {v}" for k, v in short_term.items()]
         sections.append(
-            "## Current Task Context (Short-term)\n" + "\n".join(items)
+            "## 현재 작업 맥락 (단기 기억 · 이 대화에서만 유효)\n"
+            "참고용 맥락입니다. 사용자가 이번 메시지에서 요청하지 않았다면 여기 적힌 작업을 새로 수행하지 마세요.\n"
+            + "\n".join(f"- {k}: {v}" for k, v in short_term.items())
         )
 
     if sections:
@@ -205,11 +233,12 @@ class AgentOrchestrator:
 
         # Load user memories for context injection
         try:
-            long_term_memories = await MemoryService.get_context_memories(
-                self.user_id, db, limit=15
+            long_term_memories = await MemoryService.get_prompt_memories(
+                self.user_id, db, user_input
             )
         except Exception:
-            long_term_memories = []
+            logger.exception("[orchestrator] 장기 메모리 로드 실패")
+            long_term_memories = {}
 
         try:
             short_term_memories = await ShortTermMemoryService.get_all(
@@ -219,6 +248,14 @@ class AgentOrchestrator:
             short_term_memories = {}
 
         memory_context = _build_memory_context(long_term_memories, short_term_memories)
+        try:
+            from app.models.conversation import Conversation
+            from app.services.conversation_summary import summary_context
+
+            conv = await db.get(Conversation, conversation_id)
+            memory_context += summary_context(conv.summary if conv else None, len(messages))
+        except Exception:
+            logger.exception("[orchestrator] 대화 요약 로드 실패")
 
         skills = await self._get_active_skills(db)
         tools, mcp_prompt = await self._get_tools(db, skills, conversation_id, user_input)

@@ -1,9 +1,10 @@
 import { create } from 'zustand'
-import type { Memory, MemoryCategory } from '../types/memory'
+import type { Memory, MemoryCategory, MemoryType } from '../types/memory'
 
 interface MemoryState {
   memories: Memory[]
   selectedCategory: MemoryCategory | null
+  selectedType: MemoryType | null
   searchQuery: string
   isLoading: boolean
 
@@ -12,6 +13,7 @@ interface MemoryState {
   updateMemory: (id: string, data: Partial<Memory>) => void
   removeMemory: (id: string) => void
   setSelectedCategory: (category: MemoryCategory | null) => void
+  setSelectedType: (type: MemoryType | null) => void
   setSearchQuery: (query: string) => void
   setLoading: (loading: boolean) => void
 }
@@ -19,6 +21,7 @@ interface MemoryState {
 export const useMemoryStore = create<MemoryState>((set) => ({
   memories: [],
   selectedCategory: null,
+  selectedType: null,
   searchQuery: '',
   isLoading: false,
 
@@ -40,6 +43,7 @@ export const useMemoryStore = create<MemoryState>((set) => ({
     })),
 
   setSelectedCategory: (category) => set({ selectedCategory: category }),
+  setSelectedType: (type) => set({ selectedType: type }),
   setSearchQuery: (query) => set({ searchQuery: query }),
   setLoading: (loading) => set({ isLoading: loading }),
 }))

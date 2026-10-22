@@ -148,6 +148,7 @@ class Settings(BaseSettings):
 
     # Memory (장기/단기 메모리)
     ENABLE_MEMORY_EXTRACTION: bool = True  # 대화에서 자동 메모리 추출
+    ENABLE_CONVERSATION_SUMMARY: bool = True  # 컨텍스트 창에서 밀려난 오래된 메시지의 롤링 요약
     MEMORY_CONTEXT_LIMIT: int = 15  # Agent 프롬프트에 주입할 최대 메모리 개수
     SHORT_TERM_MEMORY_TTL: int = 86400  # 단기 메모리 TTL (초, 기본 24시간)
 

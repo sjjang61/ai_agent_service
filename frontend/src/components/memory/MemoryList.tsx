@@ -3,7 +3,7 @@ import { Plus, Search, Trash2, Edit2, Brain, Star, Tag } from 'lucide-react'
 import { useMemories, useDeleteMemory } from '../../hooks/useMemories'
 import { useMemoryStore } from '../../store/memoryStore'
 import MemoryForm from './MemoryForm'
-import type { Memory, MemoryCategory } from '../../types/memory'
+import type { Memory, MemoryCategory, MemoryType } from '../../types/memory'
 
 const CATEGORY_LABELS: Record<
   MemoryCategory,
@@ -27,6 +27,19 @@ const CATEGORY_LABELS: Record<
   },
 }
 
+const TYPE_TABS: { key: MemoryType | null; label: string; hint: string }[] = [
+  { key: null, label: '전체', hint: '' },
+  { key: 'semantic', label: '사실', hint: '사용자에 대한 비교적 안정된 사실 (직업, 거주지, 기술 스택 등). 참고 정보로 반영됩니다.' },
+  { key: 'procedural', label: '작업 방식', hint: '에이전트가 앞으로 따를 실행 지침 (예: 예제를 먼저 보여 준 뒤 원리를 설명한다). 모든 응답에 적용됩니다.' },
+  { key: 'episodic', label: '사례', hint: '특정 시점의 사건·해결 사례. 현재 요청과 비슷할 때만 참고되며, 오래될수록 중요도가 낮아져 자동 정리됩니다.' },
+]
+
+const TYPE_BADGE: Record<MemoryType, { label: string; color: string }> = {
+  semantic: { label: '사실', color: 'bg-accent-blue/20 text-accent-blue border-accent-blue/30' },
+  procedural: { label: '작업 방식', color: 'bg-accent-orange/20 text-accent-orange border-accent-orange/30' },
+  episodic: { label: '사례', color: 'bg-accent-green/20 text-accent-green border-accent-green/30' },
+}
+
 const SOURCE_LABELS: Record<string, string> = {
   manual: '수동',
   auto_extracted: '자동',
@@ -37,17 +50,20 @@ export default function MemoryList() {
   const {
     memories,
     selectedCategory,
+    selectedType,
     searchQuery,
     setSelectedCategory,
+    setSelectedType,
     setSearchQuery,
   } = useMemoryStore()
 
   const queryParams = useMemo(
     () => ({
       category: selectedCategory || undefined,
+      memory_type: selectedType || undefined,
       query: searchQuery || undefined,
     }),
-    [selectedCategory, searchQuery]
+    [selectedCategory, selectedType, searchQuery]
   )
 
   const { isLoading, refetch } = useMemories(queryParams)
@@ -72,11 +88,7 @@ export default function MemoryList() {
   return (
     <div className="space-y-4">
       {/* Header */}
-      <div className="flex justify-between items-center">
-        <h2 className="text-lg font-semibold text-content-primary flex items-center gap-2">
-          <Brain size={20} />
-          메모리 관리
-        </h2>
+      <div className="flex justify-end items-center">
         <button
           onClick={() => {
             setEditMemory(null)
@@ -87,6 +99,30 @@ export default function MemoryList() {
           <Plus size={14} />
           메모리 추가
         </button>
+      </div>
+
+      {/* 종류 탭 */}
+      <div>
+        <div className="flex gap-1 border-b border-border">
+          {TYPE_TABS.map((t) => (
+            <button
+              key={t.key ?? 'all'}
+              onClick={() => setSelectedType(t.key)}
+              className={`px-4 py-2 text-sm border-b-2 -mb-px transition-colors ${
+                selectedType === t.key
+                  ? 'border-accent-primary text-content-primary'
+                  : 'border-transparent text-content-muted hover:text-content-primary'
+              }`}
+            >
+              {t.label}
+            </button>
+          ))}
+        </div>
+        {TYPE_TABS.find((t) => t.key === selectedType)?.hint && (
+          <p className="text-xs text-content-tertiary mt-2">
+            {TYPE_TABS.find((t) => t.key === selectedType)?.hint}
+          </p>
+        )}
       </div>
 
       {/* Search & Filter */}
@@ -104,7 +140,7 @@ export default function MemoryList() {
             className="w-full pl-9 pr-3 py-2 bg-surface-secondary border border-border rounded-lg text-content-primary text-sm focus:outline-none focus:border-accent-primary"
           />
         </div>
-        <div className="flex gap-1">
+        <div className={`flex gap-1 ${selectedType === 'episodic' || selectedType === 'procedural' ? 'hidden' : ''}`}>
           {categories.map((cat) => (
             <button
               key={cat || 'all'}
@@ -154,10 +190,22 @@ export default function MemoryList() {
                         {memory.key}
                       </span>
                       <span
-                        className={`text-[10px] px-1.5 py-0.5 rounded border ${catStyle.color}`}
+                        className={`text-[10px] px-1.5 py-0.5 rounded border ${TYPE_BADGE[memory.memory_type ?? 'semantic'].color}`}
                       >
-                        {catStyle.label}
+                        {TYPE_BADGE[memory.memory_type ?? 'semantic'].label}
                       </span>
+                      {memory.memory_type !== 'episodic' && (
+                        <span
+                          className={`text-[10px] px-1.5 py-0.5 rounded border ${catStyle.color}`}
+                        >
+                          {catStyle.label}
+                        </span>
+                      )}
+                      {memory.memory_type === 'episodic' && memory.occurred_at && (
+                        <span className="text-[10px] text-content-tertiary">
+                          {new Date(memory.occurred_at).toLocaleDateString()}
+                        </span>
+                      )}
                       <span className="text-[10px] px-1.5 py-0.5 rounded bg-surface-tertiary text-content-muted">
                         {SOURCE_LABELS[memory.source]}
                       </span>
@@ -176,6 +224,19 @@ export default function MemoryList() {
                     <p className="text-sm text-content-secondary whitespace-pre-wrap break-words">
                       {memory.value}
                     </p>
+                    {memory.memory_type === 'episodic' && memory.detail && (
+                      <dl className="mt-2 space-y-0.5 text-xs text-content-secondary">
+                        {([['situation', '상황'], ['resolution', '해결'], ['outcome', '결과']] as const).map(
+                          ([k, label]) =>
+                            memory.detail?.[k] ? (
+                              <div key={k} className="flex gap-2">
+                                <dt className="text-content-tertiary w-8 flex-shrink-0">{label}</dt>
+                                <dd className="break-words">{memory.detail[k]}</dd>
+                              </div>
+                            ) : null
+                        )}
+                      </dl>
+                    )}
                     {memory.tags.length > 0 && (
                       <div className="flex items-center gap-1 mt-2">
                         <Tag size={12} className="text-content-muted" />

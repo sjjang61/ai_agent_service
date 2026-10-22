@@ -6,11 +6,29 @@ from pydantic import BaseModel, Field
 
 MemoryCategory = Literal["preference", "fact", "instruction", "general"]
 MemorySource = Literal["manual", "auto_extracted", "agent"]
+# semantic: 안정된 사실 / episodic: 특정 시점의 사건·해결 사례 / procedural: 앞으로 따를 작업 방식
+MemoryType = Literal["semantic", "episodic", "procedural"]
+
+
+class EpisodeDetail(BaseModel):
+    """에피소드(사례) 기억의 구조: 상황 → 해결 → 결과"""
+
+    situation: str = Field(default="", max_length=1000)
+    resolution: str = Field(default="", max_length=1000)
+    outcome: str = Field(default="", max_length=1000)
+
+
+def default_type_for(category: str) -> str:
+    """memory_type 이 없는 요청(구 클라이언트·에이전트 도구)은 category 로 유추한다."""
+    return "procedural" if category == "instruction" else "semantic"
 
 
 class MemoryCreate(BaseModel):
     """Schema for creating a new memory."""
 
+    memory_type: Optional[MemoryType] = None  # None 이면 category 로 유추
+    occurred_at: Optional[datetime] = None  # episodic 전용 (UTC)
+    detail: Optional[EpisodeDetail] = None  # episodic 전용
     category: MemoryCategory = "general"
     key: str = Field(..., min_length=1, max_length=200)
     value: str = Field(..., min_length=1)
@@ -22,6 +40,9 @@ class MemoryUpdate(BaseModel):
     """Schema for updating an existing memory."""
 
     category: Optional[MemoryCategory] = None
+    memory_type: Optional[MemoryType] = None
+    occurred_at: Optional[datetime] = None
+    detail: Optional[EpisodeDetail] = None
     value: Optional[str] = None
     tags: Optional[List[str]] = None
     importance: Optional[int] = Field(default=None, ge=1, le=10)
@@ -33,6 +54,9 @@ class MemoryResponse(BaseModel):
 
     id: str
     category: str
+    memory_type: str = "semantic"
+    occurred_at: Optional[datetime] = None
+    detail: Optional[EpisodeDetail] = None
     key: str
     value: str
     tags: List[str]
@@ -48,6 +72,7 @@ class MemorySearchParams(BaseModel):
 
     query: Optional[str] = None  # keyword search in key/value
     category: Optional[MemoryCategory] = None
+    memory_type: Optional[MemoryType] = None
     tags: Optional[List[str]] = None
     min_importance: Optional[int] = Field(default=None, ge=1, le=10)
     limit: int = Field(default=50, le=200)

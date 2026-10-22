@@ -1,5 +1,6 @@
 import { create } from 'zustand'
 import type { AgentStepData, Conversation, Message } from '../types/chat'
+import type { MemorySavedItem } from '../types/agent'
 
 interface ChatState {
   conversations: Conversation[]
@@ -13,6 +14,7 @@ interface ChatState {
   addMessage: (convId: string, msg: Message) => void
   updateLastAssistantMessage: (convId: string, content: string) => void
   appendStepToLastAssistantMessage: (convId: string, step: AgentStepData) => void
+  setLastAssistantMemorySaved: (convId: string, items: MemorySavedItem[]) => void
 }
 
 export const useChatStore = create<ChatState>((set) => ({
@@ -36,6 +38,15 @@ export const useChatStore = create<ChatState>((set) => ({
       const last = msgs[msgs.length - 1]
       if (last && last.role === 'assistant') {
         msgs[msgs.length - 1] = { ...last, content }
+      }
+      return { messages: { ...s.messages, [convId]: msgs } }
+    }),
+  setLastAssistantMemorySaved: (convId, items) =>
+    set((s) => {
+      const msgs = [...(s.messages[convId] || [])]
+      const last = msgs[msgs.length - 1]
+      if (last && last.role === 'assistant') {
+        msgs[msgs.length - 1] = { ...last, memory_saved: items }
       }
       return { messages: { ...s.messages, [convId]: msgs } }
     }),

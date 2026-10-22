@@ -1,4 +1,14 @@
-export type AgentEventType = 'thought' | 'tool_call' | 'tool_result' | 'token' | 'done' | 'error' | 'cancelled'
+export type AgentEventType = 'thought' | 'tool_call' | 'tool_result' | 'token' | 'done' | 'error' | 'cancelled' | 'memory_saved'
+
+/** 대화에서 자동으로 저장된 메모리 항목 */
+export interface MemorySavedItem {
+  key: string
+  value: string
+  /** semantic 사실 / procedural 작업 방식 / episodic 사례 / short 단기 */
+  memory_type?: 'semantic' | 'procedural' | 'episodic' | 'short'
+  scope?: 'long' | 'short' // 이전에 저장된 메시지와의 호환
+  action: 'added' | 'updated'
+}
 
 export interface AgentStreamEvent {
   type: AgentEventType
@@ -9,6 +19,7 @@ export interface AgentStreamEvent {
   success?: boolean
   message_id?: string
   message?: string
+  items?: MemorySavedItem[]
 }
 
 export interface AgentStep {

@@ -36,6 +36,10 @@ class Memory(Base):
         String(20), default="manual"
     )  # manual | auto_extracted | agent
     importance = Column(Integer, default=5)  # 1-10
+    # semantic(사실) | episodic(사건·해결 사례) | procedural(작업 방식 지침)
+    memory_type = Column(String(20), nullable=False, default="semantic", index=True)
+    occurred_at = Column(DateTime, nullable=True)  # episodic: 사건이 일어난 시점 (UTC naive)
+    detail = Column(JSON, nullable=True)  # episodic: {situation, resolution, outcome}
     conversation_id = Column(String(36), nullable=True)
     is_active = Column(Boolean, default=True)
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))

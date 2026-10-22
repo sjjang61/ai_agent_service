@@ -33,6 +33,7 @@ class MessageResponse(BaseModel):
     agent_steps: List[Any] = []
     tool_calls: List[Any] = []
     attachments: List[Attachment] = []
+    memory_saved: List[Any] = []  # 이 응답에서 자동 저장된 메모리 [{key, value, scope, action}]
     created_at: datetime
 
 

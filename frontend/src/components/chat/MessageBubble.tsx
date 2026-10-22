@@ -13,7 +13,7 @@ import FormCard, { extractLatestForm } from './FormCard'
 import ScheduleCard, { extractScheduleResults } from './ScheduleCard'
 import { useAgentStore } from '../../store/agentStore'
 import { useChatStore } from '../../store/chatStore'
-import { Paperclip, Bot, User, Copy, Check } from 'lucide-react'
+import { Paperclip, Bot, User, Copy, Check, Brain } from 'lucide-react'
 import { formatSize } from '../sandbox/ArtifactsPanel'
 import { useAuthStore } from '../../store/authStore'
 import WorkflowDiagram from '../workflow/WorkflowDiagram'
@@ -113,6 +113,13 @@ function convertUrlsToMarkdown(text: string): string {
     const cleanUrl = url.replace(/[.,;:!?]$/, '')
     return `[${cleanUrl}](${cleanUrl})`
   })
+}
+
+const MEMORY_TYPE_LABEL: Record<string, string> = {
+  semantic: '장기·사실',
+  procedural: '장기·작업 방식',
+  episodic: '장기·사례',
+  short: '단기',
 }
 
 export default function MessageBubble({ message }: { message: Message }) {
@@ -349,6 +356,16 @@ export default function MessageBubble({ message }: { message: Message }) {
             <span className="text-content-muted italic">...</span>
           )}
         </div>
+        {!isUser && message.memory_saved && message.memory_saved.length > 0 && (
+          <div
+            className="mt-2 text-[11px] text-content-tertiary flex items-center gap-1"
+            title={message.memory_saved
+              .map((m) => `[${MEMORY_TYPE_LABEL[m.memory_type ?? (m.scope === 'short' ? 'short' : 'semantic')]}] ${m.key}: ${m.value}`)
+              .join('\n')}
+          >
+            <Brain size={11} /> 메모리에 추가되었습니다
+          </div>
+        )}
         {!isUser && message.created_at && (
           <div className="mt-2 text-xs text-slate-500 text-right">
             {formatKoreanDateTime(message.created_at)}
