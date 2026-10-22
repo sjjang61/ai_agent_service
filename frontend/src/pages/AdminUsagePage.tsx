@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
-import { Link } from 'react-router-dom'
-import { ArrowLeft, Database, BarChart3, Users, Cpu } from 'lucide-react'
+import { Database, BarChart3, Users, Cpu } from 'lucide-react'
+import SettingsPage from '../components/skills/SettingsPage'
 import { adminApi } from '../api/admin'
 import type { UsageSummary, DailyUsage, UserUsage, ModelUsage } from '../types/admin'
 
@@ -48,16 +48,8 @@ export default function AdminUsagePage() {
   const maxTokens = Math.max(...usageData.map((d) => d.total_tokens), 1)
 
   return (
-    <div className="min-h-screen bg-surface-primary p-6">
-      <div className="max-w-7xl mx-auto">
-        {/* Header */}
-        <div className="flex items-center gap-3 mb-6">
-          <Link to="/" className="text-content-muted hover:text-content-primary transition-colors">
-            <ArrowLeft size={20} />
-          </Link>
-          <h1 className="text-xl font-bold text-content-primary">Token Usage Analytics</h1>
-        </div>
-
+    <SettingsPage active="usage" title="토큰 사용량" subtitle="LLM 호출에 쓴 토큰을 기간·사용자·모델별로 확인합니다." maxWidth={1280}>
+      <div>
         {loading ? (
           <div className="flex items-center justify-center h-64 text-content-muted">
             Loading...
@@ -253,6 +245,6 @@ export default function AdminUsagePage() {
           </>
         )}
       </div>
-    </div>
+    </SettingsPage>
   )
 }

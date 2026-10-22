@@ -1,10 +1,10 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Blocks, Bot, Box, Brain, Package, Search, Server, Wrench } from 'lucide-react'
+import { BarChart3, Blocks, BookOpen, Bot, Box, Brain, Package, Search, Server, Wrench } from 'lucide-react'
 import IconBar from '../layout/IconBar'
 import { Tile } from './common'
 
-export type CustomizeSection = 'agents' | 'tools' | 'mcp' | 'skills' | 'plugins' | 'memory' | 'sandbox'
+export type CustomizeSection = 'agents' | 'tools' | 'mcp' | 'skills' | 'plugins' | 'memory' | 'wiki' | 'sandbox' | 'usage'
 
 interface Props {
   active: CustomizeSection
@@ -21,7 +21,9 @@ const NAV: { key: CustomizeSection; label: string; icon: React.ReactNode; path: 
   { key: 'skills', label: '스킬', icon: <Package size={17} />, path: '/skills' },
   { key: 'plugins', label: '플러그인', icon: <Blocks size={17} />, path: '/plugins' },
   { key: 'memory', label: '메모리', icon: <Brain size={17} />, path: '/memory' },
+  { key: 'wiki', label: '위키', icon: <BookOpen size={17} />, path: '/wiki' },
   { key: 'sandbox', label: '샌드박스', icon: <Box size={17} />, path: '/sandbox' },
+  { key: 'usage', label: '토큰 사용량', icon: <BarChart3 size={17} />, path: '/admin/usage' },
 ]
 
 /** 맞춤 설정(플러그인/스킬) 공통 레이아웃: 아이콘 바 + 보조 사이드바 + 본문 */

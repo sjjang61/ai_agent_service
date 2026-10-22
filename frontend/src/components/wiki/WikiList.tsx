@@ -66,11 +66,7 @@ export default function WikiList() {
   return (
     <div className="space-y-4">
       {/* Header */}
-      <div className="flex justify-between items-center">
-        <h2 className="text-lg font-semibold text-content-primary flex items-center gap-2">
-          <BookOpen size={20} />
-          Personal Wiki
-        </h2>
+      <div className="flex justify-end items-center">
         <button
           onClick={() => {
             setEditEntry(null)
