@@ -9,6 +9,8 @@ import SandboxPage from './pages/SandboxPage'
 import SchedulesPage from './pages/SchedulesPage'
 import SkillsPage from './pages/SkillsPage'
 import PluginsPage from './pages/PluginsPage'
+import AgentsPage from './pages/AgentsPage'
+import AgentBuilderPage from './pages/AgentBuilderPage'
 import SpacesPage from './pages/SpacesPage'
 import PageEditorPage from './pages/PageEditorPage'
 import ToolsPage from './pages/ToolsPage'
@@ -33,6 +35,8 @@ export default function App() {
       <Route path="/schedules" element={<PrivateRoute><SchedulesPage /></PrivateRoute>} />
       <Route path="/sandbox" element={<PrivateRoute><SandboxPage /></PrivateRoute>} />
       <Route path="/skills" element={<PrivateRoute><SkillsPage /></PrivateRoute>} />
+      <Route path="/agents" element={<PrivateRoute><AgentsPage /></PrivateRoute>} />
+      <Route path="/agents/:agentId" element={<PrivateRoute><AgentBuilderPage /></PrivateRoute>} />
       <Route path="/plugins" element={<PrivateRoute><PluginsPage /></PrivateRoute>} />
       <Route path="/admin/usage" element={<PrivateRoute><AdminUsagePage /></PrivateRoute>} />
       <Route path="/tools" element={<PrivateRoute><ToolsPage /></PrivateRoute>} />

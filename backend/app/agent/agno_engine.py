@@ -19,6 +19,7 @@ from langchain_core.messages import AIMessage, BaseMessage, HumanMessage
 from langchain_core.tools import BaseTool
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.agent.prompts import agent_spec, load, render, sections
 from app.config import normalize_llm_type, settings
 
 logger = logging.getLogger(__name__)
@@ -38,32 +39,15 @@ LEGACY_TOOLS = {"file_manager", "shell_executor"}
 TEAM_EXCLUDED = {"call_sub_agent"}
 
 # 서브에이전트 정의: Team 의 멤버와 call_sub_agent 가 공유한다
+def _spec(key: str, name: str, tools: set) -> dict:
+    role, instructions = agent_spec(f"subagent_{key}")  # prompts/subagent_<key>.md: 첫 문단=역할, 나머지=지침
+    return dict(name=name, role=role, tools=tools, instructions=instructions)
+
+
 AGENT_SPECS = {
-    "research": dict(
-        name="ResearchAgent",
-        role="웹 검색·크롤링으로 최신 정보를 수집하고 출처와 함께 정리하는 전문가",
-        tools=RESEARCH_TOOLS,
-        instructions=["신뢰할 수 있는 출처를 우선하고, 찾은 내용과 URL 을 그대로 보고하세요. 없는 내용을 지어내지 마세요."],
-    ),
-    "coder": dict(
-        name="CoderAgent",
-        role="sandbox 에서 코드 작성·실행, 파일 읽기/쓰기/수정, 셸 명령을 수행하는 전문가",
-        tools=CODER_TOOLS,
-        instructions=[
-            "작업 디렉터리는 /workspace 입니다. 파일은 read_file/write_file/edit_file/grep_file/delete_file 로 다루고, 빌드·검사·변환은 exec_command 로 실행하세요.",
-            "사용자에게 파일을 전달해야 하면 publish_file(또는 write_file 의 publish=true)로 공개 다운로드 링크를 만들어 URL 을 그대로 보고하세요.",
-            "실행 결과(stdout/stderr/exit code)를 정확히 보고하세요.",
-        ],
-    ),
-    "explorer": dict(
-        name="ExplorerAgent",
-        role="작업공간의 파일·디렉터리를 읽기 전용으로 탐색(목록, 검색, 읽기)하고 구조와 핵심 내용을 요약하는 전문가",
-        tools=EXPLORER_TOOLS,
-        instructions=[
-            "읽기 전용 탐색만 하세요. exec_command 는 ls, find, tree, head, wc, du 같은 조회 명령에만 쓰고 파일을 수정·삭제하지 마세요.",
-            "찾은 파일 경로와 근거(줄 번호 포함)를 함께 보고하세요.",
-        ],
-    ),
+    "research": _spec("research", "ResearchAgent", RESEARCH_TOOLS),
+    "coder": _spec("coder", "CoderAgent", CODER_TOOLS),
+    "explorer": _spec("explorer", "ExplorerAgent", EXPLORER_TOOLS),
 }
 MAX_TOOL_OUTPUT = 20000
 
@@ -164,42 +148,70 @@ def make_agent(spec_key: str, tools: List[BaseTool], llm_type: str, model: Optio
     )
 
 
-def build_team(tools: List[BaseTool], llm_type: str, model: Optional[str], instructions: str):
+def build_team(
+    tools: List[BaseTool],
+    llm_type: str,
+    model: Optional[str],
+    instructions: str,
+    team_cfg=None,
+    max_iterations: Optional[int] = None,
+):
+    """Team 구성. team_cfg(TeamConfig) 가 없거나 mode=default 이면 기본 팀(Research/Coder/Explorer),
+    custom 이면 사용자가 정의한 서브에이전트만, none 이면 서브에이전트 없이 리더 단독으로 실행한다."""
     from agno.agent import Agent
     from agno.team import Team
 
-    limit = settings.AGENT_MAX_ITERATIONS
+    limit = max_iterations or settings.AGENT_MAX_ITERATIONS
     tools = [t for t in tools if t.name not in TEAM_EXCLUDED]
+    mode = team_cfg.mode if team_cfg else "default"
+    base_prompt = instructions
 
-    known = RESEARCH_TOOLS | CODER_TOOLS | EXPLORER_TOOLS | LEADER_TOOLS | LEGACY_TOOLS
-    mcp_direct = [t for t in tools if t.name not in known]  # AGENT mcp 모드가 direct 일 때의 개별 MCP 도구
+    def team_prompt(rule_file: str, *extra: str) -> list:
+        """Agno 는 instructions 목록을 '- 항목' 줄로 이어 붙여서, 규칙이 별도 항목으로 있으면 바로 앞의 스킬 목록 끝에
+        이어진 항목(스킬)처럼 보인다. 그래서 하나의 지침 문자열로 합치고 규칙에는 제목을 붙인다."""
+        rules = "\n".join(f"- {r}" for r in [*sections(rule_file), *extra])
+        return [base_prompt + "\n\n" + render("team_rules", rules=rules)]
 
-    members = [m for m in (make_agent(k, tools, llm_type, model) for k in AGENT_SPECS) if m is not None]
-    if mcp_direct:
-        members.append(Agent(
-            name="McpAgent",
-            role="사용자가 등록한 외부 MCP 도구(" + ", ".join(t.name for t in mcp_direct[:8]) + " 등)를 사용하는 전문가",
-            model=build_agno_model(llm_type, model), tools=[to_agno_function(t) for t in mcp_direct],
-            tool_call_limit=limit,
-        ))
+    if mode == "default":
+        known = RESEARCH_TOOLS | CODER_TOOLS | EXPLORER_TOOLS | LEADER_TOOLS | LEGACY_TOOLS
+        mcp_direct = [t for t in tools if t.name not in known]  # AGENT mcp 모드가 direct 일 때의 개별 MCP 도구
+
+        members = [m for m in (make_agent(k, tools, llm_type, model) for k in AGENT_SPECS) if m is not None]
+        if mcp_direct:
+            members.append(Agent(
+                name="McpAgent",
+                role="사용자가 등록한 외부 MCP 도구(" + ", ".join(t.name for t in mcp_direct[:8]) + " 등)를 사용하는 전문가",
+                model=build_agno_model(llm_type, model), tools=[to_agno_function(t) for t in mcp_direct],
+                tool_call_limit=limit,
+            ))
+        leader_tools = _pick(tools, LEADER_TOOLS)
+        team_instructions = team_prompt("team_default")
+    else:
+        by_name = {t.name: t for t in tools}
+        members, assigned = [], set()
+        for m in (team_cfg.members if mode == "custom" else []):
+            fns = [to_agno_function(by_name[n]) for n in m.tools if n in by_name]
+            assigned |= {n for n in m.tools if n in by_name}
+            members.append(Agent(
+                name=m.name,
+                role=m.role,
+                model=build_agno_model(llm_type, model),
+                tools=fns,
+                tool_call_limit=limit,
+                instructions=[m.instructions] if m.instructions.strip() else None,
+            ))
+        # 리더는 서브에이전트에게 배정되지 않은 모든 허용 도구를 직접 사용한다
+        leader_tools = [to_agno_function(t) for t in tools if t.name not in assigned]
+        team_instructions = team_prompt("team_custom", *([load("team_custom_delegate")] if members else []))
 
     return Team(
         name="AgentTeam",
         mode="coordinate",
         model=build_agno_model(llm_type, model),
         members=members,
-        tools=_pick(tools, LEADER_TOOLS),
+        tools=leader_tools,
         tool_call_limit=limit,
-        instructions=[
-            instructions,
-            "응답 범위: 마지막 사용자 메시지가 요청한 것에만 답하세요. 이전 대화에서 이미 처리한 요청을 다시 위임·조회·시각화하지 마세요. "
-            "요청이 없는 서술(선호·사실 공유 등)에는 팀원 위임 없이 짧게 반응하세요.",
-            "단순한 질문은 팀원에게 위임하지 말고 직접 답하세요.",
-            "도구가 필요한 작업만 적합한 팀원에게 위임하고, 팀원의 결과를 확인한 뒤 사용자에게 최종 답변을 한국어(사용자 언어)로 정리하세요.",
-            "skill 도구(load_skill, register_skill), create_widget, MCP 도구(load_mcp_tool, call_mcp_tool, run_mcp_code), "
-            "todo/narrate/form_ask_user, cli_browser_agent(브라우저 상호작용)는 직접 사용하세요. "
-            "skill 의 스크립트 실행이 필요하면 CoderAgent 에게, 파일 구조 파악은 ExplorerAgent 에게 위임하세요.",
-        ],
+        instructions=team_instructions,
         markdown=True,
     )
 
@@ -344,11 +356,19 @@ def _events_from_output(out) -> list:
 
 
 class AgnoRunner:
-    def __init__(self, tools: List[BaseTool], llm_provider: str, model: Optional[str], system_prompt: str):
+    def __init__(
+        self,
+        tools: List[BaseTool],
+        llm_provider: str,
+        model: Optional[str],
+        system_prompt: str,
+        team_cfg=None,
+        max_iterations: Optional[int] = None,
+    ):
         self.llm_type = normalize_llm_type(llm_provider)
         self.llm_provider = llm_provider
         self.model = model or settings.default_model_for(self.llm_type)
-        self.team = build_team(tools, self.llm_type, model, system_prompt)
+        self.team = build_team(tools, self.llm_type, model, system_prompt, team_cfg, max_iterations)
 
     async def stream(
         self,

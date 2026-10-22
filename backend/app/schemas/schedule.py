@@ -30,6 +30,7 @@ class TaskInput(BaseModel):
     allow_browser: bool = False
     llm_provider: Optional[str] = None
     model_name: Optional[str] = None
+    agent_id: Optional[str] = None  # 커스텀 에이전트의 발행 버전으로 실행
 
     @field_validator("run_at")
     @classmethod
@@ -62,6 +63,7 @@ class TaskUpdate(BaseModel):
     allow_browser: Optional[bool] = None
     llm_provider: Optional[str] = None
     model_name: Optional[str] = None
+    agent_id: Optional[str] = None  # 커스텀 에이전트의 발행 버전으로 실행
 
     @field_validator("run_at")
     @classmethod
@@ -109,6 +111,8 @@ class TaskResponse(BaseModel):
     allow_browser: bool
     llm_provider: Optional[str] = None
     model_name: Optional[str] = None
+    agent_id: Optional[str] = None
+    agent_name: Optional[str] = None
     next_run_at: Optional[datetime] = None
     last_run_at: Optional[datetime] = None
     last_status: Optional[str] = None

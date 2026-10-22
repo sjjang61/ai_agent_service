@@ -40,6 +40,7 @@ class ScheduledTask(Base):
     allow_browser = Column(Boolean, nullable=False, default=False)
     llm_provider = Column(String(50), nullable=True)
     model_name = Column(String(100), nullable=True)
+    agent_id = Column(String(36), nullable=True)  # 지정하면 이 에이전트의 발행 버전으로 실행
 
     next_run_at = Column(DateTime, nullable=True, index=True)  # None: 예정 없음(완료/일시중지)
     last_run_at = Column(DateTime, nullable=True)

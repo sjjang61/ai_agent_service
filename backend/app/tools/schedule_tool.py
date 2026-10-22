@@ -17,6 +17,8 @@ from pydantic import BaseModel, Field, ValidationError
 
 from langchain_core.tools import BaseTool
 
+from app.agent.prompts import load
+
 from app.config import settings
 from app.schemas.schedule import TaskInput, TaskUpdate
 from app.services import schedule_calc as calc
@@ -145,11 +147,9 @@ class ManageScheduleTool(BaseTool):
             return None  # 현재 메시지를 모르는 호출(테스트 등)은 검증하지 않는다
         q = self._norm(quote or "")
         if len(q) < 3:
-            return ("Error: request_quote 가 필요합니다. 사용자의 '마지막 메시지'에서 이 요청을 나타내는 문구(3자 이상)를 "
-                    "그대로 인용해 다시 호출하세요. 이전 대화의 요청은 이미 처리되었으므로 반복하지 마세요.")
+            return load("tool_error_quote_missing")
         if q not in self._norm(self.current_message):
-            return ("Error: request_quote 가 사용자의 마지막 메시지에 없습니다. 이 도구는 마지막 메시지가 요청한 동작에만 쓸 수 있습니다. "
-                    "이전 대화의 요청은 이미 처리되었으니 다시 실행하지 말고, 마지막 메시지에 대해서만 응답하세요.")
+            return load("tool_error_quote_mismatch")
         return None
 
     async def _find_duplicate(self, db, name, prompt, schedule_type, time, weekdays, day_of_month, interval_hours, tz):

@@ -44,6 +44,7 @@ export function emptyInput(): TaskInput {
     new_conversation_each_run: false,
     allow_mcp: false,
     allow_browser: false,
+    agent_id: null,
   }
 }
 

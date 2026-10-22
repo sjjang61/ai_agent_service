@@ -11,6 +11,7 @@ from typing import List, Optional
 from sqlalchemy import select
 
 from app.agent.memory import HISTORY_WINDOW
+from app.agent.prompts import render
 from app.config import settings
 from app.db.session import AsyncSessionLocal
 from app.models.conversation import Conversation
@@ -22,27 +23,6 @@ SUMMARY_BATCH = 4  # 밀려난 메시지가 이만큼 쌓일 때마다 요약을
 SUMMARY_MAX_CHARS = 2500
 MESSAGE_CLIP_CHARS = 1500
 SUMMARY_TIMEOUT_SECONDS = 60
-
-SUMMARY_PROMPT = """아래는 사용자와 AI 에이전트의 긴 대화에서 앞부분에 해당하는 내용입니다.
-이전 요약(있다면)과 새로 추가된 대화를 합쳐, 이후 대화에서 필요한 정보만 남긴 **새 요약**을 작성하세요.
-
-반드시 보존할 것:
-- 사용자의 목표와 요구사항, 제약 조건, 마감
-- 이미 내려진 결정과 그 이유
-- 만들거나 수정한 파일·코드·설정의 이름과 핵심 값 (경로, 함수명, 수치, URL)
-- 아직 끝나지 않은 작업과 다음 단계, 사용자가 답을 기다리는 질문
-- 해결된 문제와 원인 (같은 문제를 반복하지 않도록)
-
-버릴 것: 인사, 잡담, 도구 호출의 장황한 출력, 이미 폐기된 시도.
-
-형식: 한국어, 항목별 불릿(-), 최대 {max_chars}자. 요약만 출력하고 다른 말은 쓰지 마세요.
-
-[이전 요약]
-{previous}
-
-[새로 추가된 대화]
-{transcript}
-"""
 
 _running: set = set()  # 같은 대화의 요약이 동시에 돌지 않도록
 
@@ -70,12 +50,7 @@ def summary_context(summary: Optional[str], total_messages: int, window: int = H
     """시스템 프롬프트에 붙일 섹션. 창 안에 모두 들어오는 짧은 대화에는 붙이지 않는다."""
     if not summary or total_messages <= window:
         return ""
-    return (
-        "\n\n## 이 대화의 앞부분 요약 (오래된 메시지 요약 · 중기 기억)\n"
-        "아래는 이 대화에서 오래전에 오간 내용을 요약한 것입니다. 최근 대화와 충돌하면 최근 내용을 따르세요. "
-        "요약에 남은 작업이 적혀 있어도 사용자가 이번 메시지에서 요청하지 않았다면 새로 수행하지 마세요.\n"
-        f"{summary.strip()}\n\n"
-    )
+    return "\n\n" + render("summary_context", summary=summary.strip()) + "\n\n"
 
 
 async def _summarize(previous: str, new_messages: list) -> str:
@@ -83,7 +58,8 @@ async def _summarize(previous: str, new_messages: list) -> str:
     from app.services.memory_extractor import _content_text
 
     llm = AgentRunner(tools=[]).llm
-    prompt = SUMMARY_PROMPT.format(
+    prompt = render(
+        "summary_request",
         max_chars=SUMMARY_MAX_CHARS,
         previous=previous.strip() or "(없음)",
         transcript=_transcript(new_messages) or "(없음)",

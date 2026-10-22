@@ -16,7 +16,7 @@ function toInput(t: ScheduledTask): TaskInput {
   return {
     name: t.name, prompt: t.prompt, schedule_type: t.schedule_type, schedule_time: t.schedule_time, weekdays: t.weekdays ?? [0],
     day_of_month: t.day_of_month ?? 1, interval_hours: t.interval_hours ?? 6, run_at: t.run_at, timezone: t.timezone,
-    new_conversation_each_run: t.new_conversation_each_run, allow_mcp: t.allow_mcp, allow_browser: t.allow_browser,
+    new_conversation_each_run: t.new_conversation_each_run, allow_mcp: t.allow_mcp, allow_browser: t.allow_browser, agent_id: t.agent_id,
   }
 }
 

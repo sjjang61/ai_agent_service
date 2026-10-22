@@ -11,6 +11,7 @@ logger = logging.getLogger(__name__)
 # 사용자가 실행을 중단했을 때 저장되는 응답 끝에 붙는 안내 (UI 에도 그대로 보인다)
 CANCEL_NOTE = "_(사용자가 실행을 중단했습니다)_"
 from fastapi.responses import StreamingResponse
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.agent.orchestrator import AgentOrchestrator
@@ -31,23 +32,35 @@ from app.services.chat_service import ChatService
 router = APIRouter()
 
 
+async def _conversation_responses(convs: list, db: AsyncSession) -> List[ConversationResponse]:
+    """대화 목록 응답. 커스텀 에이전트 대화에는 에이전트 이름·아이콘·버전을 붙인다."""
+    from app.models.agent import Agent, AgentVersion
+
+    agent_ids = {c.agent_id for c in convs if c.agent_id}
+    agents, versions = {}, {}
+    if agent_ids:
+        agents = {a.id: a for a in (await db.execute(select(Agent).where(Agent.id.in_(agent_ids)))).scalars().all()}
+        vids = {c.agent_version_id for c in convs if c.agent_version_id}
+        if vids:
+            versions = {v.id: v.version for v in (await db.execute(select(AgentVersion).where(AgentVersion.id.in_(vids)))).scalars().all()}
+    out = []
+    for c in convs:
+        a = agents.get(c.agent_id) if c.agent_id else None
+        out.append(ConversationResponse(
+            id=c.id, title=c.title, llm_provider=c.llm_provider, model_name=c.model_name,
+            agent_id=c.agent_id if a else None, agent_name=a.name if a else None, agent_icon=a.icon if a else None,
+            agent_version=versions.get(c.agent_version_id), is_test=bool(c.is_test),
+            created_at=c.created_at, updated_at=c.updated_at,
+        ))
+    return out
+
+
 @router.get("/conversations", response_model=List[ConversationResponse])
 async def list_conversations(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_session),
 ):
-    convs = await ChatService.get_conversations(current_user.id, db)
-    return [
-        ConversationResponse(
-            id=c.id,
-            title=c.title,
-            llm_provider=c.llm_provider,
-            model_name=c.model_name,
-            created_at=c.created_at,
-            updated_at=c.updated_at,
-        )
-        for c in convs
-    ]
+    return await _conversation_responses(await ChatService.get_conversations(current_user.id, db), db)
 
 
 @router.post("/conversations", response_model=ConversationResponse)
@@ -57,14 +70,7 @@ async def create_conversation(
     db: AsyncSession = Depends(get_session),
 ):
     conv = await ChatService.create_conversation(current_user.id, data, db)
-    return ConversationResponse(
-        id=conv.id,
-        title=conv.title,
-        llm_provider=conv.llm_provider,
-        model_name=conv.model_name,
-        created_at=conv.created_at,
-        updated_at=conv.updated_at,
-    )
+    return (await _conversation_responses([conv], db))[0]
 
 
 @router.delete("/conversations/{conversation_id}")
@@ -114,6 +120,23 @@ async def send_message(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_session),
 ):
+    from app.agent.agent_runtime import memory_enabled
+    from app.models.conversation import Conversation
+    from app.schemas.agent import AgentConfig
+    from app.services.agent_service import AgentService
+
+    conv = await db.get(Conversation, conversation_id)
+    if conv is None or conv.user_id != current_user.id:
+        raise HTTPException(status_code=404, detail="대화를 찾을 수 없습니다")
+    override = None
+    if data.agent_config is not None and conv.is_test:  # 저장하지 않은 편집 내용으로 미리보기
+        try:
+            override = AgentConfig.model_validate(data.agent_config)
+        except Exception as e:
+            raise HTTPException(status_code=422, detail=f"에이전트 설정이 올바르지 않습니다: {e}")
+    runtime = await AgentService.runtime_for_conversation(conv, db, override)
+    use_memory_extraction = memory_enabled(runtime) and not conv.is_test
+
     attachments = validate_attachments(data.attachments)
     if not data.content.strip() and not attachments:
         raise HTTPException(status_code=400, detail="메시지 또는 첨부 파일이 필요합니다")
@@ -135,6 +158,7 @@ async def send_message(
             llm_provider=data.llm_provider,
             model=data.model,
             user_timezone=data.timezone,
+            runtime=runtime,
         )
         full_response = ""
         agent_steps = []
@@ -179,7 +203,7 @@ async def send_message(
 
             # 메모리 자동 추출: 응답은 이미 전달했으므로 사용자는 기다리지 않는다.
             # 저장된 항목이 있으면 같은 스트림으로 알려 주고 메시지에도 남긴다 (새로고침 후에도 표시).
-            if full_response and not has_error:
+            if full_response and not has_error and use_memory_extraction:
                 from app.services.memory_extractor import maybe_extract_memories
                 from app.db.session import AsyncSessionLocal
 

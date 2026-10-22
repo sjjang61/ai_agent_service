@@ -223,7 +223,7 @@ ai-agent-platform/
 │   │   │   ├── react_agent.py      # LangChain create_react_agent 래퍼
 │   │   │   ├── streaming.py        # Agent 스트리밍 핸들러
 │   │   │   ├── state.py            # Agent State 정의 (LangGraph)
-│   │   │   ├── prompts.py          # 시스템 프롬프트 템플릿
+│   │   │   ├── prompts/            # 모든 프롬프트(.md)와 로더 (prompts/README.md 참고)
 │   │   │   └── memory.py           # 대화 메모리 관리
 │   │   │
 │   │   ├── mcp/                    # MCP 클라이언트
@@ -744,7 +744,7 @@ class AgentOrchestrator:
             yield chunk
 ```
 
-### 7.4 프롬프트 설계 (`app/agent/prompts.py`)
+### 7.4 프롬프트 설계 (`app/agent/prompts/`)
 
 ```python
 REACT_TEMPLATE = """

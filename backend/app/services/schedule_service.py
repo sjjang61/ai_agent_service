@@ -117,6 +117,12 @@ class ScheduleService:
         active = {x for (x,) in (await db.execute(
             select(TaskRun.task_id).where(TaskRun.task_id.in_(ids), TaskRun.status.in_(("queued", "running")))
         )).all()}
+        from app.models.agent import Agent
+
+        agent_ids = {t.agent_id for t in tasks if t.agent_id}
+        agent_names = {}
+        if agent_ids:
+            agent_names = {a.id: a.name for a in (await db.execute(select(Agent).where(Agent.id.in_(agent_ids)))).scalars().all()}
         out = []
         for t in tasks:
             last = (await db.execute(
@@ -130,6 +136,7 @@ class ScheduleService:
                 status=status_of(t), enabled=t.enabled, running=t.id in active,
                 conversation_id=t.conversation_id, new_conversation_each_run=t.new_conversation_each_run,
                 allow_mcp=t.allow_mcp, allow_browser=t.allow_browser, llm_provider=t.llm_provider, model_name=t.model_name,
+                agent_id=t.agent_id, agent_name=agent_names.get(t.agent_id),
                 next_run_at=aware(t.next_run_at), last_run_at=aware(t.last_run_at), last_status=t.last_status,
                 consecutive_failures=t.consecutive_failures, unread_count=int(unread.get(t.id, 0)),
                 last_run=ScheduleService.run_response(last) if last else None, created_at=aware(t.created_at),
@@ -167,6 +174,8 @@ class ScheduleService:
         for k in ("name", "prompt", "new_conversation_each_run", "allow_mcp", "allow_browser", "llm_provider", "model_name"):
             if k in patch and patch[k] is not None:
                 setattr(t, k, patch[k].strip() if isinstance(patch[k], str) else patch[k])
+        if "agent_id" in patch:  # 명시적으로 null 을 보내면 기본 에이전트로 되돌린다
+            t.agent_id = patch["agent_id"]
         if schedule_changed:
             t.next_run_at = _next_run(merged, now_utc()) if t.enabled else None
             if t.enabled:

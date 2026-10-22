@@ -4,6 +4,11 @@ export interface Conversation {
   title: string
   llm_provider: string
   model_name: string
+  agent_id?: string | null
+  agent_name?: string | null
+  agent_icon?: string | null
+  agent_version?: number | null
+  is_test?: boolean
   created_at: string
   updated_at: string
 }

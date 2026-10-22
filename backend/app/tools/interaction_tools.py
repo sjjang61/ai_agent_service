@@ -7,6 +7,8 @@ from pydantic import BaseModel, Field
 
 from langchain_core.tools import BaseTool
 
+from app.agent.prompts import load
+
 from app.core.forms import PendingForms, normalize_questions
 
 FORM_TIMEOUT_SECONDS = 600
@@ -187,7 +189,7 @@ class HeadlessAskUserTool(_Base):
         return json.dumps(
             {
                 "unavailable": True,
-                "message": "예약 실행 중이라 사용자에게 질문할 수 없습니다. 필요한 정보는 합리적으로 가정해 진행하고, 가정한 내용을 결과에 명시하세요.",
+                "message": load("tool_result_headless_ask"),
             },
             ensure_ascii=False,
         )

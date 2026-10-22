@@ -92,10 +92,10 @@ export default function TaskDetail({ task, runs, busy, onRunNow, onToggle, onEdi
         <Info label="시간대">{task.timezone}</Info>
         <Info label="옵션">
           <div className="flex flex-wrap gap-1.5">
-            {[task.new_conversation_each_run && '실행마다 새 대화', task.allow_mcp && 'MCP 허용', task.allow_browser && '브라우저 허용'].filter(Boolean).map((x) => (
+            {[task.agent_name && `에이전트: ${task.agent_name}`, task.new_conversation_each_run && '실행마다 새 대화', task.allow_mcp && 'MCP 허용', task.allow_browser && '브라우저 허용'].filter(Boolean).map((x) => (
               <span key={String(x)} className="px-2 py-0.5 rounded-full bg-surface-hover text-[11px] text-content-secondary">{x}</span>
             ))}
-            {!task.new_conversation_each_run && !task.allow_mcp && !task.allow_browser && <span className="text-content-tertiary">기본</span>}
+            {!task.agent_name && !task.new_conversation_each_run && !task.allow_mcp && !task.allow_browser && <span className="text-content-tertiary">기본</span>}
           </div>
         </Info>
         <div className="col-span-2">

@@ -6,6 +6,8 @@ export const chatApi = {
     title?: string
     llm_provider?: string
     model_name?: string
+    agent_id?: string
+    is_test?: boolean
   }) => apiClient.post('/chat/conversations', data),
   deleteConversation: (id: string) => apiClient.delete(`/chat/conversations/${id}`),
   answerForm: (id: string, data: { answers?: Record<string, string | string[]>; cancelled?: boolean }) =>

@@ -11,7 +11,8 @@ import { useChatStore } from '../../store/chatStore'
 import { useAgentStore } from '../../store/agentStore'
 
 export default function ChatLayout() {
-  const { currentConversationId } = useChatStore()
+  const { currentConversationId, conversations } = useChatStore()
+  const currentConversation = conversations.find((c) => c.id === currentConversationId)
   const { isRunning, currentSteps, selectedStep, artifactsOpen, toggleArtifacts, workspaceRefreshTick } = useAgentStore()
 
   return (
@@ -24,6 +25,15 @@ export default function ChatLayout() {
 
       {/* Main Content */}
       <main className="flex-1 flex flex-col min-w-0 relative bg-surface-primary">
+        {/* 커스텀 에이전트로 시작한 대화: 어떤 에이전트의 어떤 버전인지 표시 */}
+        {currentConversation?.agent_name && (
+          <div className="absolute top-3 left-4 z-10 flex items-center gap-1.5 px-2.5 py-1.5 rounded-[var(--radius-md)] text-xs border bg-surface-secondary border-border text-content-secondary">
+            <span>{currentConversation.agent_icon}</span>
+            <span className="font-medium text-content-primary">{currentConversation.agent_name}</span>
+            {currentConversation.agent_version != null && <span className="text-content-tertiary">v{currentConversation.agent_version}</span>}
+          </div>
+        )}
+
         {/* Artifacts Toggle Button */}
         <button
           onClick={() => toggleArtifacts()}

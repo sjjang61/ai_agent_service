@@ -26,11 +26,12 @@ async def get_session_context():
 
 
 async def init_db():
-    from app.models import user, conversation, message, mcp_config, tool_execution, sandbox, skill, plugin, memory, scheduled_task, space  # noqa
+    from app.models import user, conversation, message, mcp_config, tool_execution, sandbox, skill, plugin, memory, scheduled_task, space, agent  # noqa
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
         await conn.run_sync(_ensure_memory_columns)
         await conn.run_sync(_ensure_conversation_columns)
+        await conn.run_sync(_ensure_agent_columns)
 
 
 def _ensure_memory_columns(sync_conn) -> None:
@@ -58,3 +59,21 @@ def _ensure_conversation_columns(sync_conn) -> None:
         sync_conn.execute(text("ALTER TABLE conversations ADD COLUMN summary TEXT NULL"))
     if "summary_count" not in cols:
         sync_conn.execute(text("ALTER TABLE conversations ADD COLUMN summary_count INT NOT NULL DEFAULT 0"))
+
+
+def _ensure_agent_columns(sync_conn) -> None:
+    """커스텀 에이전트 연결 컬럼 보강 (alembic g7a1b2c3d4e5 와 같은 변경)."""
+    from sqlalchemy import inspect, text
+
+    insp = inspect(sync_conn)
+    conv = {c["name"] for c in insp.get_columns("conversations")}
+    if "agent_id" not in conv:
+        sync_conn.execute(text("ALTER TABLE conversations ADD COLUMN agent_id VARCHAR(36) NULL"))
+        sync_conn.execute(text("CREATE INDEX ix_conversations_agent_id ON conversations (agent_id)"))
+    if "agent_version_id" not in conv:
+        sync_conn.execute(text("ALTER TABLE conversations ADD COLUMN agent_version_id VARCHAR(36) NULL"))
+    if "is_test" not in conv:
+        sync_conn.execute(text("ALTER TABLE conversations ADD COLUMN is_test BOOLEAN NOT NULL DEFAULT 0"))
+    task = {c["name"] for c in insp.get_columns("scheduled_tasks")}
+    if "agent_id" not in task:
+        sync_conn.execute(text("ALTER TABLE scheduled_tasks ADD COLUMN agent_id VARCHAR(36) NULL"))

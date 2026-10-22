@@ -1,10 +1,10 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Blocks, Box, Brain, Package, Search, Server, Wrench } from 'lucide-react'
+import { Blocks, Bot, Box, Brain, Package, Search, Server, Wrench } from 'lucide-react'
 import IconBar from '../layout/IconBar'
 import { Tile } from './common'
 
-export type CustomizeSection = 'tools' | 'mcp' | 'skills' | 'plugins' | 'memory' | 'sandbox'
+export type CustomizeSection = 'agents' | 'tools' | 'mcp' | 'skills' | 'plugins' | 'memory' | 'sandbox'
 
 interface Props {
   active: CustomizeSection
@@ -15,6 +15,7 @@ interface Props {
 }
 
 const NAV: { key: CustomizeSection; label: string; icon: React.ReactNode; path: string }[] = [
+  { key: 'agents', label: '에이전트', icon: <Bot size={17} />, path: '/agents' },
   { key: 'tools', label: '도구', icon: <Wrench size={17} />, path: '/tools' },
   { key: 'mcp', label: 'MCP 설정', icon: <Server size={17} />, path: '/mcp' },
   { key: 'skills', label: '스킬', icon: <Package size={17} />, path: '/skills' },

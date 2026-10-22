@@ -10,6 +10,7 @@ from fastapi import HTTPException
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.agent.prompts import render
 from app.config import settings
 from app.core.runs import RunRegistry, cancellable_events
 from app.models.conversation import Conversation
@@ -127,12 +128,17 @@ async def execute_run(run_id: str) -> None:
             run.status, run.started_at = "running", started
             await db.commit()
 
-            header = f"[예약 실행 · {_local_label(task, started, '%Y-%m-%d %H:%M')} {task.timezone}]"
-            user_input = f"{header}\n{task.prompt}"
+            user_input = render(
+                "scheduled_run", when=_local_label(task, started, "%Y-%m-%d %H:%M"), timezone=task.timezone, prompt=task.prompt
+            )
             await ChatService.save_message(conv_id, "user", user_input, db)
 
+            from app.services.agent_service import AgentService
+
+            runtime = await AgentService.runtime_for_task(task, db)  # 지정된 에이전트의 최신 발행 버전 (없으면 기본 에이전트)
             orchestrator = AgentOrchestrator(
                 task.user_id,
+                runtime=runtime,
                 llm_provider=task.llm_provider,
                 model=task.model_name,
                 headless=True,

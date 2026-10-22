@@ -1,4 +1,7 @@
 import { useMemo, useState } from 'react'
+import { useQuery } from '@tanstack/react-query'
+import { agentsApi } from '../../api/agents'
+import type { CustomAgentSummary } from '../../types/customAgent'
 import { Loader2, TriangleAlert } from 'lucide-react'
 import type { TaskInput } from '../../types/schedule'
 import { SCHEDULE_TYPE_OPTIONS, WEEKDAY_LABELS, allTimezones, errorText } from './scheduleUtils'
@@ -49,6 +52,11 @@ export default function TaskForm({ mode, initial, onSubmit, onCancel }: Props) {
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const zones = useMemo(allTimezones, [])
+  const { data: agents = [] } = useQuery<CustomAgentSummary[]>({
+    queryKey: ['agents'],
+    queryFn: async () => (await agentsApi.list()).data,
+  })
+  const publishedAgents = agents.filter((a) => a.published_version !== null)
   const set = <K extends keyof TaskInput>(k: K, val: TaskInput[K]) => setV((s) => ({ ...s, [k]: val }))
 
   const t = v.schedule_type
@@ -158,6 +166,15 @@ export default function TaskForm({ mode, initial, onSubmit, onCancel }: Props) {
           </datalist>
         </Field>
       )}
+
+      <Field label="에이전트" hint="지정하면 그 에이전트의 최신 발행 버전(프롬프트·도구·스킬·MCP 설정)으로 실행됩니다. 발행된 에이전트만 고를 수 있습니다.">
+        <select value={v.agent_id ?? ''} onChange={(e) => set('agent_id', e.target.value || null)} className={inputCls}>
+          <option value="">기본 에이전트</option>
+          {publishedAgents.map((a) => (
+            <option key={a.id} value={a.id}>{a.icon} {a.name} (v{a.published_version})</option>
+          ))}
+        </select>
+      </Field>
 
       <div className="space-y-3 pt-1">
         <Check checked={v.new_conversation_each_run} onChange={(x) => set('new_conversation_each_run', x)} label="실행마다 새 대화로 저장" hint="끄면 한 대화에 결과가 이어져서 이전 결과와 비교할 수 있습니다." />

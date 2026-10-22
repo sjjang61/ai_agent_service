@@ -12,12 +12,11 @@ from app.schemas.chat import ConversationCreate
 
 class ChatService:
     @staticmethod
-    async def get_conversations(user_id: str, db: AsyncSession) -> List[Conversation]:
-        result = await db.execute(
-            select(Conversation)
-            .where(Conversation.user_id == user_id)
-            .order_by(Conversation.updated_at.desc())
-        )
+    async def get_conversations(user_id: str, db: AsyncSession, include_test: bool = False) -> List[Conversation]:
+        query = select(Conversation).where(Conversation.user_id == user_id)
+        if not include_test:
+            query = query.where(Conversation.is_test.is_(False))  # 에이전트 빌더의 미리보기 대화는 목록에서 숨긴다
+        result = await db.execute(query.order_by(Conversation.updated_at.desc()))
         return list(result.scalars().all())
 
     @staticmethod
@@ -25,11 +24,24 @@ class ChatService:
         user_id: str, data: ConversationCreate, db: AsyncSession
     ) -> Conversation:
         llm_type = normalize_llm_type(data.llm_provider or settings.LLM_TYPE)
+        agent_id = agent_version_id = None
+        if data.agent_id:
+            from app.services.agent_service import AgentService
+
+            if data.is_test:  # 미리보기: 발행 여부와 무관하게 초안으로 실행
+                agent = await AgentService.get(user_id, data.agent_id, db)
+            else:  # 일반 대화: 지금 발행된 버전에 고정한다
+                agent, ver = await AgentService.require_published(user_id, data.agent_id, db)
+                agent_version_id = ver.id
+            agent_id = agent.id
         conv = Conversation(
             user_id=user_id,
             title=data.title,
             llm_provider=llm_type,
             model_name=data.model_name or settings.default_model_for(llm_type),
+            agent_id=agent_id,
+            agent_version_id=agent_version_id,
+            is_test=bool(data.is_test and agent_id),
         )
         db.add(conv)
         await db.commit()

@@ -163,7 +163,7 @@ ai_agent_service/
 │       │   ├── react_agent.py   # LangChain create_react_agent 래퍼
 │       │   ├── streaming.py     # astream_events 핸들러
 │       │   ├── memory.py        # 대화 메모리 (sliding window)
-│       │   └── prompts.py       # ReAct 프롬프트 템플릿
+│       │   └── prompts/         # 모든 LLM 프롬프트(.md)와 로더 — 목록은 prompts/README.md
 │       │
 │       ├── mcp/               # MCP 클라이언트
 │       │   ├── client.py      # MCPClient (stdio/SSE 전송)

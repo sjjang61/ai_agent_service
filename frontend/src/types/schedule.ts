@@ -35,6 +35,8 @@ export interface ScheduledTask {
   new_conversation_each_run: boolean
   allow_mcp: boolean
   allow_browser: boolean
+  agent_id: string | null
+  agent_name: string | null
   next_run_at: string | null
   last_run_at: string | null
   last_status: string | null
@@ -58,4 +60,5 @@ export interface TaskInput {
   new_conversation_each_run: boolean
   allow_mcp: boolean
   allow_browser: boolean
+  agent_id: string | null
 }

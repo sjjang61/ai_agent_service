@@ -24,8 +24,17 @@ async def list_tasks(current_user: User = Depends(get_current_user), db: AsyncSe
     return await ScheduleService.to_responses(await ScheduleService.list_tasks(current_user.id, db), db)
 
 
+async def _check_agent(user_id: str, agent_id, db: AsyncSession) -> None:
+    """예약에 지정하는 에이전트는 내 것이고 발행되어 있어야 한다."""
+    if agent_id:
+        from app.services.agent_service import AgentService
+
+        await AgentService.require_published(user_id, agent_id, db)
+
+
 @router.post("", response_model=TaskResponse)
 async def create_task(data: TaskInput, current_user: User = Depends(get_current_user), db: AsyncSession = Depends(get_session)):
+    await _check_agent(current_user.id, data.agent_id, db)
     return await _one(await ScheduleService.create_task(current_user.id, data, db), db)
 
 
@@ -51,6 +60,8 @@ async def update_task(
     task_id: str, data: TaskUpdate, current_user: User = Depends(get_current_user), db: AsyncSession = Depends(get_session)
 ):
     task = await ScheduleService.get_task(task_id, current_user.id, db)
+    if "agent_id" in data.model_fields_set:
+        await _check_agent(current_user.id, data.agent_id, db)
     return await _one(await ScheduleService.update_task(task, data, db), db)
 
 

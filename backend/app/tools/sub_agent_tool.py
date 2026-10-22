@@ -10,6 +10,8 @@ from pydantic import BaseModel, Field
 
 from langchain_core.tools import BaseTool
 
+from app.agent.prompts import render
+
 SUB_AGENT_TIMEOUT = 300
 
 
@@ -48,7 +50,7 @@ class CallSubAgentTool(BaseTool):
             agent = make_agent(agent_type, self.tools, self.llm_provider, self.model)
             if agent is None:
                 return f"Error: '{agent_type}' sub-agent has no usable tools in this session"
-            prompt = task if not context else f"{task}\n\n[Context]\n{context}"
+            prompt = task if not context else render("sub_agent_task", task=task, context=context)
             out = await asyncio.wait_for(agent.arun(prompt), timeout=SUB_AGENT_TIMEOUT)
             text = str(getattr(out, "content", "") or "").strip()
             return text[:20000] if text else "(sub-agent returned no result)"

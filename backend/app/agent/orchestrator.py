@@ -4,9 +4,12 @@ from typing import AsyncIterator, Optional
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.agent.memory import ConversationMemory
-from app.agent.prompts import SYSTEM_PROMPT
+from app.agent.prompts import SYSTEM_PROMPT, load, render
 from app.agent.streaming import AgentStreamingHandler
 from app.config import normalize_llm_type, settings
+from app.agent.agent_runtime import (
+    AgentRuntime, compose_prompt, filter_skills, filter_tools, memory_enabled, mcp_enabled, resolve_model,
+)
 from app.tools.skill_tool import RegisterSkillTool, build_skills_prompt
 
 logger = logging.getLogger(__name__)
@@ -22,19 +25,11 @@ def _build_memory_context(long_term: dict, short_term: dict) -> str:
 
     facts = long_term.get("semantic") or []
     if facts:
-        sections.append(
-            "## 사용자 정보 (장기 기억 · 사실)\n"
-            "아래는 사용자에 대해 알고 있는 사실입니다. 관련이 있을 때 자연스럽게 반영하세요.\n"
-            + "\n".join(f"- {m.key}: {m.value}" for m in facts)
-        )
+        sections.append(render("memory_facts", items="\n".join(f"- {m.key}: {m.value}" for m in facts)))
 
     procedures = long_term.get("procedural") or []
     if procedures:
-        sections.append(
-            "## 작업 방식 (장기 기억 · 절차) — 반드시 따르세요\n"
-            "사용자가 원하는 일하는 방식입니다. 해당되는 모든 응답에 적용하세요.\n"
-            + "\n".join(f"- {m.value}" for m in procedures)
-        )
+        sections.append(render("memory_procedures", items="\n".join(f"- {m.value}" for m in procedures)))
 
     episodes = long_term.get("episodic") or []
     if episodes:
@@ -45,18 +40,10 @@ def _build_memory_context(long_term: dict, short_term: dict) -> str:
             head = f"- ({when.strftime('%Y-%m') if when else '시점 미상'}) {m.value}"
             parts = [f"{label}: {d[k]}" for k, label in (("situation", "상황"), ("resolution", "해결"), ("outcome", "결과")) if d.get(k)]
             lines.append(head + (" [" + " / ".join(parts) + "]" if parts else ""))
-        sections.append(
-            "## 관련 과거 사례 (장기 기억 · 경험)\n"
-            "현재 요청과 비슷한 이전 경험입니다. 참고만 하고, 지금 상황과 맞지 않으면 무시하세요.\n"
-            + "\n".join(lines)
-        )
+        sections.append(render("memory_episodes", items="\n".join(lines)))
 
     if short_term:
-        sections.append(
-            "## 현재 작업 맥락 (단기 기억 · 이 대화에서만 유효)\n"
-            "참고용 맥락입니다. 사용자가 이번 메시지에서 요청하지 않았다면 여기 적힌 작업을 새로 수행하지 마세요.\n"
-            + "\n".join(f"- {k}: {v}" for k, v in short_term.items())
-        )
+        sections.append(render("memory_short_term", items="\n".join(f"- {k}: {v}" for k, v in short_term.items())))
 
     if sections:
         return "\n\n" + "\n\n".join(sections) + "\n\n"
@@ -84,18 +71,7 @@ def _time_context(tz_name: str) -> str:
 
     now = datetime.now(ZoneInfo(tz_name))
     weekday = "월화수목금토일"[now.weekday()]
-    return f"\n\n## Current time\n{now:%Y-%m-%d %H:%M} ({weekday}요일, {tz_name})\n"
-
-
-# 예약 작업처럼 사용자가 지켜보지 않는 실행에 덧붙이는 지침
-HEADLESS_PROMPT = """
-
-## Unattended run
-이 실행은 예약된 작업이며 사용자가 지켜보고 있지 않습니다.
-- 사용자에게 질문하지 마세요. 정보가 부족하면 합리적으로 가정해 끝까지 진행하고, 가정한 내용을 결과에 밝히세요.
-- 결과는 나중에 읽는 사람을 위한 완결된 보고서로 작성하세요 (무엇을 확인했는지, 핵심 결과, 필요한 후속 조치).
-- 같은 대화의 이전 실행 결과가 있으면 비교해서 달라진 점을 알려주세요.
-"""
+    return "\n\n" + render("time_context", now=f"{now:%Y-%m-%d %H:%M} ({weekday}요일, {tz_name})") + "\n"
 
 
 class AgentOrchestrator:
@@ -108,14 +84,17 @@ class AgentOrchestrator:
         allow_mcp: bool = True,
         allow_browser: bool = True,
         user_timezone: Optional[str] = None,
+        runtime: Optional["AgentRuntime"] = None,
     ):
+        self.runtime = runtime  # 커스텀 에이전트 설정 (None 이면 기본 에이전트)
         self.user_timezone = _valid_timezone(user_timezone)
         self.headless = headless
-        self.allow_mcp = allow_mcp
+        self.allow_mcp = allow_mcp and mcp_enabled(runtime)
         self.allow_browser = allow_browser
         self.user_id = user_id
-        self.llm_provider = normalize_llm_type(llm_provider or settings.LLM_TYPE)
-        self.model = model or settings.default_model_for(self.llm_provider)
+        provider, model_id = resolve_model(runtime, llm_provider, model)
+        self.llm_provider = normalize_llm_type(provider or settings.LLM_TYPE)
+        self.model = model_id or settings.default_model_for(self.llm_provider)
 
     async def _get_active_skills(self, db: AsyncSession) -> list:
         from app.services.skill_service import SkillService
@@ -129,7 +108,7 @@ class AgentOrchestrator:
             skills = await SkillService.list_skills(self.user_id, db)
         except Exception:
             return []
-        return [s for s in skills if s.is_active]
+        return filter_skills([s for s in skills if s.is_active], self.runtime)
 
     async def _get_tools(
         self, db: AsyncSession, skills: list, conversation_id: str = "", current_message: str = ""
@@ -178,27 +157,44 @@ class AgentOrchestrator:
             pass  # 예약 작업은 작업별로 MCP 사용을 허용한 경우에만 MCP 도구를 노출한다
         elif settings.MCP_TOOL_MODE == "lazy":
             # 스키마 전체를 싣지 않고 load_mcp_tool / call_mcp_tool / run_mcp_code 로 필요할 때만 조회·호출
+            from app.mcp.policy import apply_policy, policy_from_config
+
+            policy = policy_from_config(self.runtime.config.mcp) if self.runtime else None
             try:
-                clients = await MCPSessionManager.get_clients(self.user_id, db)
+                clients = apply_policy(await MCPSessionManager.get_clients(self.user_id, db), policy)
             except Exception:
                 clients = {}
             if clients:
                 tools += [
-                    LoadMcpToolTool(user_id=self.user_id),
-                    CallMcpToolTool(user_id=self.user_id),
-                    RunMcpCodeTool(user_id=self.user_id),
+                    LoadMcpToolTool(user_id=self.user_id, mcp_policy=policy),
+                    CallMcpToolTool(user_id=self.user_id, mcp_policy=policy),
+                    RunMcpCodeTool(user_id=self.user_id, mcp_policy=policy),
                 ]
                 mcp_prompt = build_mcp_catalog_prompt(clients)
         else:
             try:
-                tools += await MCPSessionManager.get_tools(self.user_id, db)
+                if self.runtime and self.runtime.config.mcp.mode != "all":
+                    from app.mcp.policy import apply_policy, policy_from_config
+
+                    clients = apply_policy(
+                        await MCPSessionManager.get_clients(self.user_id, db), policy_from_config(self.runtime.config.mcp)
+                    )
+                    for c in clients.values():
+                        tools += c.to_langchain_tools()
+                else:
+                    tools += await MCPSessionManager.get_tools(self.user_id, db)
             except Exception:
                 pass
+
+        # 커스텀 에이전트의 도구 허용 목록 적용
+        tools = filter_tools(tools, self.runtime)
 
         # 서브에이전트는 call_sub_agent 를 제외한 도구를 사용한다 (재귀 위임 방지)
         tools.append(
             CallSubAgentTool(tools=list(tools), llm_provider=self.llm_provider, model=self.model)
         )
+        if self.runtime and self.runtime.config.tools.mode == "selected":
+            tools = [t for t in tools if t.name != "call_sub_agent"]
         return tools, mcp_prompt
 
     async def run(
@@ -243,21 +239,23 @@ class AgentOrchestrator:
                 yield {"type": "token", "content": reply}
                 return
 
-        # Load user memories for context injection
-        try:
-            long_term_memories = await MemoryService.get_prompt_memories(
-                self.user_id, db, user_input
-            )
-        except Exception:
-            logger.exception("[orchestrator] 장기 메모리 로드 실패")
-            long_term_memories = {}
+        # Load user memories for context injection (에이전트 설정에서 끌 수 있다. 메모리는 에이전트가 아니라 사용자 것이다)
+        long_term_memories: dict = {}
+        short_term_memories: dict = {}
+        if memory_enabled(self.runtime):
+            try:
+                long_term_memories = await MemoryService.get_prompt_memories(
+                    self.user_id, db, user_input
+                )
+            except Exception:
+                logger.exception("[orchestrator] 장기 메모리 로드 실패")
 
-        try:
-            short_term_memories = await ShortTermMemoryService.get_all(
-                self.user_id, conversation_id
-            )
-        except Exception:
-            short_term_memories = {}
+            try:
+                short_term_memories = await ShortTermMemoryService.get_all(
+                    self.user_id, conversation_id
+                )
+            except Exception:
+                short_term_memories = {}
 
         memory_context = _build_memory_context(long_term_memories, short_term_memories)
         try:
@@ -271,13 +269,17 @@ class AgentOrchestrator:
 
         skills = await self._get_active_skills(db)
         tools, mcp_prompt = await self._get_tools(db, skills, conversation_id, user_input)
-        system_prompt = SYSTEM_PROMPT + _time_context(self.user_timezone) + memory_context + build_skills_prompt(skills) + mcp_prompt + (HEADLESS_PROMPT if self.headless else "")
+        system_prompt = compose_prompt(SYSTEM_PROMPT, self.runtime) + _time_context(self.user_timezone) + memory_context + build_skills_prompt(skills) + mcp_prompt + ("\n\n" + load("headless") if self.headless else "")
 
         if settings.AGENT_ENGINE == "agno":
             from app.agent.agno_engine import AgnoRunner
 
             try:
-                runner = AgnoRunner(tools, self.llm_provider, self.model, system_prompt)
+                runner = AgnoRunner(
+                    tools, self.llm_provider, self.model, system_prompt,
+                    team_cfg=self.runtime.config.team if self.runtime else None,
+                    max_iterations=self.runtime.config.model.max_iterations if self.runtime else None,
+                )
             except Exception as e:
                 yield {"type": "error", "message": str(e)}
                 return

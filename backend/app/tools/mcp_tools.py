@@ -12,6 +12,8 @@ from pydantic import BaseModel, Field
 
 from langchain_core.tools import BaseTool
 
+from app.agent.prompts import render
+
 MAX_RESULT_CHARS = 30000
 MAX_RPC_RESULT_BYTES = 1024 * 1024  # MCP 호출 결과 크기 제한 (1MB)
 RPC_PREFIX = "@@MCP_RPC@@"
@@ -68,12 +70,13 @@ def _truncate(text: str, limit: int = MAX_RESULT_CHARS) -> str:
     return f"{text[:limit]}\n...[{len(text) - limit} chars truncated. For large results use run_mcp_code to filter/aggregate]"
 
 
-async def _clients(user_id: str) -> dict:
+async def _clients(user_id: str, policy=None) -> dict:
     from app.db.session import AsyncSessionLocal
     from app.mcp.manager import MCPSessionManager
+    from app.mcp.policy import apply_policy
 
     async with AsyncSessionLocal() as db:
-        return await MCPSessionManager.get_clients(user_id, db)
+        return apply_policy(await MCPSessionManager.get_clients(user_id, db), policy)
 
 
 def _tool_map(client) -> dict:
@@ -81,16 +84,10 @@ def _tool_map(client) -> dict:
 
 
 def build_mcp_catalog_prompt(clients: dict, max_tools: int = 150) -> str:
-    """시스템 프롬프트용 MCP 도구 목록 (이름 + 한 줄 설명만)."""
+    """시스템 프롬프트용 MCP 도구 목록 (이름 + 한 줄 설명만). 머리말은 prompts/mcp_catalog.md."""
     if not clients:
         return ""
-    lines = [
-        "",
-        "## MCP tools",
-        "사용자가 등록한 외부 MCP 도구입니다. 스키마는 목록에 없으므로 사용 전에 `load_mcp_tool` 로 입력·출력 형식을 확인하고, "
-        "`call_mcp_tool` 로 한 번 호출하세요. 여러 호출을 연결하거나 결과가 커서 집계해야 하면 `run_mcp_code` 를 사용하세요.",
-        "",
-    ]
+    lines = []
     count = 0
     for server, client in clients.items():
         lines.append(f"- server `{server}`:")
@@ -101,11 +98,12 @@ def build_mcp_catalog_prompt(clients: dict, max_tools: int = 150) -> str:
             desc = " ".join((t.description or "").split())[:100]
             lines.append(f"  - {t.name}: {desc}" if desc else f"  - {t.name}")
             count += 1
-    return "\n".join(lines)
+    return "\n" + render("mcp_catalog", tools="\n".join(lines))
 
 
 class _AsyncTool(BaseTool):
     user_id: str = ""
+    mcp_policy: Optional[dict] = None  # 커스텀 에이전트의 MCP 허용 정책 (None 이면 제한 없음)
 
     def _run(self, *args, **kwargs) -> str:
         return "This tool supports async execution only"
@@ -126,7 +124,7 @@ class LoadMcpToolTool(_AsyncTool):
     args_schema: type[BaseModel] = LoadMcpToolInput
 
     async def _arun(self, server: Optional[str] = None, tool: Optional[str] = None) -> str:
-        clients = await _clients(self.user_id)
+        clients = await _clients(self.user_id, self.mcp_policy)
         if not clients:
             return "No MCP servers are connected."
         if not server:
@@ -179,7 +177,7 @@ class CallMcpToolTool(_AsyncTool):
     args_schema: type[BaseModel] = CallMcpToolInput
 
     async def _arun(self, server: str, tool: str, arguments: Optional[dict] = None) -> str:
-        clients = await _clients(self.user_id)
+        clients = await _clients(self.user_id, self.mcp_policy)
         client = clients.get(server)
         if not client:
             return f"[MCP Error] unknown MCP server '{server}'. Connected servers: {', '.join(clients) or '(none)'}"
@@ -216,7 +214,7 @@ class RunMcpCodeTool(_AsyncTool):
         from app.services.sandbox_service import sandbox_manager
         from app.tools.workspace_tools import _container
 
-        clients = await _clients(self.user_id)
+        clients = await _clients(self.user_id, self.mcp_policy)
         if not clients:
             return "No MCP servers are connected."
         t = min(max(timeout, 5), 600)

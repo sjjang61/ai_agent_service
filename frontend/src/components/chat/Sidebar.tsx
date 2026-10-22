@@ -1,4 +1,6 @@
+import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
+import { useQuery } from '@tanstack/react-query'
 import {
   PenSquare,
   Bot,
@@ -18,6 +20,8 @@ import {
 } from 'lucide-react'
 import { useChatStore } from '../../store/chatStore'
 import { chatApi } from '../../api/chat'
+import { agentsApi } from '../../api/agents'
+import type { CustomAgentSummary } from '../../types/customAgent'
 import { useAuthStore } from '../../store/authStore'
 import type { Conversation } from '../../types/chat'
 import DocumentPanel from './DocumentPanel'
@@ -35,6 +39,21 @@ export default function Sidebar() {
 
   const handleNewChat = async () => {
     const res = await chatApi.createConversation({ title: 'New Conversation' })
+    addConversation(res.data as Conversation)
+    navigate(`/chat/${res.data.id}`)
+  }
+
+  // My Agent: 발행된 커스텀 에이전트로 새 대화 시작
+  const [agentsOpen, setAgentsOpen] = useState(false)
+  const { data: agents = [] } = useQuery<CustomAgentSummary[]>({
+    queryKey: ['agents'],
+    queryFn: async () => (await agentsApi.list()).data,
+    retry: false,
+  })
+  const published = agents.filter((a) => a.published_version !== null)
+
+  const startAgentChat = async (agent: CustomAgentSummary) => {
+    const res = await chatApi.createConversation({ title: 'New Conversation', agent_id: agent.id })
     addConversation(res.data as Conversation)
     navigate(`/chat/${res.data.id}`)
   }
@@ -98,17 +117,48 @@ export default function Sidebar() {
           <span className="text-sm">New Chat</span>
         </button>
 
-        {/* My Bot */}
-        <button
-          className="w-full flex items-center gap-2.5 px-3 py-2.5 rounded-[var(--radius-md)]
-            text-content-primary hover:bg-surface-hover transition-colors text-left"
-        >
-          <span className="text-base">🤖</span>
-          <span className="text-sm flex-1">My Agent</span>
-          <span className="bg-accent-primary text-white text-[11px] font-semibold px-1.5 py-0.5 rounded-full min-w-[20px] text-center">
-            {conversations.length}
-          </span>
-        </button>
+        {/* My Agent: 커스텀 에이전트 */}
+        <div>
+          <button
+            onClick={() => setAgentsOpen((o) => !o)}
+            className="w-full flex items-center gap-2.5 px-3 py-2.5 rounded-[var(--radius-md)]
+              text-content-primary hover:bg-surface-hover transition-colors text-left"
+            aria-expanded={agentsOpen}
+          >
+            <span className="text-base">🤖</span>
+            <span className="text-sm flex-1">My Agent</span>
+            <span className="bg-accent-primary text-white text-[11px] font-semibold px-1.5 py-0.5 rounded-full min-w-[20px] text-center">
+              {published.length}
+            </span>
+            <ChevronDown size={14} className={`text-content-muted transition-transform ${agentsOpen ? 'rotate-180' : ''}`} />
+          </button>
+          {agentsOpen && (
+            <div className="mt-0.5 mb-1 space-y-0.5">
+              {published.map((a) => (
+                <button
+                  key={a.id}
+                  onClick={() => startAgentChat(a)}
+                  title={a.description || `${a.name}로 새 대화 시작`}
+                  className="w-full flex items-center gap-2 pl-8 pr-3 py-1.5 rounded-[var(--radius-md)] text-left text-sm
+                    text-content-secondary hover:bg-surface-hover hover:text-content-primary transition-colors"
+                >
+                  <span className="flex-shrink-0">{a.icon}</span>
+                  <span className="truncate flex-1">{a.name}</span>
+                  <span className="text-[10px] text-content-tertiary flex-shrink-0">v{a.published_version}</span>
+                </button>
+              ))}
+              {published.length === 0 && (
+                <p className="pl-8 pr-3 py-1 text-xs text-content-muted">발행된 에이전트가 없습니다</p>
+              )}
+              <button
+                onClick={() => navigate('/agents')}
+                className="w-full pl-8 pr-3 py-1.5 rounded-[var(--radius-md)] text-left text-xs text-accent-primary hover:bg-surface-hover transition-colors"
+              >
+                에이전트 만들기·관리
+              </button>
+            </div>
+          )}
+        </div>
 
         {/* Projects Section */}
         <div className="mt-4">
@@ -244,7 +294,11 @@ function ConversationItem({ conversation, isActive, onClick, onDelete }: Convers
           : 'text-content-secondary hover:bg-surface-hover hover:text-content-primary'
       }`}
     >
-      <MessageSquare size={14} className="flex-shrink-0" />
+      {conversation.agent_icon ? (
+        <span className="text-sm flex-shrink-0" title={`${conversation.agent_name} v${conversation.agent_version ?? ''}`}>{conversation.agent_icon}</span>
+      ) : (
+        <MessageSquare size={14} className="flex-shrink-0" />
+      )}
       <span className="text-sm truncate flex-1">{conversation.title}</span>
       <button
         onClick={onDelete}

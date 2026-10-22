@@ -16,6 +16,8 @@ from pydantic import BaseModel, Field
 
 from langchain_core.tools import BaseTool
 
+from app.agent.prompts import load
+
 from app.config import settings
 
 WORKSPACE = "/workspace"
@@ -453,10 +455,7 @@ class ReadImageTool(_AsyncTool):
             fmt = _image_format(data)
             if not fmt:
                 return "Error: 지원하지 않는 이미지 형식입니다 (png, jpg, gif, webp)"
-            prompt = question or (
-                "이 이미지를 자세히 분석해 주세요. 보이는 모든 텍스트(OCR), 레이아웃과 구성요소, "
-                "오류 메시지나 이상한 점이 있으면 구체적으로 알려주세요."
-            )
+            prompt = question or load("image_analysis")
             agent = Agent(model=build_agno_model(settings.LLM_TYPE), markdown=False)
             out = await asyncio.wait_for(agent.arun(prompt, images=[Image(content=data, format=fmt)]), timeout=120)
             return str(out.content or "(no response)")
