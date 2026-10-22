@@ -4,6 +4,8 @@ from typing import Any, Iterable, Optional
 
 from fastapi import HTTPException
 
+from app.agent.prompts import render
+
 UPLOAD_DIR = "/workspace/uploads"
 MAX_ATTACHMENTS = 10
 
@@ -27,7 +29,12 @@ def validate_attachments(raw: Optional[Iterable[Any]]) -> list[dict]:
         if posixpath.dirname(path) != UPLOAD_DIR:
             raise HTTPException(status_code=400, detail=f"허용되지 않는 첨부 경로입니다: {path}")
         size = getattr(a, "size", None) if not isinstance(a, dict) else a.get("size")
-        out.append({"name": posixpath.basename(path), "path": path, "size": int(size or 0)})
+        kind = getattr(a, "kind", None) if not isinstance(a, dict) else a.get("kind")
+        count = getattr(a, "file_count", None) if not isinstance(a, dict) else a.get("file_count")
+        item = {"name": posixpath.basename(path), "path": path, "size": int(size or 0)}
+        if kind == "folder":
+            item.update(kind="folder", file_count=int(count or 0))
+        out.append(item)
     return out
 
 
@@ -35,10 +42,12 @@ def compose_with_attachments(content: str, attachments: Optional[list[dict]]) ->
     """사용자 입력에 첨부 파일 안내를 덧붙여 에이전트가 파일 위치를 알 수 있게 한다."""
     if not attachments:
         return content
-    lines = [f"- {a['path']} ({_fmt_size(int(a.get('size', 0)))})" for a in attachments]
-    note = (
-        "[첨부 파일 — sandbox 작업공간에 업로드됨]\n"
-        + "\n".join(lines)
-        + "\n(이미지는 read_image, 텍스트는 read_file, 그 외 형식은 exec_command 등으로 확인하세요)"
-    )
+    lines = []
+    for a in attachments:
+        size = _fmt_size(int(a.get("size", 0)))
+        if a.get("kind") == "folder":
+            lines.append(f"- {a['path']}/ (폴더, 파일 {int(a.get('file_count', 0))}개, {size})")
+        else:
+            lines.append(f"- {a['path']} ({size})")
+    note = render("attachment_note", lines="\n".join(lines))
     return f"{content}\n\n{note}" if content else note

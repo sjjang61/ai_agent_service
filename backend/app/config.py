@@ -135,6 +135,9 @@ class Settings(BaseSettings):
 
     # 채팅 첨부 파일 업로드 (sandbox /workspace/uploads/)
     UPLOAD_MAX_MB: int = 50
+    UPLOAD_FOLDER_MAX_FILES: int = 300  # 폴더 업로드: 최대 파일 수
+    UPLOAD_FOLDER_MAX_MB: int = 100  # 폴더 업로드: 전체 크기
+    REFERENCE_MAX_CHARS: int = 12000  # 참조(페이지·이전 대화) 하나당 에이전트에게 전달하는 최대 글자 수
 
     # 산출물(artifacts) 보기
     ARTIFACT_PREVIEW_MAX_KB: int = 200

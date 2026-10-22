@@ -2,7 +2,7 @@ import posixpath
 from typing import List, Optional
 from urllib.parse import quote
 
-from fastapi import APIRouter, Depends, File, HTTPException, Response, UploadFile
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Response, UploadFile
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -290,3 +290,64 @@ async def upload_files(
     except Exception as e:
         raise HTTPException(status_code=502, detail=f"Sandbox 에 업로드하지 못했습니다: {e}")
     return {"files": saved}
+
+
+def _safe_relative_path(raw: str) -> list[str]:
+    """브라우저가 보낸 폴더 안 상대 경로를 검증해 안전한 경로 조각으로 돌려준다. 위험한 경로는 400."""
+    parts = [p for p in raw.replace("\\", "/").split("/") if p not in ("", ".")]
+    if not parts or len(parts) > 9 or any(p == ".." for p in parts):
+        raise HTTPException(status_code=400, detail=f"허용되지 않는 폴더 경로입니다: {raw[:80]}")
+    return [publish_service.safe_filename(p) for p in parts]
+
+
+@router.post("/uploads/folder")
+async def upload_folder(
+    files: List[UploadFile] = File(...),
+    paths: List[str] = Form(...),
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_session),
+):
+    """폴더 하나를 사용자의 sandbox(/workspace/uploads/<폴더>/)에 구조 그대로 올린다.
+
+    paths 는 files 와 같은 순서의 상대 경로(webkitRelativePath: '폴더/하위/파일'). 같은 이름의 폴더가 있으면 `이름 (1)` 로 저장한다.
+    """
+    import tempfile
+    from pathlib import Path
+
+    if not files or len(files) != len(paths):
+        raise HTTPException(status_code=400, detail="files 와 paths 의 개수가 맞지 않습니다")
+    if len(files) > settings.UPLOAD_FOLDER_MAX_FILES:
+        raise HTTPException(status_code=400, detail=f"폴더는 파일 {settings.UPLOAD_FOLDER_MAX_FILES}개까지 올릴 수 있습니다")
+    per_file = settings.UPLOAD_MAX_MB * 1024 * 1024
+    budget = settings.UPLOAD_FOLDER_MAX_MB * 1024 * 1024
+
+    rels = [_safe_relative_path(p) for p in paths]
+    root = rels[0][0]
+    if any(r[0] != root for r in rels):
+        raise HTTPException(status_code=400, detail="하나의 폴더만 올릴 수 있습니다")
+    if any(len(r) < 2 for r in rels):
+        raise HTTPException(status_code=400, detail="폴더 안의 파일 경로가 필요합니다")
+
+    total = 0
+    with tempfile.TemporaryDirectory() as tmp:
+        base = Path(tmp) / root
+        for f, rel in zip(files, rels):
+            data = await f.read(per_file + 1)
+            if len(data) > per_file:
+                raise HTTPException(status_code=413, detail=f"'{'/'.join(rel)}' 이(가) 너무 큽니다 (파일당 최대 {settings.UPLOAD_MAX_MB}MB)")
+            total += len(data)
+            if total > budget:
+                raise HTTPException(status_code=413, detail=f"폴더가 너무 큽니다 (최대 {settings.UPLOAD_FOLDER_MAX_MB}MB)")
+            target = base.joinpath(*rel[1:])
+            target.parent.mkdir(parents=True, exist_ok=True)
+            target.write_bytes(data)
+        try:
+            sb = await SandboxService.get_or_create_sandbox(current_user.id, db)
+            _, listing, _ = await sandbox_manager.exec_command(sb.container_id, f"ls -1A {UPLOAD_DIR} 2>/dev/null", timeout=15)
+            final = _unique_name(root, {n for n in listing.splitlines() if n})
+            await sandbox_manager.put_directory(sb.container_id, base, UPLOAD_DIR, final)
+        except HTTPException:
+            raise
+        except Exception as e:
+            raise HTTPException(status_code=502, detail=f"Sandbox 에 업로드하지 못했습니다: {e}")
+    return {"files": [{"name": final, "path": posixpath.join(UPLOAD_DIR, final), "size": total, "kind": "folder", "file_count": len(files)}]}

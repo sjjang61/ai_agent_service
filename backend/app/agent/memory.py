@@ -40,13 +40,23 @@ class ConversationMemory:
 
     @classmethod
     def from_db_messages(cls, db_messages: list) -> "ConversationMemory":
-        mem = cls()
-        for m in db_messages[-HISTORY_WINDOW:]:
-            if m.role == "user":
-                from app.services.attachment_service import compose_with_attachments
+        from app.services.attachment_service import compose_with_attachments
+        from app.services.reference_service import compose_with_references, reference_note
 
-                atts = (getattr(m, "metadata_", None) or {}).get("attachments")
-                mem._messages.append(HumanMessage(content=compose_with_attachments(m.content, atts)))
+        mem = cls()
+        window = db_messages[-HISTORY_WINDOW:]
+        for i, m in enumerate(window):
+            if m.role == "user":
+                meta = getattr(m, "metadata_", None) or {}
+                text = compose_with_attachments(m.content, meta.get("attachments"))
+                refs = meta.get("references")
+                if refs:
+                    # 지금 처리 중인 마지막 메시지에는 참조 본문을 전부 싣고, 지난 메시지에는 제목만 남긴다.
+                    if i == len(window) - 1:
+                        text = compose_with_references(text, refs)
+                    else:
+                        text = f"{text}\n\n{reference_note(refs)}"
+                mem._messages.append(HumanMessage(content=text))
             elif m.role == "assistant":
                 mem._messages.append(AIMessage(content=m.content))
         return mem

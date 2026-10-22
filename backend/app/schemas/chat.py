@@ -1,5 +1,5 @@
 from datetime import datetime
-from typing import Any, List, Optional
+from typing import Any, List, Literal, Optional
 
 from pydantic import BaseModel
 
@@ -30,6 +30,15 @@ class Attachment(BaseModel):
     name: str = ""
     path: str
     size: int = 0
+    kind: Literal["file", "folder"] = "file"  # folder: path 가 업로드한 폴더(디렉터리)
+    file_count: int = 0  # folder 일 때 파일 수
+
+
+class Reference(BaseModel):
+    """질문에 참고 자료로 붙이는 스페이스 페이지나 이전 대화"""
+    type: Literal["page", "conversation"]
+    id: str
+    title: str = ""
 
 
 class MessageResponse(BaseModel):
@@ -40,6 +49,7 @@ class MessageResponse(BaseModel):
     agent_steps: List[Any] = []
     tool_calls: List[Any] = []
     attachments: List[Attachment] = []
+    references: List[Reference] = []
     memory_saved: List[Any] = []  # 이 응답에서 자동 저장된 메모리 [{key, value, scope, action}]
     created_at: datetime
 
@@ -49,6 +59,7 @@ class SendMessageRequest(BaseModel):
     agent_config: Optional[dict] = None
     content: str = ""
     attachments: List[Attachment] = []
+    references: List[Reference] = []  # 참고 자료로 붙일 스페이스 페이지·이전 대화 (최대 5개)
     llm_provider: Optional[str] = None
     model: Optional[str] = None
     timezone: Optional[str] = None  # 브라우저 시간대(IANA). 예약 도구의 기본값과 '현재 시각' 안내에 쓴다

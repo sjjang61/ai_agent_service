@@ -19,6 +19,7 @@ from app.db.session import get_session
 from app.core.forms import PendingForms
 from app.core.runs import RunRegistry, cancellable_events
 from app.services.attachment_service import compose_with_attachments, validate_attachments
+from app.services.reference_service import compose_with_references, public_refs, resolve_references
 from app.dependencies import get_current_user
 from app.models.user import User
 from app.schemas.chat import (
@@ -106,6 +107,7 @@ async def list_messages(
             agent_steps=m.agent_steps or [],
             tool_calls=m.tool_calls or [],
             attachments=(m.metadata_ or {}).get("attachments", []),
+            references=public_refs((m.metadata_ or {}).get("references")),
             memory_saved=(m.metadata_ or {}).get("memory_saved", []),
             created_at=m.created_at,
         )
@@ -142,8 +144,10 @@ async def send_message(
         raise HTTPException(status_code=400, detail="메시지 또는 첨부 파일이 필요합니다")
     if RunRegistry.is_running(conversation_id):
         raise HTTPException(status_code=409, detail="이 대화에서 이미 에이전트가 실행 중입니다")
-    await ChatService.save_message(conversation_id, "user", data.content, db, attachments=attachments)
-    user_input = compose_with_attachments(data.content, attachments)
+    references = await resolve_references(current_user.id, data.references, db, current_conversation_id=conversation_id)
+    await ChatService.save_message(conversation_id, "user", data.content, db, attachments=attachments, references=references)
+    text_input = compose_with_attachments(data.content, attachments)  # 메모리 추출에는 참조 본문을 넣지 않는다 (참조 자료는 사용자 발화가 아니다)
+    user_input = compose_with_references(text_input, references)
 
     async def persist_partial(content: str, steps: list):
         """연결이 끊긴 요청의 DB 세션은 이미 닫혔을 수 있어 새 세션으로 저장한다."""
@@ -211,7 +215,7 @@ async def send_message(
                     saved = await maybe_extract_memories(
                         user_id=current_user.id,
                         conversation_id=conversation_id,
-                        user_message=user_input,
+                        user_message=text_input,
                         agent_response=full_response,
                         db=mem_db,
                     )
