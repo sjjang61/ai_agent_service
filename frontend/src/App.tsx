@@ -9,6 +9,8 @@ import SandboxPage from './pages/SandboxPage'
 import SchedulesPage from './pages/SchedulesPage'
 import SkillsPage from './pages/SkillsPage'
 import PluginsPage from './pages/PluginsPage'
+import SpacesPage from './pages/SpacesPage'
+import PageEditorPage from './pages/PageEditorPage'
 import ToolsPage from './pages/ToolsPage'
 import WikiPage from './pages/WikiPage'
 
@@ -26,6 +28,8 @@ export default function App() {
       <Route path="/mcp" element={<PrivateRoute><McpSettingsPage /></PrivateRoute>} />
       <Route path="/memory" element={<PrivateRoute><MemoryPage /></PrivateRoute>} />
       <Route path="/wiki" element={<PrivateRoute><WikiPage /></PrivateRoute>} />
+      <Route path="/spaces" element={<PrivateRoute><SpacesPage /></PrivateRoute>} />
+      <Route path="/spaces/pages/:pageId" element={<PrivateRoute><PageEditorPage /></PrivateRoute>} />
       <Route path="/schedules" element={<PrivateRoute><SchedulesPage /></PrivateRoute>} />
       <Route path="/sandbox" element={<PrivateRoute><SandboxPage /></PrivateRoute>} />
       <Route path="/skills" element={<PrivateRoute><SkillsPage /></PrivateRoute>} />

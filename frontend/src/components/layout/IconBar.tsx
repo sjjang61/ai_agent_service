@@ -2,7 +2,7 @@ import { useNavigate, useLocation } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import {
   Home,
-  MessageSquare,
+  Layers,
   Clock,
   Globe,
   MoreVertical,
@@ -103,10 +103,11 @@ export default function IconBar() {
         onClick={() => navigate('/')}
       />
       <IconButton
-        icon={<MessageSquare size={20} />}
-        title="Tasks"
-        description="작업 목록 (준비 중)"
-        active={false}
+        icon={<Layers size={20} />}
+        title="스페이스"
+        description="프로젝트별 공간에서 문서 페이지를 작성하고 정리합니다"
+        active={isActive('/spaces')}
+        onClick={() => navigate('/spaces')}
       />
       <IconButton
         icon={<Clock size={20} />}

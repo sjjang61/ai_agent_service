@@ -26,6 +26,6 @@ async def get_session_context():
 
 
 async def init_db():
-    from app.models import user, conversation, message, mcp_config, tool_execution, sandbox, skill, plugin, memory, scheduled_task  # noqa
+    from app.models import user, conversation, message, mcp_config, tool_execution, sandbox, skill, plugin, memory, scheduled_task, space  # noqa
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)

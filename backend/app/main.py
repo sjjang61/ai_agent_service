@@ -5,7 +5,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.api import admin, auth, chat, documents, files, mcp, memory, sandbox, schedules, skills, tools, wiki, ws
+from app.api import admin, auth, chat, documents, files, mcp, memory, sandbox, schedules, skills, spaces, tools, wiki, ws
 from app.db.session import init_db
 from app.config import settings
 
@@ -99,6 +99,7 @@ app.include_router(wiki.router, prefix="/api/wiki", tags=["wiki"])
 app.include_router(skills.router, prefix="/api/skills", tags=["skills"])
 app.include_router(tools.router, prefix="/api/tools", tags=["tools"])
 app.include_router(files.router, prefix="/api/files", tags=["files"])
+app.include_router(spaces.router, prefix="/api/workspace", tags=["workspace"])
 app.include_router(schedules.router, prefix="/api/schedules", tags=["schedules"])
 app.include_router(ws.router, prefix="/ws", tags=["ws"])
 
