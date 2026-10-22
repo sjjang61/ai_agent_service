@@ -29,7 +29,7 @@ export function useTypingAnimation(
   const [displayedText, setDisplayedText] = useState('')
   const targetRef = useRef(targetText)
   const indexRef = useRef(0)
-  const timerRef = useRef<number>()
+  const timerRef = useRef<number | undefined>(undefined)
 
   useEffect(() => {
     targetRef.current = targetText

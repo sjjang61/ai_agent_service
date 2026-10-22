@@ -25,7 +25,10 @@ class WikiEntry(Base):
 
     # Core content
     title = Column(String(200), nullable=False)  # User-defined title
-    content = Column(Text, nullable=False)       # Selected text content
+    content = Column(Text, nullable=False)       # 위키 문서 본문 (마크다운). AI 가 정리한 문서이거나, 정리 없이 저장한 원문
+    summary = Column(String(500), nullable=True)  # 한두 문장 요약
+    source_text = Column(Text, nullable=True)     # 정리 전 원문 (사용자가 선택한 텍스트)
+    links = Column(JSON, default=list)            # 이 문서가 연결한 다른 위키 문서 id 목록 (역링크는 조회할 때 계산)
 
     # Metadata
     category = Column(String(50), nullable=False, default="general")  # general | work | learning | reference

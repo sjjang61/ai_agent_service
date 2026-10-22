@@ -14,6 +14,7 @@ export default function WikiForm({ entry, onClose }: WikiFormProps) {
 
   const [title, setTitle] = useState(entry?.title || '')
   const [content, setContent] = useState(entry?.content || '')
+  const [summary, setSummary] = useState(entry?.summary || '')
   const [category, setCategory] = useState<WikiCategory>(entry?.category || 'general')
   const [tagsInput, setTagsInput] = useState(entry?.tags.join(', ') || '')
   const [error, setError] = useState('')
@@ -38,7 +39,7 @@ export default function WikiForm({ entry, onClose }: WikiFormProps) {
       if (isEditing) {
         await updateMutation.mutateAsync({
           id: entry.id,
-          data: { title, content, category, tags },
+          data: { title, content, category, tags, summary: summary.trim() || undefined },
         })
       } else {
         await createMutation.mutateAsync({
@@ -46,6 +47,7 @@ export default function WikiForm({ entry, onClose }: WikiFormProps) {
           content: content.trim(),
           category,
           tags,
+          summary: summary.trim() || undefined,
         })
       }
       onClose()
@@ -79,7 +81,18 @@ export default function WikiForm({ entry, onClose }: WikiFormProps) {
         </div>
 
         <div>
-          <label className="text-xs text-content-secondary block mb-1">내용 *</label>
+          <label className="text-xs text-content-secondary block mb-1">요약</label>
+          <input
+            type="text"
+            value={summary}
+            onChange={(e) => setSummary(e.target.value)}
+            placeholder="한두 문장 요약 (선택)"
+            className="w-full px-3 py-2 bg-surface-secondary border border-border rounded-[var(--radius-md)] text-content-primary text-sm focus:outline-none focus:border-accent-primary"
+          />
+        </div>
+
+        <div>
+          <label className="text-xs text-content-secondary block mb-1">내용 * (마크다운)</label>
           <textarea
             value={content}
             onChange={(e) => setContent(e.target.value)}

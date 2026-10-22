@@ -33,6 +33,8 @@ async def init_db():
         await conn.run_sync(_ensure_conversation_columns)
         await conn.run_sync(_ensure_agent_columns)
         await conn.run_sync(_ensure_token_usage_nullable)
+        await conn.run_sync(_ensure_wiki_columns)
+        await conn.run_sync(_ensure_sandbox_scope_columns)
 
 
 def _ensure_memory_columns(sync_conn) -> None:
@@ -87,3 +89,29 @@ def _ensure_token_usage_nullable(sync_conn) -> None:
     col = next((c for c in inspect(sync_conn).get_columns("token_usages") if c["name"] == "conversation_id"), None)
     if col is not None and not col["nullable"]:
         sync_conn.execute(text("ALTER TABLE token_usages MODIFY conversation_id VARCHAR(36) NULL"))
+
+
+def _ensure_wiki_columns(sync_conn) -> None:
+    """wiki_entries 에 요약·원문 컬럼 보강 (alembic i9a1b2c3d4e5 와 같은 변경)."""
+    from sqlalchemy import inspect, text
+
+    cols = {c["name"] for c in inspect(sync_conn).get_columns("wiki_entries")}
+    if "summary" not in cols:
+        sync_conn.execute(text("ALTER TABLE wiki_entries ADD COLUMN summary VARCHAR(500) NULL"))
+    if "source_text" not in cols:
+        sync_conn.execute(text("ALTER TABLE wiki_entries ADD COLUMN source_text TEXT NULL"))
+    if "links" not in cols:
+        sync_conn.execute(text("ALTER TABLE wiki_entries ADD COLUMN links JSON NULL"))
+
+
+def _ensure_sandbox_scope_columns(sync_conn) -> None:
+    """대화방별 sandbox: sandboxes.conversation_id, conversations.space_id (alembic k1a1b2c3d4e5 와 같은 변경)."""
+    from sqlalchemy import inspect, text
+
+    insp = inspect(sync_conn)
+    if "conversation_id" not in {c["name"] for c in insp.get_columns("sandboxes")}:
+        sync_conn.execute(text("ALTER TABLE sandboxes ADD COLUMN conversation_id VARCHAR(36) NULL"))
+        sync_conn.execute(text("CREATE INDEX ix_sandboxes_conversation_id ON sandboxes (conversation_id)"))
+    if "space_id" not in {c["name"] for c in insp.get_columns("conversations")}:
+        sync_conn.execute(text("ALTER TABLE conversations ADD COLUMN space_id VARCHAR(36) NULL"))
+        sync_conn.execute(text("CREATE INDEX ix_conversations_space_id ON conversations (space_id)"))

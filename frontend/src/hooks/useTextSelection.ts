@@ -9,7 +9,7 @@ interface SelectionPosition {
 export function useTextSelection() {
   const [selectedText, setSelectedText] = useState('')
   const [position, setPosition] = useState<SelectionPosition | null>(null)
-  const timeoutRef = useRef<NodeJS.Timeout>()
+  const timeoutRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
 
   const handleSelection = useCallback(() => {
     // Clear any pending timeout

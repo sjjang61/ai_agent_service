@@ -6,6 +6,7 @@ import type {
   WikiEntry,
   WikiEntryCreate,
   WikiEntryUpdate,
+  WikiMergeRequest,
   WikiSearchParams,
 } from '../types/wiki'
 
@@ -66,5 +67,28 @@ export function useDeleteWikiEntry() {
       removeEntry(id)
       queryClient.invalidateQueries({ queryKey: ['wiki-entries'] })
     },
+  })
+}
+
+/** 기존 문서에 새 내용을 합친다 */
+export function useMergeWikiEntry() {
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: ({ id, data }: { id: string; data: WikiMergeRequest }) =>
+      wikiApi.merge(id, data).then((r) => r.data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['wiki-entries'] })
+      queryClient.invalidateQueries({ queryKey: ['wiki-lint'] })
+    },
+  })
+}
+
+/** 중복·오래된·고아·깨진 연결 점검 결과 */
+export function useWikiLint(enabled: boolean) {
+  return useQuery({
+    queryKey: ['wiki-lint'],
+    queryFn: () => wikiApi.lint().then((r) => r.data),
+    enabled,
   })
 }
