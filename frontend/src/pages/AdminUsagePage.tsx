@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Database, BarChart3, Users, Cpu } from 'lucide-react'
 import SettingsPage from '../components/skills/SettingsPage'
+import { T } from '../components/skills/typography'
 import { adminApi } from '../api/admin'
 import type { UsageSummary, DailyUsage, UserUsage, ModelUsage } from '../types/admin'
 
@@ -48,7 +49,7 @@ export default function AdminUsagePage() {
   const maxTokens = Math.max(...usageData.map((d) => d.total_tokens), 1)
 
   return (
-    <SettingsPage active="usage" title="토큰 사용량" subtitle="LLM 호출에 쓴 토큰을 기간·사용자·모델별로 확인합니다." maxWidth={1280}>
+    <SettingsPage active="usage" title="토큰 사용량" subtitle="LLM 호출에 쓴 토큰을 기간·사용자·모델별로 확인합니다.">
       <div>
         {loading ? (
           <div className="flex items-center justify-center h-64 text-content-muted">
@@ -121,7 +122,7 @@ export default function AdminUsagePage() {
 
             {/* Usage Chart - Simple CSS bar chart */}
             <div className="bg-surface-secondary rounded-lg p-4 mb-8 border border-border">
-              <h2 className="text-lg font-semibold text-content-primary mb-4">Token Usage Over Time</h2>
+              <h2 className={`${T.section} mb-4`}>Token Usage Over Time</h2>
               {usageData.length === 0 ? (
                 <div className="text-content-muted text-center py-8">No data available</div>
               ) : (
@@ -166,7 +167,7 @@ export default function AdminUsagePage() {
               <div className="bg-surface-secondary rounded-lg p-4 border border-border">
                 <div className="flex items-center gap-2 mb-4">
                   <Users size={18} className="text-content-muted" />
-                  <h2 className="text-lg font-semibold text-content-primary">Usage by User</h2>
+                  <h2 className={T.section}>Usage by User</h2>
                 </div>
                 {userUsage.length === 0 ? (
                   <div className="text-content-muted text-center py-8">No data available</div>
@@ -204,7 +205,7 @@ export default function AdminUsagePage() {
               <div className="bg-surface-secondary rounded-lg p-4 border border-border">
                 <div className="flex items-center gap-2 mb-4">
                   <Cpu size={18} className="text-content-muted" />
-                  <h2 className="text-lg font-semibold text-content-primary">Usage by Model</h2>
+                  <h2 className={T.section}>Usage by Model</h2>
                 </div>
                 {modelUsage.length === 0 ? (
                   <div className="text-content-muted text-center py-8">No data available</div>

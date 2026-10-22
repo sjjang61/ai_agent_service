@@ -1,3 +1,4 @@
+import { T } from './typography'
 import { useEffect, useState } from 'react'
 import { Check, Loader2, Trash2, X } from 'lucide-react'
 import axios from 'axios'
@@ -42,11 +43,11 @@ export function ItemCard({ name, description, meta, active, onToggle, onDelete }
     >
       <Tile name={name} />
       <div className="min-w-0 flex-1">
-        <div className="text-[14px] font-medium text-content-primary truncate" title={name}>
+        <div className={`${T.itemTitle} truncate`} title={name}>
           {name}
           {meta && <span className="ml-2 text-xs font-normal text-content-tertiary">{meta}</span>}
         </div>
-        <div className="text-[13px] text-content-secondary truncate" title={description ?? ''}>
+        <div className={`${T.itemDesc} truncate`} title={description ?? ''}>
           {description || '설명 없음'}
         </div>
       </div>

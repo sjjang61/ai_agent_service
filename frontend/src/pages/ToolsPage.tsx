@@ -10,6 +10,7 @@ import {
 import { useQuery } from '@tanstack/react-query'
 import { toolsApi } from '../api/tools'
 import SettingsPage from '../components/skills/SettingsPage'
+import { T } from '../components/skills/typography'
 import type { ToolGroup } from '../types/tool'
 
 const ICON_MAP: Record<string, React.ReactNode> = {
@@ -39,12 +40,12 @@ export default function ToolsPage() {
               <div key={group.group} className="space-y-2">
                 <div className="flex items-center gap-2 text-content-primary">
                   <span className="text-accent-primary">{ICON_MAP[group.icon] || <Folder size={18} />}</span>
-                  <h2 className="text-lg font-semibold">{group.label}</h2>
+                  <h2 className={T.section}>{group.label}</h2>
                   <span className="text-xs text-content-secondary bg-surface-tertiary px-2 py-0.5 rounded-full">
                     {group.tools.length}
                   </span>
                 </div>
-                <div className="grid gap-2">
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
                   {group.tools.map((tool) => (
                     <div
                       key={tool.name}
@@ -52,10 +53,10 @@ export default function ToolsPage() {
                     >
                       <div className="flex items-start justify-between gap-3">
                         <div className="min-w-0">
-                          <div className="text-sm font-medium text-content-primary font-mono">
+                          <div className={T.itemTitle}>
                             {tool.name}
                           </div>
-                          <div className="text-xs text-content-secondary mt-1 leading-relaxed">
+                          <div className="mt-1 text-[13px] text-content-secondary whitespace-pre-wrap break-words">
                             {tool.description}
                           </div>
                         </div>

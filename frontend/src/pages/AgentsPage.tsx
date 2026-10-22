@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Copy, MessageSquarePlus, Pencil, Plus, Trash2 } from 'lucide-react'
 import SettingsPage from '../components/skills/SettingsPage'
+import { headerActionCls } from '../components/skills/typography'
 import { Modal, errorText, inputCls, primaryBtn } from '../components/skills/common'
 import { AGENT_TEMPLATES, type AgentTemplate } from '../components/agents/templates'
 import { agentsApi } from '../api/agents'
@@ -98,12 +99,16 @@ export default function AgentsPage() {
   const iconBtn = 'w-8 h-8 flex items-center justify-center rounded-full text-content-tertiary hover:text-content-primary hover:bg-surface-hover border-none bg-transparent cursor-pointer'
 
   return (
-    <SettingsPage active="agents" title="에이전트" subtitle="프롬프트·도구·스킬·MCP를 직접 정한 나만의 에이전트를 만들고, 발행해서 채팅과 예약에서 사용합니다.">
-      <div className="flex justify-end mb-4">
-        <button onClick={() => setCreating(true)} className={primaryBtn}>
+    <SettingsPage
+      active="agents"
+      title="에이전트"
+      subtitle="프롬프트·도구·스킬·MCP를 직접 정한 나만의 에이전트를 만들고, 발행해서 채팅과 예약에서 사용합니다."
+      actions={
+        <button onClick={() => setCreating(true)} className={headerActionCls}>
           <Plus size={14} /> 새 에이전트
         </button>
-      </div>
+      }
+    >
       {notice && <div className="mb-4 px-4 py-2.5 rounded-[var(--radius-md)] text-[13px] border text-accent-red border-accent-red/30">{notice}</div>}
 
       {isLoading ? (
@@ -120,7 +125,7 @@ export default function AgentsPage() {
                 <div className="w-11 h-11 rounded-[var(--radius-md)] bg-surface-tertiary flex items-center justify-center text-2xl flex-shrink-0">{a.icon}</div>
                 <div className="min-w-0 flex-1">
                   <div className="flex items-center gap-2 flex-wrap">
-                    <span className="text-[15px] font-semibold text-content-primary truncate">{a.name}</span>
+                    <span className="text-[14px] font-medium text-content-primary truncate">{a.name}</span>
                     <StatusBadge a={a} />
                   </div>
                   <p className="text-[13px] text-content-secondary mt-0.5 line-clamp-2">{a.description || '설명 없음'}</p>

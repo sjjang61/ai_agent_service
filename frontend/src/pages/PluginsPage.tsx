@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import CustomizeLayout from '../components/skills/CustomizeLayout'
+import { T } from '../components/skills/typography'
 import PageHeader from '../components/skills/PageHeader'
 import { GithubDialog, ItemCard, errorText } from '../components/skills/common'
 import { skillsApi } from '../api/skills'
@@ -72,7 +73,7 @@ export default function PluginsPage() {
           </div>
         )}
         <div className="border-b border-border pb-3 mb-2">
-          <h2 className="text-[17px] font-semibold text-content-primary px-3">설치됨 <span className="text-[13px] font-normal text-content-tertiary">{visible.length}</span></h2>
+          <h2 className={`${T.section} px-3`}>설치됨 <span className="text-[13px] font-normal text-content-tertiary">{visible.length}</span></h2>
         </div>
         {isLoading ? (
           <div className="text-content-tertiary text-sm py-12 text-center">불러오는 중...</div>

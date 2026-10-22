@@ -1,5 +1,5 @@
-import { useState, useMemo } from 'react'
-import { Plus, Search, Trash2, Edit2, Brain, Star, Tag } from 'lucide-react'
+import { useState, useMemo, useEffect } from 'react'
+import { Search, Trash2, Edit2, Brain, Star, Tag } from 'lucide-react'
 import { useMemories, useDeleteMemory } from '../../hooks/useMemories'
 import { useMemoryStore } from '../../store/memoryStore'
 import MemoryForm from './MemoryForm'
@@ -46,7 +46,8 @@ const SOURCE_LABELS: Record<string, string> = {
   agent: '에이전트',
 }
 
-export default function MemoryList() {
+/** addTick: 페이지 제목 줄의 '메모리 추가' 버튼을 누를 때마다 바뀌는 값. 바뀌면 새 메모리 입력 폼을 연다. */
+export default function MemoryList({ addTick = 0 }: { addTick?: number }) {
   const {
     memories,
     selectedCategory,
@@ -72,6 +73,13 @@ export default function MemoryList() {
   const [showForm, setShowForm] = useState(false)
   const [editMemory, setEditMemory] = useState<Memory | null>(null)
 
+  useEffect(() => {
+    if (addTick > 0) {
+      setEditMemory(null)
+      setShowForm(true)
+    }
+  }, [addTick])
+
   const handleDelete = async (id: string) => {
     if (!confirm('이 메모리를 삭제하시겠습니까?')) return
     await deleteMutation.mutateAsync(id)
@@ -87,20 +95,6 @@ export default function MemoryList() {
 
   return (
     <div className="space-y-4">
-      {/* Header */}
-      <div className="flex justify-end items-center">
-        <button
-          onClick={() => {
-            setEditMemory(null)
-            setShowForm(true)
-          }}
-          className="flex items-center gap-2 px-3 py-1.5 bg-accent-primary hover:bg-accent-hover text-white rounded-lg text-sm transition-colors"
-        >
-          <Plus size={14} />
-          메모리 추가
-        </button>
-      </div>
-
       {/* 종류 탭 */}
       <div>
         <div className="flex gap-1 border-b border-border">
@@ -175,7 +169,7 @@ export default function MemoryList() {
           로딩 중...
         </div>
       ) : (
-        <div className="space-y-2">
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-3 items-start">
           {memories.map((memory) => {
             const catStyle = CATEGORY_LABELS[memory.category]
             return (
@@ -186,7 +180,7 @@ export default function MemoryList() {
                 <div className="flex items-start justify-between gap-3">
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2 flex-wrap mb-1">
-                      <span className="font-medium text-content-primary">
+                      <span className="text-[14px] font-medium text-content-primary">
                         {memory.key}
                       </span>
                       <span
@@ -221,7 +215,7 @@ export default function MemoryList() {
                         )}
                       </div>
                     </div>
-                    <p className="text-sm text-content-secondary whitespace-pre-wrap break-words">
+                    <p className="text-[13px] text-content-secondary whitespace-pre-wrap break-words">
                       {memory.value}
                     </p>
                     {memory.memory_type === 'episodic' && memory.detail && (
@@ -272,7 +266,7 @@ export default function MemoryList() {
             )
           })}
           {memories.length === 0 && (
-            <div className="text-center text-content-muted py-12 border border-dashed border-border rounded-xl">
+            <div className="col-span-full text-center text-content-muted py-12 border border-dashed border-border rounded-xl">
               <Brain size={32} className="mx-auto mb-2 opacity-50" />
               <p className="text-sm">저장된 메모리가 없습니다.</p>
               <p className="text-xs mt-1">

@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import CustomizeLayout from '../components/skills/CustomizeLayout'
+import { T } from '../components/skills/typography'
 import PageHeader from '../components/skills/PageHeader'
 import AddSkillDialog from '../components/skills/AddSkillDialog'
 import { GithubDialog, ItemCard, errorText } from '../components/skills/common'
@@ -109,7 +110,7 @@ export default function SkillsPage() {
         )}
 
         <div className="flex items-center gap-2 border-b border-border pb-3 mb-2">
-          <h2 className="text-[17px] font-semibold text-content-primary px-3 mr-2">설치됨 <span className="text-[13px] font-normal text-content-tertiary">{visible.length}</span></h2>
+          <h2 className={`${T.section} px-3 mr-2`}>설치됨 <span className="text-[13px] font-normal text-content-tertiary">{visible.length}</span></h2>
           <button className={chip(source === 'all')} onClick={() => setSource('all')}>전체</button>
           <button className={chip(source === 'personal')} onClick={() => setSource('personal')}>개인</button>
           {plugins.map((p) => (

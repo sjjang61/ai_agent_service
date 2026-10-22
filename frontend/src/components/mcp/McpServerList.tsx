@@ -1,16 +1,25 @@
-import { useState } from 'react'
-import { Plus, RefreshCw, Trash2, Edit2, CheckCircle, XCircle, Circle, Power } from 'lucide-react'
+import { useEffect, useState } from 'react'
+import { RefreshCw, Trash2, Edit2, CheckCircle, XCircle, Circle, Power } from 'lucide-react'
 import { useMcpConfigs } from '../../hooks/useMcpConfig'
 import { mcpApi } from '../../api/mcp'
 import { useMcpStore } from '../../store/mcpStore'
 import McpServerForm from './McpServerForm'
+import { T } from '../skills/typography'
 import type { MCPServer } from '../../types/mcp'
 
-export default function McpServerList() {
+/** addTick: 페이지 제목 줄의 '서버 추가' 버튼을 누를 때마다 바뀌는 값. 바뀌면 등록 폼을 연다. */
+export default function McpServerList({ addTick = 0 }: { addTick?: number }) {
   const { data: servers, isLoading, refetch } = useMcpConfigs()
   const { removeServer } = useMcpStore()
   const [showForm, setShowForm] = useState(false)
   const [editServer, setEditServer] = useState<MCPServer | null>(null)
+
+  useEffect(() => {
+    if (addTick > 0) {
+      setEditServer(null)
+      setShowForm(true)
+    }
+  }, [addTick])
   const [testResults, setTestResults] = useState<
     Record<string, { status: string; message?: string; tool_count?: number }>
   >({})
@@ -51,18 +60,7 @@ export default function McpServerList() {
   return (
     <div className="space-y-4">
       <div className="flex justify-between items-center">
-        <h2 className="text-lg font-semibold text-content-primary">MCP Servers</h2>
-        <button
-          onClick={() => {
-            setEditServer(null)
-            setShowForm(true)
-          }}
-          className="flex items-center gap-2 px-3.5 py-2 bg-accent-primary hover:bg-accent-hover
-            text-white rounded-[var(--radius-md)] text-[13px] font-medium transition-colors"
-        >
-          <Plus size={14} />
-          Add Server
-        </button>
+        <h2 className={T.section}>MCP Servers</h2>
       </div>
 
       {(showForm || editServer) && (
