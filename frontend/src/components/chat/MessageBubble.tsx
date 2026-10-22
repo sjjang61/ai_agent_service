@@ -6,7 +6,7 @@ import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter'
 import { oneDark, oneLight } from 'react-syntax-highlighter/dist/esm/styles/prism'
 import type { Message } from '../../types/chat'
 import StepProgressItem from './StepProgressItem'
-import StreamingCursor from './StreamingCursor'
+import ThinkingIndicator from './ThinkingIndicator'
 import WidgetRenderer, { extractWidgets } from '../widgets/WidgetRenderer'
 import TodoCard, { extractLatestTodos } from './TodoCard'
 import FormCard, { extractLatestForm } from './FormCard'
@@ -137,7 +137,7 @@ export default function MessageBubble({ message }: { message: Message }) {
   const todos = isUser ? null : extractLatestTodos(message.agent_steps)
   const form = isUser ? null : extractLatestForm(message.agent_steps)
   const scheduleResults = isUser ? [] : extractScheduleResults(message.agent_steps)
-  const showCursor = isLastAssistant && isRunning && !message.content
+  const showThinking = isLastAssistant && isRunning && message.content !== '__error__'
 
   // 워크플로우 다이어그램 표시 여부 (자동)
   const showWorkflowDiagram = !isUser && shouldShowWorkflow(message.agent_steps || [])
@@ -350,12 +350,11 @@ export default function MessageBubble({ message }: { message: Message }) {
             >
               {contentWithLinks}
             </ReactMarkdown>
-          ) : showCursor ? (
-            <StreamingCursor />
-          ) : (
+          ) : showThinking ? null : (
             <span className="text-content-muted italic">...</span>
           )}
         </div>
+        {showThinking && <ThinkingIndicator settled={displayContent.length >= message.content.length} />}
         {!isUser && message.memory_saved && message.memory_saved.length > 0 && (
           <div
             className="mt-2 text-[11px] text-content-tertiary flex items-center gap-1"

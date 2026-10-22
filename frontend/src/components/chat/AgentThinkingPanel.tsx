@@ -2,15 +2,16 @@ import { useState } from 'react'
 import { ChevronDown, ChevronUp, HelpCircle } from 'lucide-react'
 import type { AgentStep } from '../../types/agent'
 import StepProgressItem from './StepProgressItem'
+import { findPendingCall, statusText } from './pendingStep'
 
 export default function AgentThinkingPanel({ steps }: { steps: AgentStep[] }) {
   const [collapsed, setCollapsed] = useState(false)
 
-  const lastStep = steps[steps.length - 1]
+  const pendingCall = findPendingCall(steps) // 결과를 기다리는 가장 안쪽 도구 호출
   const lastNarration = [...steps]
     .reverse()
     .find((s) => s.type === 'tool_call' && s.tool === 'narrate')?.input as { message?: string } | undefined
-  const isActive = (step: AgentStep) => step === lastStep
+  const isActive = (step: AgentStep) => step === pendingCall
 
   return (
     <div className="mx-4 mb-2 max-w-[800px] lg:mx-auto">
@@ -22,7 +23,7 @@ export default function AgentThinkingPanel({ steps }: { steps: AgentStep[] }) {
           <div className="flex items-center gap-2.5">
             <HelpCircle size={16} className="text-accent-yellow" />
             <span className="font-medium text-content-secondary">
-              {typeof lastNarration?.message === 'string' ? lastNarration.message : 'Agent thinking...'} ({steps.length} steps)
+              {typeof lastNarration?.message === 'string' ? lastNarration.message : statusText(steps)} ({steps.length} steps)
             </span>
           </div>
           <div className="flex items-center gap-2">
@@ -37,7 +38,7 @@ export default function AgentThinkingPanel({ steps }: { steps: AgentStep[] }) {
               <StepProgressItem
                 key={step.id}
                 step={step}
-                isActive={isActive(step) && step.type === 'tool_call'}
+                isActive={isActive(step)}
               />
             ))}
           </div>

@@ -2,7 +2,8 @@ import { Brain, Wrench, CheckCircle2, Code2, FileText, Globe, Search, Terminal, 
 import { useAgentStore } from '../../store/agentStore'
 import type { SelectedStepDetail } from '../../types/agent'
 
-const TOOL_LABELS: Record<string, string> = {
+export const TOOL_LABELS: Record<string, string> = {
+  delegate_task_to_member: '팀원에게 위임',
   code_executor: '코드 실행',
   file_manager: '파일 관리',
   shell_executor: '쉘 실행',

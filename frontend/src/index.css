@@ -215,3 +215,30 @@ svg text {
 .animate-check {
   animation: check 0.3s ease-out;
 }
+
+
+/* 에이전트 실행 중 표시 (ThinkingIndicator): 점 세 개가 차례로 튄다 */
+.thinking-dots {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  height: 14px;
+}
+.thinking-dots > span {
+  width: 6px;
+  height: 6px;
+  border-radius: 9999px;
+  background: currentColor;
+  animation: thinking-bounce 1.2s ease-in-out infinite;
+}
+.thinking-dots > span:nth-child(2) { animation-delay: 0.15s; }
+.thinking-dots > span:nth-child(3) { animation-delay: 0.3s; }
+
+@keyframes thinking-bounce {
+  0%, 60%, 100% { transform: translateY(0); opacity: 0.4; }
+  30% { transform: translateY(-4px); opacity: 1; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .thinking-dots > span { animation: none; opacity: 0.7; }
+}
