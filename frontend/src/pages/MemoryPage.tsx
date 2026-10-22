@@ -1,22 +1,10 @@
-import { Link } from 'react-router-dom'
-import { ArrowLeft } from 'lucide-react'
+import SettingsPage from '../components/skills/SettingsPage'
 import MemoryList from '../components/memory/MemoryList'
 
 export default function MemoryPage() {
   return (
-    <div className="min-h-screen bg-surface-primary p-6">
-      <div className="max-w-4xl mx-auto">
-        <div className="flex items-center gap-3 mb-6">
-          <Link
-            to="/"
-            className="text-content-muted hover:text-content-primary transition-colors"
-          >
-            <ArrowLeft size={20} />
-          </Link>
-          <h1 className="text-xl font-bold text-content-primary">메모리 관리</h1>
-        </div>
-        <MemoryList />
-      </div>
-    </div>
+    <SettingsPage active="memory" title="메모리" subtitle="에이전트가 기억하는 사용자 정보를 확인하고 관리합니다." maxWidth={900}>
+      <MemoryList />
+    </SettingsPage>
   )
 }

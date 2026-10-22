@@ -1,6 +1,4 @@
-import { Link } from 'react-router-dom'
 import {
-  ArrowLeft,
   Search,
   Folder,
   Terminal,
@@ -11,6 +9,7 @@ import {
 } from 'lucide-react'
 import { useQuery } from '@tanstack/react-query'
 import { toolsApi } from '../api/tools'
+import SettingsPage from '../components/skills/SettingsPage'
 import type { ToolGroup } from '../types/tool'
 
 const ICON_MAP: Record<string, React.ReactNode> = {
@@ -30,19 +29,8 @@ export default function ToolsPage() {
   })
 
   return (
-    <div className="min-h-screen bg-surface-primary p-6">
-      <div className="max-w-4xl mx-auto space-y-6">
-        <div className="flex items-center gap-3">
-          <Link to="/" className="text-content-secondary hover:text-content-primary transition-colors">
-            <ArrowLeft size={20} />
-          </Link>
-          <h1 className="text-xl font-bold text-content-primary">Tools</h1>
-        </div>
-
-        <p className="text-content-secondary text-sm">
-          Agent가 작업 수행에 사용할 수 있는 도구 목록입니다.
-        </p>
-
+    <SettingsPage active="tools" title="도구" subtitle="에이전트가 작업 수행에 사용할 수 있는 도구 목록입니다.">
+      <div className="space-y-6">
         {isLoading ? (
           <div className="text-content-secondary text-sm">Loading...</div>
         ) : (
@@ -80,6 +68,6 @@ export default function ToolsPage() {
           </div>
         )}
       </div>
-    </div>
+    </SettingsPage>
   )
 }
