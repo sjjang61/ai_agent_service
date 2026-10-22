@@ -1,6 +1,8 @@
 import { useState } from 'react'
 import { useForm } from 'react-hook-form'
-import { X, Plus, Trash2 } from 'lucide-react'
+import { Plus, Trash2, ExternalLink } from 'lucide-react'
+import { MCP_PRESETS, type McpPreset } from './mcpPresets'
+import { Modal, inputCls, primaryBtn } from '../skills/common'
 import { mcpApi } from '../../api/mcp'
 import type { MCPServer } from '../../types/mcp'
 
@@ -20,7 +22,7 @@ export default function McpServerForm({
   server: MCPServer | null
   onClose: () => void
 }) {
-  const { register, handleSubmit, watch } = useForm<FormData>({
+  const { register, handleSubmit, watch, setValue } = useForm<FormData>({
     defaultValues: {
       name: server?.name || '',
       display_name: server?.display_name || '',
@@ -33,11 +35,23 @@ export default function McpServerForm({
   const [envVars, setEnvVars] = useState<[string, string][]>([['', '']])
   const [submitting, setSubmitting] = useState(false)
   const transport = watch('transport')
+  const [preset, setPreset] = useState<McpPreset | null>(null)
+
+  const applyPreset = (p: McpPreset) => {
+    setPreset(p)
+    setValue('name', p.name)
+    setValue('display_name', p.display_name)
+    setValue('transport', 'stdio')
+    setValue('command', p.command)
+    setValue('args_str', p.args.join(' '))
+    setEnvVars(p.env.length ? p.env.map((e) => [e.key, ''] as [string, string]) : [['', '']])
+  }
 
   const onSubmit = async (data: FormData) => {
     setSubmitting(true)
     try {
-      const env = Object.fromEntries(envVars.filter(([k]) => k.trim()))
+      // 키가 없거나 값이 빈 항목은 보내지 않는다 (빈 값이 서버의 기본값을 덮어쓰지 않게)
+      const env = Object.fromEntries(envVars.filter(([k, v]) => k.trim() && v.trim()))
       const payload = {
         name: data.name,
         display_name: data.display_name,
@@ -59,41 +73,71 @@ export default function McpServerForm({
   }
 
   return (
-    <div className="bg-slate-800 border border-slate-600 rounded-xl p-5">
-      <div className="flex justify-between items-center mb-4">
-        <h3 className="font-semibold text-white">
-          {server ? 'Edit MCP Server' : 'Add MCP Server'}
-        </h3>
-        <button onClick={onClose} className="text-slate-400 hover:text-white">
-          <X size={16} />
-        </button>
-      </div>
+    <Modal title={server ? 'Edit MCP Server' : 'Add MCP Server'} onClose={onClose}>
+      <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
+        {!server && (
+          <div>
+            <div className="text-[13px] text-content-secondary mb-1.5">자주 쓰는 서버에서 시작</div>
+            <div className="flex flex-wrap gap-2">
+              {MCP_PRESETS.map((p) => (
+                <button
+                  key={p.id}
+                  type="button"
+                  onClick={() => applyPreset(p)}
+                  title={p.description}
+                  className={`px-3.5 py-1.5 rounded-full text-[13px] border cursor-pointer transition-colors ${
+                    preset?.id === p.id
+                      ? 'bg-accent-primary/10 border-accent-primary text-accent-primary'
+                      : 'bg-transparent border-border text-content-secondary hover:bg-surface-hover hover:text-content-primary'
+                  }`}
+                >
+                  {p.display_name}
+                </button>
+              ))}
+            </div>
+            {preset && (
+              <div className="mt-3 p-3.5 rounded-[var(--radius-md)] bg-surface-secondary border border-border">
+                <div className="flex items-center justify-between gap-2">
+                  <span className="text-[13px] font-medium text-content-primary">{preset.description}</span>
+                  <a href={preset.docsUrl} target="_blank" rel="noreferrer" className="flex items-center gap-1 text-xs text-accent-primary hover:text-accent-hover">
+                    문서 <ExternalLink size={11} />
+                  </a>
+                </div>
+                <div className="mt-2 text-xs text-content-tertiary">인증 준비</div>
+                <ol className="mt-1 pl-4 list-decimal space-y-1 text-xs text-content-secondary">
+                  {preset.authSteps.map((s) => (
+                    <li key={s}>{s}</li>
+                  ))}
+                </ol>
+              </div>
+            )}
+          </div>
+        )}
 
-      <form onSubmit={handleSubmit(onSubmit)} className="space-y-3">
         <div className="grid grid-cols-2 gap-3">
           <div>
-            <label className="block text-xs text-slate-400 mb-1">Name (ID)</label>
+            <label className="block text-[13px] text-content-secondary mb-1.5">Name (ID)</label>
             <input
               {...register('name')}
-              className="w-full px-3 py-1.5 bg-slate-700 text-white rounded text-sm border border-slate-600 focus:outline-none focus:border-blue-500"
+              className={`${inputCls}`}
               placeholder="filesystem-server"
             />
           </div>
           <div>
-            <label className="block text-xs text-slate-400 mb-1">Display Name</label>
+            <label className="block text-[13px] text-content-secondary mb-1.5">Display Name</label>
             <input
               {...register('display_name')}
-              className="w-full px-3 py-1.5 bg-slate-700 text-white rounded text-sm border border-slate-600 focus:outline-none focus:border-blue-500"
+              className={`${inputCls}`}
               placeholder="Filesystem Server"
             />
           </div>
         </div>
 
         <div>
-          <label className="block text-xs text-slate-400 mb-1">Transport</label>
+          <label className="block text-[13px] text-content-secondary mb-1.5">Transport</label>
           <select
             {...register('transport')}
-            className="w-full px-3 py-1.5 bg-slate-700 text-white rounded text-sm border border-slate-600"
+            className={`${inputCls}`}
           >
             <option value="stdio">stdio</option>
             <option value="sse">SSE (Legacy)</option>
@@ -104,30 +148,30 @@ export default function McpServerForm({
         {transport === 'stdio' ? (
           <>
             <div>
-              <label className="block text-xs text-slate-400 mb-1">Command</label>
+              <label className="block text-[13px] text-content-secondary mb-1.5">Command</label>
               <input
                 {...register('command')}
-                className="w-full px-3 py-1.5 bg-slate-700 text-white rounded text-sm border border-slate-600 focus:outline-none focus:border-blue-500 font-mono"
+                className={`${inputCls} font-mono`}
                 placeholder="uvx mcp-server-filesystem"
               />
             </div>
             <div>
-              <label className="block text-xs text-slate-400 mb-1">
+              <label className="block text-[13px] text-content-secondary mb-1.5">
                 Args (space separated)
               </label>
               <input
                 {...register('args_str')}
-                className="w-full px-3 py-1.5 bg-slate-700 text-white rounded text-sm border border-slate-600 focus:outline-none focus:border-blue-500 font-mono"
+                className={`${inputCls} font-mono`}
                 placeholder="/home/user/workspace"
               />
             </div>
           </>
         ) : (
           <div>
-            <label className="block text-xs text-slate-400 mb-1">URL</label>
+            <label className="block text-[13px] text-content-secondary mb-1.5">URL</label>
             <input
               {...register('url')}
-              className="w-full px-3 py-1.5 bg-slate-700 text-white rounded text-sm border border-slate-600 focus:outline-none focus:border-blue-500"
+              className={`${inputCls}`}
               placeholder={
                 transport === 'streamable'
                   ? 'http://localhost:3001/mcp'
@@ -135,7 +179,7 @@ export default function McpServerForm({
               }
             />
             {transport === 'streamable' && (
-              <p className="text-[10px] text-slate-500 mt-1">
+              <p className="text-xs text-content-muted mt-1.5">
                 MCP Streamable HTTP (2025-03-26 spec) — 엔드포인트 URL 입력
               </p>
             )}
@@ -144,17 +188,18 @@ export default function McpServerForm({
 
         <div>
           <div className="flex justify-between items-center mb-1.5">
-            <label className="text-xs text-slate-400">Environment Variables</label>
+            <label className="text-[13px] text-content-secondary">Environment Variables</label>
             <button
               type="button"
               onClick={() => setEnvVars([...envVars, ['', '']])}
-              className="text-xs text-blue-400 hover:text-blue-300 flex items-center gap-1"
+              className="text-[13px] text-accent-primary hover:text-accent-hover flex items-center gap-1 border-none bg-transparent cursor-pointer"
             >
               <Plus size={10} /> Add
             </button>
           </div>
           {envVars.map((pair, i) => (
-            <div key={i} className="flex gap-2 mb-1.5">
+            <div key={i} className="mb-2">
+            <div className="grid grid-cols-[2fr_3fr_auto] items-center gap-2">
               <input
                 value={pair[0]}
                 onChange={(e) => {
@@ -163,7 +208,7 @@ export default function McpServerForm({
                   setEnvVars(n)
                 }}
                 placeholder="KEY"
-                className="w-2/5 px-2 py-1 bg-slate-700 text-white rounded text-xs border border-slate-600 font-mono"
+                className={`${inputCls} font-mono`}
               />
               <input
                 value={pair[1]}
@@ -172,37 +217,41 @@ export default function McpServerForm({
                   n[i] = [n[i][0], e.target.value]
                   setEnvVars(n)
                 }}
-                placeholder="VALUE"
-                className="flex-1 px-2 py-1 bg-slate-700 text-white rounded text-xs border border-slate-600"
+                placeholder={preset?.env.find((x) => x.key === pair[0])?.optional ? 'VALUE (선택)' : 'VALUE'}
+                className={inputCls}
               />
               <button
                 type="button"
                 onClick={() => setEnvVars(envVars.filter((_, j) => j !== i))}
-                className="text-red-400 hover:text-red-300"
+                className="p-1.5 text-content-muted hover:text-accent-red border-none bg-transparent cursor-pointer"
               >
                 <Trash2 size={12} />
               </button>
             </div>
+            {preset?.env.find((x) => x.key === pair[0]) && (
+              <p className="mt-1 text-xs text-content-muted">{preset.env.find((x) => x.key === pair[0])!.hint}</p>
+            )}
+            </div>
           ))}
         </div>
 
-        <div className="flex gap-2 justify-end pt-1">
+        <div className="flex gap-2 justify-end pt-2">
           <button
             type="button"
             onClick={onClose}
-            className="px-3 py-1.5 text-slate-400 hover:text-white text-sm transition-colors"
+            className="px-4 py-2.5 text-[13px] text-content-secondary hover:text-content-primary border-none bg-transparent cursor-pointer"
           >
             Cancel
           </button>
           <button
             type="submit"
             disabled={submitting}
-            className="px-4 py-1.5 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white rounded-lg text-sm transition-colors"
+            className={primaryBtn}
           >
             {submitting ? 'Saving...' : server ? 'Update' : 'Save & Connect'}
           </button>
         </div>
       </form>
-    </div>
+    </Modal>
   )
 }
