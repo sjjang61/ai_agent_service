@@ -67,3 +67,50 @@ def test_seed_todos_first_step_in_progress_and_tool_start_completes_previous():
     assert res["progress"] == "1/3" and res["next"] == "정리"
     assert asyncio.run(tool._arun(action="start", id="9")).startswith("Error")
     _todo_store.pop("c-test", None)
+
+
+def test_tool_events_carry_call_id_and_member_name():
+    from types import SimpleNamespace as NS
+
+    from app.agent.agno_engine import _tool_call_event, _tool_result_event
+
+    tool = NS(tool_name="exec_command", tool_args={"command": "ls", "purpose": "목록"}, tool_call_id="call_1",
+              result="ok", tool_call_error=False)
+    member_ev = NS(agent_name="CoderAgent")
+    assert _tool_call_event(tool, member_ev)["agent"] == "CoderAgent"
+    assert _tool_call_event(tool, member_ev)["call_id"] == "call_1"
+    assert "agent" not in _tool_call_event(tool, NS(team_name="AgentTeam"))  # 리더(팀) 호출에는 agent 가 없다
+    assert _tool_result_event(tool, ev=member_ev)["call_id"] == "call_1"
+    assert "call_id" not in _tool_call_event(NS(tool_name="x", tool_args=None, tool_call_id=None))
+
+
+def test_wiki_draft_parsing():
+    from app.services.wiki_draft import parse_draft
+
+    ok = parse_draft('설명 {"title": " 2026 KBO  일정 ", "summary": "요약", "content": "## 핵심 정리\\n- a", "category": "bogus", "tags": ["#kbo", "kbo", "야구", ""]} 끝', "원문")
+    assert ok.title == "2026 KBO 일정" and ok.category == "general" and ok.tags == ["kbo", "야구"]
+    assert parse_draft('{"title": "", "content": "x"}', "원문") is None
+    assert parse_draft('{"title": "t", "content": ""}', "원문") is None
+    assert parse_draft("not json", "원문") is None
+
+
+def test_wiki_match_and_related_section():
+    from app.services.wiki_draft import parse_match, with_related_section
+
+    valid = {"a", "b", "c"}
+    assert parse_match('{"merge_into": "a", "related": ["a", "b", "zzz", "c"]}', valid) == ("a", ["b", "c"])
+    assert parse_match('{"merge_into": "nope", "related": []}', valid) == (None, [])
+    assert parse_match("not json", valid) == (None, [])
+    body = "## 핵심 정리\n- x"
+    out = with_related_section(body, ["문서 A", "문서 B"])
+    assert out.endswith("## 관련 문서\n- [[문서 A]]\n- [[문서 B]]")
+    again = with_related_section(out, ["문서 A", "문서 C"])  # 이미 있는 링크는 다시 붙이지 않는다
+    assert again.count("[[문서 A]]") == 1 and again.endswith("- [[문서 C]]")
+    assert with_related_section(body, []) == body
+
+
+def test_empty_related_heading_is_removed():
+    from app.services.wiki_draft import with_related_section
+
+    assert with_related_section("## 상세\n내용\n\n## 관련 문서\n", []) == "## 상세\n내용"
+    assert with_related_section("## 상세\n내용\n\n## 관련 문서\n", ["A"]).endswith("## 관련 문서\n- [[A]]")

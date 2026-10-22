@@ -20,6 +20,10 @@ export interface AgentStreamEvent {
   message_id?: string
   message?: string
   items?: MemorySavedItem[]
+  /** 호출 식별자 (같은 도구가 동시에 여러 번 돌 때 호출과 결과를 정확히 짝짓는다) */
+  call_id?: string
+  /** 팀원이 한 호출이면 그 팀원 이름 (위임 작업 아래에 묶는다) */
+  agent?: string
 }
 
 export interface AgentStep {
@@ -29,6 +33,8 @@ export interface AgentStep {
   tool?: string
   input?: unknown
   output?: string
+  callId?: string
+  agent?: string
   timestamp: string
 }
 

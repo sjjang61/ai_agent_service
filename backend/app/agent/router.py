@@ -89,14 +89,19 @@ def statement_allowed(user_input: str, history: List[BaseMessage]) -> bool:
     return bool(history) and 0 < len(user_input.strip()) <= STATEMENT_MAX_CHARS
 
 
-async def route_request(user_input: str, history: List[BaseMessage]) -> Route:
+async def route_request(user_input: str, history: List[BaseMessage], skills: Optional[List[str]] = None) -> Route:
     """요청을 분류한다. 실패하면 simple."""
     try:
         from app.agent.react_agent import AgentRunner
         from app.services.memory_extractor import _content_text
 
         llm = AgentRunner(tools=[]).llm
-        prompt = render("request_router", context=_context(history), message=_clip(user_input, MESSAGE_CLIP))
+        prompt = render(
+            "request_router",
+            context=_context(history),
+            message=_clip(user_input, MESSAGE_CLIP),
+            skills="\n".join(skills) if skills else "(없음)",
+        )
         resp = await asyncio.wait_for(llm.ainvoke(prompt), ROUTE_TIMEOUT_SECONDS)
         return parse_route(_content_text(resp.content), allow_statement=statement_allowed(user_input, history))
     except Exception as e:

@@ -30,6 +30,7 @@ export const TASK_LABELS: Record<string, string> = {
   cli_browser_agent: '브라우저 작업',
   manage_schedule: '예약 관리',
   search_documents: '문서 검색',
+  search_wiki: '위키 검색',
   memory_tool: '메모리',
 }
 
@@ -45,8 +46,9 @@ export interface TaskItem {
   status: TaskStatus
   call?: AgentStep
   result?: AgentStep
-  /** 같은 종류의 연속 작업을 합친 경우, 합쳐진 개별 작업 (파일 단위 등) */
+  /** 하위 작업. same: 같은 종류의 연속 작업을 합친 것(파일 단위 등), delegate: 팀원에게 위임한 작업이 안에서 한 일 */
   children?: TaskItem[]
+  childKind?: 'same' | 'delegate'
 }
 
 const clip = (s: string, n = 90) => {
@@ -131,6 +133,7 @@ export function groupTaskItems(items: TaskItem[]): TaskItem[] {
         summary: running ? running.summary : `${shown}${names.length > 3 ? ` 외 ${names.length - 3}개` : ''}`,
         status: running ? 'running' : run.some((i) => i.status === 'failed') ? 'failed' : 'done',
         children: run,
+        childKind: 'same',
       })
     }
     run = []
@@ -149,6 +152,44 @@ export function groupTaskItems(items: TaskItem[]): TaskItem[] {
 
 export const groupUnit = (tool: string | undefined) => UNIT[tool ?? ''] ?? '건'
 
+const EXEC_TOOLS = new Set(['exec_command', 'shell_executor'])
+
+/** 명령어에서 무엇을 하려는지 추정한다. 모델이 purpose 를 비웠을 때의 보조 수단. */
+export function describeCommand(command: string): string | null {
+  const c = command.replace(/\s+/g, ' ').trim()
+  let m: RegExpMatchArray | null
+  if ((m = c.match(/\bnpx\b.*?\binstruct\s+([\w@./-]+)/))) return `스킬 지침 조회 (${m[1]})`
+  if ((m = c.match(/\bnpx\b.*?\bfiles\s+([\w@./-]+)/))) return `스킬 파일 목록 조회 (${m[1]})`
+  if (/\bnpx\b.*?\bupdate\b/.test(c)) return '패키지 업데이트 확인'
+  if ((m = c.match(/\bnpm\s+(?:install|i)\s+(?:-\S+\s+)*([^\s-][^\s]*)/))) return `패키지 설치 (${m[1]})`
+  if ((m = c.match(/\bnpm\s+(?:view|info)\s+([^\s]+)/))) return `패키지 정보 조회 (${m[1]})`
+  if (/\bnpm\s+search\b/.test(c)) return '패키지 검색'
+  if (/\bnpm\s+(?:test|run\s+build)\b|\bpytest\b|\btsc\b/.test(c)) return '빌드·테스트 실행'
+  if (/\bpip3?\s+install\b/.test(c)) return 'Python 패키지 설치'
+  if (/(^|[\s;&|])python3?\b/.test(c)) return 'Python 스크립트 실행'
+  if (/(^|[\s;&|=)])node\b/.test(c)) return 'Node 스크립트 실행'
+  if (/\bgit\s+clone\b/.test(c)) return '저장소 복제'
+  if (/\b(?:curl|wget)\b/.test(c)) return '웹 요청·다운로드'
+  if (/\b(?:soffice|libreoffice|pandoc)\b/.test(c)) return '문서 변환'
+  if (/\b(?:unzip|tar|gunzip)\b/.test(c)) return '압축 해제'
+  if (/\b(?:grep|rg|awk|sed)\b/.test(c)) return '내용 검색·추출'
+  if (/\b(?:ls|find|tree)\b/.test(c)) return '파일 목록 확인'
+  if (/\b(?:cat|head|tail)\b/.test(c)) return '파일 내용 확인'
+  if (/\b(?:mkdir|cp|mv|rm|touch)\b/.test(c)) return '파일 정리'
+  return null
+}
+
+/** 작업 이름: 모델이 적은 목적(purpose)이 있으면 그것, 없으면 명령에서 추정, 그것도 없으면 도구 기본 이름 */
+function labelFor(tool: string | undefined, input: unknown): string {
+  const base = TASK_LABELS[tool ?? ''] ?? tool ?? '도구'
+  if (!input || typeof input !== 'object') return base
+  const o = input as Record<string, unknown>
+  if (typeof o.purpose === 'string' && o.purpose.trim()) return clip(o.purpose, 40)
+  if (EXEC_TOOLS.has(tool ?? '') && typeof o.command === 'string') return describeCommand(o.command) ?? base
+  if (tool === 'code_executor') return 'Python 코드 실행'
+  return base
+}
+
 const FAILED = /^\s*(error\b|\[tool error\]|\[mcp error\]|traceback)/i
 
 /**
@@ -157,6 +198,10 @@ const FAILED = /^\s*(error\b|\[tool error\]|\[mcp error\]|traceback)/i
  * 결과가 아직 없으면 running, 결과가 오류로 시작하면 failed, 그 밖에는 done. 분석(thought)은 그 자체로 done.
  */
 export function buildTaskItems(steps: AgentStep[]): TaskItem[] {
+  return groupTaskItems(nestDelegates(buildFlatItems(steps)))
+}
+
+function buildFlatItems(steps: AgentStep[]): TaskItem[] {
   const items: TaskItem[] = []
   const pending: TaskItem[] = []
   for (const s of steps) {
@@ -165,7 +210,7 @@ export function buildTaskItems(steps: AgentStep[]): TaskItem[] {
         key: s.id,
         kind: 'tool',
         tool: s.tool,
-        label: TASK_LABELS[s.tool ?? ''] ?? s.tool ?? '도구',
+        label: labelFor(s.tool, s.input),
         summary: summarizeInput(s.tool, s.input),
         status: 'running',
         call: s,
@@ -174,10 +219,14 @@ export function buildTaskItems(steps: AgentStep[]): TaskItem[] {
       pending.push(item)
     } else if (s.type === 'tool_result') {
       let idx = -1
-      for (let i = pending.length - 1; i >= 0; i--) {
-        if (pending[i].tool === s.tool) {
-          idx = i
-          break
+      // call_id 가 있으면 정확히 짝짓고 (같은 도구가 동시에 여러 번 돌 수 있다), 없으면 같은 도구의 가장 최근 호출과 짝짓는다
+      if (s.callId) idx = pending.findIndex((p) => p.call?.callId === s.callId)
+      if (idx < 0) {
+        for (let i = pending.length - 1; i >= 0; i--) {
+          if (pending[i].tool === s.tool && !(s.callId && pending[i].call?.callId)) {
+            idx = i
+            break
+          }
         }
       }
       if (idx >= 0) {
@@ -200,11 +249,104 @@ export function buildTaskItems(steps: AgentStep[]): TaskItem[] {
       items.push({ key: s.id, kind: 'thought', label: '분석', summary: clip(s.content ?? ''), status: 'done', call: s })
     }
   }
-  return groupTaskItems(items)
+  return items
+}
+
+const key = (s: string) => s.toLowerCase().replace(/[^a-z0-9가-힣]/g, '')
+
+/**
+ * 팀원이 한 도구 호출(agent 가 붙은 호출)을 그 팀원에게 위임한 작업(delegate_task_to_member) 아래로 옮긴다.
+ * 팀원 이름은 위임 입력의 member_id 와 대소문자·기호를 무시하고 맞춘다. 맞는 위임이 없으면 진행 중인 위임에 붙이고, 그것도 없으면 그대로 둔다.
+ */
+function nestDelegates(items: TaskItem[]): TaskItem[] {
+  const top: TaskItem[] = []
+  const delegates: TaskItem[] = []
+  for (const it of items) {
+    const agent = it.call?.agent ?? it.result?.agent
+    if (agent && it.tool !== 'delegate_task_to_member' && delegates.length) {
+      const same = delegates.filter((d) => key(String((d.call?.input as { member_id?: unknown } | undefined)?.member_id ?? '')) === key(agent))
+      const parent =
+        [...same].reverse().find((d) => d.status === 'running') ??
+        same[same.length - 1] ??
+        [...delegates].reverse().find((d) => d.status === 'running')
+      if (parent) {
+        ;(parent.children ??= []).push(it)
+        continue
+      }
+    }
+    top.push(it)
+    if (it.tool === 'delegate_task_to_member') delegates.push(it)
+  }
+  for (const d of delegates) {
+    if (!d.children) continue
+    d.children = groupTaskItems(d.children)
+    d.childKind = 'delegate'
+    // 안의 작업이 아직 돌고 있으면 위임도 진행 중
+    if (d.status === 'done' && d.children.some((c) => c.status === 'running')) d.status = 'running'
+  }
+  return top
 }
 
 /** 지금 진행 중인 가장 안쪽(마지막) 작업 */
 export function currentTask(items: TaskItem[]): TaskItem | null {
-  for (let i = items.length - 1; i >= 0; i--) if (items[i].status === 'running') return items[i]
+  for (let i = items.length - 1; i >= 0; i--) {
+    const it = items[i]
+    if (it.children) {
+      const inner = currentTask(it.children)
+      if (inner) return inner
+    }
+    if (it.status === 'running') return it
+  }
   return null
+}
+
+/** 각 단계(step) 시점에 '진행 중이던 계획 단계 id'. 계획이 만들어지기 전이면 null. todo 결과가 올 때마다 갱신한다. */
+function activePlanStepAt(steps: AgentStep[]): (string | null)[] {
+  let cur: string | null = null
+  return steps.map((s) => {
+    const at = cur
+    if (s.type === 'tool_result' && s.tool === 'todo' && typeof s.output === 'string') {
+      try {
+        const p = JSON.parse(s.output)
+        if (p?.ok && Array.isArray(p.todos) && p.todos.length) {
+          const act = p.todos.find((t: { status: string }) => t.status === 'in_progress')
+          if (act) cur = String(act.id)
+          else if (p.todos.every((t: { status: string }) => t.status === 'completed')) cur = String(p.todos[p.todos.length - 1].id)
+        }
+      } catch {
+        // 오류 문장은 무시
+      }
+    }
+    return at
+  })
+}
+
+export interface PlanBuckets {
+  /** 계획이 만들어지기 전(또는 어느 단계에도 속하지 않는)에 한 작업 */
+  pre: TaskItem[]
+  /** 계획 단계 id → 그 단계가 진행 중일 때 한 작업 */
+  byStep: Record<string, TaskItem[]>
+}
+
+/**
+ * 작업 계획이 있을 때, 각 작업을 '그 작업을 할 때 진행 중이던 계획 단계' 아래로 나눈다.
+ * 호출·결과 짝짓기와 팀원 위임 묶음은 전체 기준으로 먼저 하고, 같은 도구 연속 묶음은 단계 안에서만 한다.
+ * todo 호출 자체는 계획 목록이 대신 보여 주므로 뺀다.
+ */
+export function buildPlanBuckets(steps: AgentStep[], planIds: string[]): PlanBuckets {
+  const active = activePlanStepAt(steps)
+  const indexOf = new Map(steps.map((s, i) => [s.id, i]))
+  const known = new Set(planIds)
+  const buckets: Record<string, TaskItem[]> = {}
+  const pre: TaskItem[] = []
+  for (const it of nestDelegates(buildFlatItems(steps))) {
+    if (it.tool === 'todo') continue
+    const at = indexOf.get((it.call ?? it.result)?.id ?? '')
+    const id = at === undefined ? null : active[at]
+    if (id && known.has(id)) (buckets[id] ??= []).push(it)
+    else pre.push(it)
+  }
+  const byStep: Record<string, TaskItem[]> = {}
+  for (const [id, list] of Object.entries(buckets)) byStep[id] = groupTaskItems(list)
+  return { pre: groupTaskItems(pre), byStep }
 }

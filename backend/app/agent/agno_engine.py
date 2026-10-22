@@ -33,7 +33,7 @@ CODER_TOOLS = {
 EXPLORER_TOOLS = {"read_file", "grep_file", "exec_command"}
 MCP_TOOLS = {"load_mcp_tool", "call_mcp_tool", "run_mcp_code"}
 INTERACTION_TOOLS = {"todo", "narrate", "form_ask_user", "cli_browser_agent", "manage_schedule"}
-LEADER_TOOLS = {"load_skill", "register_skill", "memory_tool", "read_image", "create_widget"} | MCP_TOOLS | INTERACTION_TOOLS
+LEADER_TOOLS = {"load_skill", "register_skill", "memory_tool", "read_image", "create_widget", "search_documents", "search_wiki"} | MCP_TOOLS | INTERACTION_TOOLS
 LEGACY_TOOLS = {"file_manager", "shell_executor"}
 # Team 에서는 위임이 delegate_task_to_member 로 이미 제공되므로 call_sub_agent 는 제외한다
 TEAM_EXCLUDED = {"call_sub_agent"}
@@ -227,17 +227,29 @@ def _history_to_agno(messages: List[BaseMessage]) -> list:
     return out
 
 
-def _tool_call_event(tool) -> dict:
-    return {"type": "tool_call", "tool": tool.tool_name or "", "input": tool.tool_args or {}}
+def _tool_origin(tool, ev=None) -> dict:
+    """호출을 식별하는 call_id 와, 팀원이 한 호출이면 그 팀원 이름(agent). 화면이 부모(위임)-자식 묶음과 호출·결과 짝짓기에 쓴다."""
+    out: dict = {}
+    if getattr(tool, "tool_call_id", None):
+        out["call_id"] = str(tool.tool_call_id)
+    agent = getattr(ev, "agent_name", None) if ev is not None else None
+    if agent:
+        out["agent"] = str(agent)
+    return out
 
 
-def _tool_result_event(tool, error: Optional[str] = None) -> dict:
+def _tool_call_event(tool, ev=None) -> dict:
+    return {"type": "tool_call", "tool": tool.tool_name or "", "input": tool.tool_args or {}, **_tool_origin(tool, ev)}
+
+
+def _tool_result_event(tool, error: Optional[str] = None, ev=None) -> dict:
     output = error if error else str(tool.result if tool.result is not None else "")
     return {
         "type": "tool_result",
         "tool": tool.tool_name or "",
         "output": output[:MAX_TOOL_OUTPUT],
         "success": not (error or tool.tool_call_error or output.startswith(("[MCP Error]", "[Tool Error]"))),
+        **_tool_origin(tool, ev),
     }
 
 
@@ -304,11 +316,11 @@ async def stream_team(
                     got_token = True
                     yield {"type": "token", "content": c}
             elif name in ("ToolCallStarted", "TeamToolCallStarted") and ev.tool:
-                yield _tool_call_event(ev.tool)
+                yield _tool_call_event(ev.tool, ev)
             elif name in ("ToolCallCompleted", "TeamToolCallCompleted") and ev.tool:
-                yield _tool_result_event(ev.tool)
+                yield _tool_result_event(ev.tool, ev=ev)
             elif name in ("ToolCallError", "TeamToolCallError") and ev.tool:
-                yield _tool_result_event(ev.tool, error=getattr(ev, "error", None) or "tool error")
+                yield _tool_result_event(ev.tool, error=getattr(ev, "error", None) or "tool error", ev=ev)
             elif name in ("RunError", "TeamRunError"):
                 yield {"type": "error", "message": getattr(ev, "content", None) or "Agent run failed"}
                 return
@@ -341,8 +353,8 @@ def _events_from_output(out) -> list:
 
     def collect(run):
         for t in (getattr(run, "tools", None) or []):
-            events.append(_tool_call_event(t))
-            events.append(_tool_result_event(t))
+            events.append(_tool_call_event(t, run))
+            events.append(_tool_result_event(t, ev=run))
 
     for member in (getattr(out, "member_responses", None) or []):
         collect(member)
