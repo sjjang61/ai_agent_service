@@ -188,7 +188,12 @@ class CreateWidgetTool(BaseTool):
         except KeyError:
             return f"Error: unknown widget_type '{widget_type}'"
         widget = {"type": widget_type, "title": title.strip()[:200], "spec": model.model_dump(exclude_none=True)}
-        return json.dumps({"ok": True, "widget": widget}, ensure_ascii=False)
+        # note 는 모델이 읽는 안내다 (화면은 widget 만 쓴다). 방금 만든 위젯 데이터를 답변 글에 다시 쓰지 않게 한다.
+        note = (
+            f"'{widget['title']}' {widget_type} 위젯이 사용자 화면에 이미 표시되었습니다. "
+            "이 데이터를 표·목록·표 형태 문장으로 답변에 다시 쓰지 말고, 핵심 결론·해석·출처만 짧게 쓰세요."
+        )
+        return json.dumps({"ok": True, "widget": widget, "note": note}, ensure_ascii=False)
 
     async def _arun(self, widget_type: str, title: str, spec: dict) -> str:
         return self._run(widget_type, title, spec)

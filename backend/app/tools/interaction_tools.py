@@ -54,6 +54,32 @@ def complete_all_todos(conversation_id: str) -> None:
         print(f"  -> All todos already completed, no action needed")
 
 
+def _todo_result(current: list) -> str:
+    """todo 도구가 돌려주는 JSON (화면의 작업 계획이 이 형식을 읽는다)."""
+    done = sum(1 for x in current if x["status"] == "completed")
+    nxt = next((x for x in current if x["status"] == "in_progress"), None) or next(
+        (x for x in current if x["status"] == "pending"), None
+    )
+    return json.dumps(
+        {"ok": True, "todos": current, "progress": f"{done}/{len(current)}", "next": nxt["content"] if nxt else None},
+        ensure_ascii=False,
+    )
+
+
+def seed_todos(conversation_id: str, steps: list) -> tuple:
+    """요청 라우터가 만든 전체 작업 계획을 todo 로 넣는다 (첫 단계는 진행 중). (todos, todo 도구 결과 JSON) 반환."""
+    key = conversation_id or "_"
+    items = [
+        {"id": str(i + 1), "content": str(s).strip()[:200], "status": "in_progress" if i == 0 else "pending"}
+        for i, s in enumerate(steps[:_MAX_TODOS])
+    ]
+    _todo_store[key] = items
+    _todo_store.move_to_end(key)
+    while len(_todo_store) > _MAX_CONVERSATIONS:
+        _todo_store.popitem(last=False)
+    return items, _todo_result(items)
+
+
 class _Base(BaseTool):
     def _run(self, *args, **kwargs) -> str:
         return "This tool supports async execution only"
@@ -61,9 +87,9 @@ class _Base(BaseTool):
 
 # ── todo ─────────────────────────────────────────────────────────────────────
 class TodoInput(BaseModel):
-    action: Literal["write", "update", "read"] = Field(
+    action: Literal["write", "update", "start", "read"] = Field(
         default="write",
-        description="write: replace the whole list with `todos`; update: change one item's status by `id`; read: return the current list",
+        description="write: replace the whole list with `todos`; update: change one item's status by `id`; start: mark item `id` in_progress and complete the previous in_progress item; read: return the current list",
     )
     todos: Optional[list[dict]] = Field(
         default=None,
@@ -100,6 +126,15 @@ class TodoTool(_Base):
             if len({x["id"] for x in items}) != len(items):
                 return "Error: todo ids must be unique"
             current = items
+        elif action == "start":
+            target = next((x for x in current if x["id"] == str(id)), None)
+            if not target:
+                ids = ", ".join(x["id"] for x in current) or "(empty)"
+                return f"Error: start needs an existing id (current ids: {ids})"
+            for x in current:
+                if x["status"] == "in_progress" and x is not target:
+                    x["status"] = "completed"
+            target["status"] = "in_progress"
         elif action == "update":
             target = next((x for x in current if x["id"] == str(id)), None)
             if not target or status not in _STATUSES:
@@ -111,15 +146,7 @@ class TodoTool(_Base):
         while len(_todo_store) > _MAX_CONVERSATIONS:
             _todo_store.popitem(last=False)
 
-        done = sum(1 for x in current if x["status"] == "completed")
-        nxt = next((x for x in current if x["status"] == "in_progress"), None) or next(
-            (x for x in current if x["status"] == "pending"), None
-        )
-        return json.dumps(
-            {"ok": True, "todos": current, "progress": f"{done}/{len(current)}",
-             "next": nxt["content"] if nxt else None},
-            ensure_ascii=False,
-        )
+        return _todo_result(current)
 
 
 # ── narrate ──────────────────────────────────────────────────────────────────

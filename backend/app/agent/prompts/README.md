@@ -39,11 +39,15 @@ LLM 에 보내는 모든 프롬프트는 이 폴더의 `.md` 파일입니다. �
 ### 별도 LLM 호출
 | 파일 | 용도 | 사용처 |
 |---|---|---|
-| `intent_gate.md` | 요청/서술 분류와 서술 반응문 생성 | `agent/intent.py` |
+| `request_router.md` | 요청을 서술/단순/복잡으로 분류하고, 복잡하면 전체 작업 계획 생성 | `agent/router.py` |
+| `plan_context.md` | 복잡한 요청에서 시스템이 만든 계획을 따르라는 안내 (시스템 프롬프트에 붙음) | `agent/orchestrator.py` |
+| `route_simple.md` | 단순 요청이므로 todo 계획을 만들지 말라는 안내 | `agent/orchestrator.py` |
 | `memory_extraction.md` | 대화에서 메모리 추출 (사실/작업 방식/사례/단기) | `services/memory_extractor.py` |
 | `summary_request.md` | 대화 롤링 요약 | `services/conversation_summary.py` |
 | `image_analysis.md` | `read_image` 의 기본 분석 질문 | `tools/workspace_tools.py` |
 | `scheduled_run.md` | 예약 실행 때 사용자 메시지 앞에 붙는 머리말 | `services/task_runner.py` |
+| `attachment_note.md` | 첨부 파일·폴더 위치 안내 (사용자 메시지 뒤에 붙음) | `services/attachment_service.py` |
+| `reference_context.md` `reference_item.md` `reference_note.md` | 질문에 붙인 스페이스 페이지·이전 대화(참조 자료) 블록, 지난 턴의 참조 제목 한 줄 | `services/reference_service.py` |
 
 ### 도구가 모델에게 돌려주는 안내 문구
 | 파일 | 사용처 |

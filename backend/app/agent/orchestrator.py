@@ -250,17 +250,27 @@ class AgentOrchestrator:
             role = "user" if msg.__class__.__name__ == "HumanMessage" else ("system" if msg.__class__.__name__ == "SystemMessage" else "assistant")
             logger.info(f"  [{i}] {role}: {msg.content[:100]}...")
 
-        # 질문·요청이 없는 서술("나는 테니스를 좋아해")에는 도구·팀 없이 짧게 반응한다.
-        # 이전 요청(예: 주가 조회)을 모델이 다시 수행하는 문제를 구조적으로 막는다. 불확실하면 요청으로 처리한다.
-        from app.agent.intent import prior_history, should_gate, statement_reply
+        # 응답 전에 요청을 가른다: 서술(짧은 반응으로 끝) / 단순(바로 처리) / 복잡(전체 작업 계획을 먼저 만들어 보여 준 뒤 실행)
+        from app.agent.router import prior_history, route_request, should_route
+        from app.tools.interaction_tools import seed_todos
 
-        earlier = prior_history(memory.get_messages(), user_input)
-        if should_gate(user_input, earlier, self.headless):
-            reply = await statement_reply(user_input, earlier)
-            if reply:
-                logger.info("[orchestrator] 요청 없는 서술로 판별 — 에이전트 실행 생략")
-                yield {"type": "token", "content": reply}
+        route_note = ""
+        if should_route(user_input, self.headless):
+            earlier = prior_history(memory.get_messages(), user_input)
+            route = await route_request(user_input, earlier)
+            logger.info("[orchestrator] 요청 분류: %s (계획 %d단계)", route.kind, len(route.plan))
+            if route.kind == "statement":
+                yield {"type": "token", "content": route.reply}
                 return
+            if route.kind == "complex":
+                todos, output = seed_todos(conversation_id, route.plan)
+                yield {"type": "tool_call", "tool": "todo", "input": {"action": "write", "todos": todos}}
+                yield {"type": "tool_result", "tool": "todo", "output": output}
+                route_note = "\n\n" + render(
+                    "plan_context", plan="\n".join(f"{t['id']}. {t['content']}" for t in todos)
+                )
+            else:
+                route_note = "\n\n" + load("route_simple")
 
         # Load user memories for context injection (에이전트 설정에서 끌 수 있다. 메모리는 에이전트가 아니라 사용자 것이다)
         long_term_memories: dict = {}
@@ -292,7 +302,7 @@ class AgentOrchestrator:
 
         skills = await self._get_active_skills(db)
         tools, mcp_prompt = await self._get_tools(db, skills, conversation_id, user_input)
-        system_prompt = compose_prompt(SYSTEM_PROMPT, self.runtime) + _time_context(self.user_timezone) + memory_context + build_skills_prompt(skills) + mcp_prompt + ("\n\n" + load("headless") if self.headless else "")
+        system_prompt = compose_prompt(SYSTEM_PROMPT, self.runtime) + _time_context(self.user_timezone) + memory_context + build_skills_prompt(skills) + mcp_prompt + route_note + ("\n\n" + load("headless") if self.headless else "")
 
         if settings.AGENT_ENGINE == "agno":
             from app.agent.agno_engine import AgnoRunner
