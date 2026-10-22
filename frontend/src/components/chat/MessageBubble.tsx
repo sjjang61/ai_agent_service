@@ -5,7 +5,6 @@ import rehypeSanitize from 'rehype-sanitize'
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter'
 import { oneDark, oneLight } from 'react-syntax-highlighter/dist/esm/styles/prism'
 import type { Message } from '../../types/chat'
-import StepProgressItem from './StepProgressItem'
 import ThinkingIndicator from './ThinkingIndicator'
 import WidgetRenderer, { extractWidgets } from '../widgets/WidgetRenderer'
 import TodoCard, { extractLatestTodos } from './TodoCard'
@@ -13,11 +12,11 @@ import FormCard, { extractLatestForm } from './FormCard'
 import ScheduleCard, { extractScheduleResults } from './ScheduleCard'
 import { useAgentStore } from '../../store/agentStore'
 import { useChatStore } from '../../store/chatStore'
-import { Paperclip, Bot, User, Copy, Check, Brain } from 'lucide-react'
-import { formatSize } from '../sandbox/ArtifactsPanel'
+import { Paperclip, Folder, BookMarked, MessageSquare, Bot, User, Copy, Check, Brain } from 'lucide-react'
+import axios from 'axios'
+import { formatSize, saveBlob } from '../sandbox/ArtifactsPanel'
 import { useAuthStore } from '../../store/authStore'
-import WorkflowDiagram from '../workflow/WorkflowDiagram'
-import { shouldShowWorkflow } from '../workflow/WorkflowDetector'
+import { stripWidgetTables } from '../widgets/dedupe'
 import { cloneElement, isValidElement, useState } from 'react'
 import { useTypingAnimation } from '../../hooks/useTypingAnimation'
 import { getTypingSpeed } from '../../config/animation'
@@ -117,6 +116,24 @@ function convertUrlsToMarkdown(text: string): string {
   })
 }
 
+const SANDBOX_LINK = /\]\(\s*(?:sandbox:\/{0,2}|file:\/\/)?(\/workspace\/[^)\s]+)\s*\)/g
+const SANDBOX_HREF = '#sandbox-file='
+
+/** 에이전트가 쓰는 sandbox 파일 링크([이름](sandbox:/workspace/x.pptx), (/workspace/x))는 브라우저가 열 수 없고
+ *  보안 필터(rehypeSanitize)도 sandbox: 주소를 지우므로, 안전한 앵커로 바꿔 두고 클릭 시 인증된 요청으로 내려받는다. */
+function convertSandboxLinks(text: string): string {
+  return text.replace(SANDBOX_LINK, (_m, path: string) => `](${SANDBOX_HREF}${encodeURIComponent(path)})`)
+}
+
+async function downloadSandboxFile(path: string) {
+  try {
+    await saveBlob(path, path.split('/').pop() || 'file')
+  } catch (e) {
+    const detail = axios.isAxiosError(e) ? e.response?.data?.detail : null
+    alert(typeof detail === 'string' ? detail : '파일을 내려받지 못했습니다. sandbox 가 종료됐거나 파일이 삭제됐을 수 있습니다.')
+  }
+}
+
 const MEMORY_TYPE_LABEL: Record<string, string> = {
   semantic: '장기·사실',
   procedural: '장기·작업 방식',
@@ -126,7 +143,7 @@ const MEMORY_TYPE_LABEL: Record<string, string> = {
 
 export default function MessageBubble({ message }: { message: Message }) {
   const isUser = message.role === 'user'
-  const { isRunning } = useAgentStore()
+  const { isRunning, rightPanel } = useAgentStore()
   const { messages, currentConversationId } = useChatStore()
   const { user } = useAuthStore()
   const { selectedText, position, clearSelection } = useTextSelection()
@@ -161,8 +178,6 @@ export default function MessageBubble({ message }: { message: Message }) {
     setTimeout(() => setCopied(false), 2000)
   }
 
-  // 워크플로우 다이어그램 표시 여부 (자동)
-  const showWorkflowDiagram = !isUser && shouldShowWorkflow(message.agent_steps || [])
 
   const handleSaveToWiki = () => {
     console.log('[MessageBubble] Opening Wiki dialog with selectedText:', {
@@ -189,7 +204,9 @@ export default function MessageBubble({ message }: { message: Message }) {
   })
 
   // URL을 마크다운 링크로 변환
-  const contentWithLinks = displayContent ? convertUrlsToMarkdown(displayContent) : ''
+  // 위젯으로 이미 보여 준 표가 답변 글에 또 있으면 화면에서만 뺀다 (원문과 복사 내용은 그대로)
+  const shownContent = widgets.length ? stripWidgetTables(displayContent, widgets) : displayContent
+  const contentWithLinks = shownContent ? convertUrlsToMarkdown(convertSandboxLinks(shownContent)) : ''
 
   return (
     <div className="message">
@@ -217,36 +234,8 @@ export default function MessageBubble({ message }: { message: Message }) {
 
       {/* Content */}
       <div className="pl-[38px]">
-        {/* Workflow Diagram (자동 표시) */}
-        {showWorkflowDiagram && (
-          <div className="mb-4">
-            <div className="text-xs font-semibold text-content-secondary mb-2 flex items-center gap-2">
-              <span>🔄 Workflow Diagram</span>
-            </div>
-            <WorkflowDiagram steps={message.agent_steps || []} height={450} />
-          </div>
-        )}
-
-        {/* Agent steps (리스트 형태) */}
-        {message.agent_steps && message.agent_steps.length > 0 && !showWorkflowDiagram && (
-          <div className="mb-3 space-y-1">
-            {message.agent_steps.map((step, i) => (
-              <StepProgressItem
-                key={i}
-                step={{
-                  id: `msg-${message.id}-step-${i}`,
-                  type: step.type as 'thought' | 'tool_call' | 'tool_result',
-                  tool: step.tool,
-                  content: step.content,
-                  input: step.input,
-                  output: step.output,
-                }}
-              />
-            ))}
-          </div>
-        )}
-
-        {todos && <TodoCard todos={todos} />}
+        {/* 진행 패널이 열려 있으면 거기서 같은 계획을 보여 주므로 말풍선에서는 숨긴다 */}
+        {todos && rightPanel !== 'steps' && <TodoCard todos={todos} />}
 
         {form && (
           <FormCard
@@ -271,9 +260,27 @@ export default function MessageBubble({ message }: { message: Message }) {
                 title={a.path}
                 className="inline-flex items-center gap-1 max-w-[220px] px-2 py-1 rounded-[var(--radius-md)] text-xs border bg-surface-tertiary border-border text-content-secondary"
               >
-                <Paperclip size={11} className="flex-shrink-0" />
+                {a.kind === 'folder' ? <Folder size={11} className="flex-shrink-0" /> : <Paperclip size={11} className="flex-shrink-0" />}
                 <span className="truncate">{a.name}</span>
-                <span className="opacity-60 flex-shrink-0">{formatSize(a.size)}</span>
+                <span className="opacity-60 flex-shrink-0">
+                  {a.kind === 'folder' ? `${a.file_count ?? 0}개 · ${formatSize(a.size)}` : formatSize(a.size)}
+                </span>
+              </span>
+            ))}
+          </div>
+        )}
+
+        {/* References */}
+        {message.references && message.references.length > 0 && (
+          <div className="flex flex-wrap gap-1.5 mb-2">
+            {message.references.map((r) => (
+              <span
+                key={`${r.type}:${r.id}`}
+                title={r.type === 'page' ? '스페이스 페이지' : '이전 대화'}
+                className="inline-flex items-center gap-1 max-w-[220px] px-2 py-1 rounded-[var(--radius-md)] text-xs border bg-surface-tertiary border-border text-content-secondary"
+              >
+                {r.type === 'page' ? <BookMarked size={11} className="flex-shrink-0" /> : <MessageSquare size={11} className="flex-shrink-0" />}
+                <span className="truncate">{r.title}</span>
               </span>
             ))}
           </div>
@@ -296,6 +303,23 @@ export default function MessageBubble({ message }: { message: Message }) {
                 // 링크 스타일링
                 a: ({ node, ...props }) => {
                   const href = props.href || ''
+                  if (href.startsWith(SANDBOX_HREF)) {
+                    const path = decodeURIComponent(href.slice(SANDBOX_HREF.length))
+                    return (
+                      <a
+                        href={href}
+                        onClick={(e) => {
+                          e.preventDefault()
+                          downloadSandboxFile(path)
+                        }}
+                        title={`sandbox 파일 다운로드: ${path}`}
+                        className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-accent-primary/10 border border-accent-primary/30 text-accent-primary hover:bg-accent-primary/20 transition-colors no-underline font-medium cursor-pointer"
+                      >
+                        <Paperclip size={14} />
+                        {props.children || path.split('/').pop()}
+                      </a>
+                    )
+                  }
                   // 다운로드 링크 감지 (/api/files/로 시작하거나 포함)
                   const isDownloadLink = href.includes('/api/files/')
 

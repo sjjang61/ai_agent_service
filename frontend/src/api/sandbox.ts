@@ -22,6 +22,18 @@ export const sandboxApi = {
       expires_hours: expiresHours,
     }),
   /** 채팅 첨부 파일을 sandbox(/workspace/uploads/)에 올린다 (파일 하나씩 호출해 진행·오류를 구분한다) */
+  /** 폴더를 통째로 올린다 (paths = 폴더 이름을 포함한 상대 경로). 첨부 하나(kind=folder)로 돌려준다 */
+  uploadFolder: (files: File[], paths: string[], onProgress?: (percent: number) => void) => {
+    const form = new FormData()
+    files.forEach((f) => form.append('files', f))
+    paths.forEach((p) => form.append('paths', p))
+    return apiClient.post<{ files: Attachment[] }>('/sandbox/uploads/folder', form, {
+      headers: { 'Content-Type': undefined },
+      onUploadProgress: (e) => {
+        if (onProgress && e.total) onProgress(Math.round((e.loaded / e.total) * 100))
+      },
+    })
+  },
   uploadFile: (file: File, onProgress?: (percent: number) => void) => {
     const form = new FormData()
     form.append('files', file)

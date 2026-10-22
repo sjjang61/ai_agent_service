@@ -4,7 +4,7 @@ import { useAuthStore } from '../store/authStore'
 import { useAgentStore } from '../store/agentStore'
 import { useChatStore } from '../store/chatStore'
 import type { AgentStreamEvent } from '../types/agent'
-import type { Attachment, Message } from '../types/chat'
+import type { Attachment, Message, Reference } from '../types/chat'
 
 let stepCounter = 0
 function nextStepId() {
@@ -27,8 +27,8 @@ export function useAgentStream(conversationId: string) {
   const { addMessage, updateLastAssistantMessage, appendStepToLastAssistantMessage, setLastAssistantMemorySaved } = useChatStore()
 
   const sendMessage = useCallback(
-    async (content: string, attachments: Attachment[] = []) => {
-      clearSteps()
+    async (content: string, attachments: Attachment[] = [], references: Reference[] = []) => {
+      clearSteps(conversationId)
       setRunning(true)
 
       const userMsg: Message = {
@@ -39,6 +39,7 @@ export function useAgentStream(conversationId: string) {
         agent_steps: [],
         tool_calls: [],
         attachments,
+        references,
         created_at: new Date().toISOString(),
       }
       addMessage(conversationId, userMsg)
@@ -69,6 +70,7 @@ export function useAgentStream(conversationId: string) {
             body: JSON.stringify({
               content,
               attachments,
+              references,
               // 예약 도구의 기본 시간대와 '현재 시각' 안내에 쓴다
               timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
             }),

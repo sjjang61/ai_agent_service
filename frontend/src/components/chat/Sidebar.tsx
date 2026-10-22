@@ -24,7 +24,6 @@ import { agentsApi } from '../../api/agents'
 import type { CustomAgentSummary } from '../../types/customAgent'
 import { useAuthStore } from '../../store/authStore'
 import type { Conversation } from '../../types/chat'
-import DocumentPanel from './DocumentPanel'
 
 export default function Sidebar() {
   const {
@@ -60,7 +59,13 @@ export default function Sidebar() {
 
   const handleDelete = async (e: React.MouseEvent, id: string) => {
     e.stopPropagation()
-    await chatApi.deleteConversation(id)
+    if (!confirm('이 대화를 삭제할까요? 삭제한 대화는 복구할 수 없습니다.')) return
+    try {
+      await chatApi.deleteConversation(id)
+    } catch {
+      alert('대화를 삭제하지 못했습니다. 잠시 후 다시 시도해 주세요.')
+      return
+    }
     removeConversation(id)
     if (currentConversationId === id) navigate('/')
   }
@@ -205,8 +210,6 @@ export default function Sidebar() {
           )}
         </div>
 
-        {/* RAG Documents Panel - only show when a conversation is selected */}
-        {currentConversationId && <DocumentPanel conversationId={currentConversationId} />}
       </div>
 
       {/* Footer - Quick Links */}
@@ -302,6 +305,8 @@ function ConversationItem({ conversation, isActive, onClick, onDelete }: Convers
       <span className="text-sm truncate flex-1">{conversation.title}</span>
       <button
         onClick={onDelete}
+        title="대화 삭제"
+        aria-label="대화 삭제"
         className="opacity-0 group-hover:opacity-100 text-content-muted hover:text-accent-red transition-all flex-shrink-0"
       >
         <Trash2 size={12} />

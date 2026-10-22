@@ -25,6 +25,15 @@ export interface Attachment {
   name: string
   path: string
   size: number
+  kind?: 'file' | 'folder'
+  file_count?: number
+}
+
+/** 질문에 붙이는 참조 자료 (스페이스 페이지 / 이전 대화) */
+export interface Reference {
+  type: 'page' | 'conversation'
+  id: string
+  title: string
 }
 
 export interface Message {
@@ -35,6 +44,7 @@ export interface Message {
   agent_steps: AgentStepData[]
   tool_calls: unknown[]
   attachments?: Attachment[]
+  references?: Reference[]
   memory_saved?: MemorySavedItem[]
   created_at: string
 }

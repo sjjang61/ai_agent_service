@@ -45,7 +45,7 @@ function errorMessage(e: unknown, fallback: string) {
   return fallback
 }
 
-async function saveBlob(path: string, name: string) {
+export async function saveBlob(path: string, name: string) {
   const res = await sandboxApi.fetchArtifactBlob(path, true)
   const url = URL.createObjectURL(res.data)
   const a = document.createElement('a')
