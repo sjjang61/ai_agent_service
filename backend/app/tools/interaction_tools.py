@@ -220,3 +220,20 @@ class HeadlessAskUserTool(_Base):
             },
             ensure_ascii=False,
         )
+
+
+class ChatAskUserTool(_Base):
+    """메신저 대화: 폼을 띄울 수 없으므로 일반 문장으로 되묻게 한다."""
+
+    name: str = "form_ask_user"
+    description: str = (
+        "Unavailable in this messenger chat (no form UI). Ask your question as plain text at the end of your "
+        "final answer and wait for the user's next message."
+    )
+    args_schema: type[BaseModel] = FormAskUserInput
+
+    async def _arun(self, title: str = "", questions: Optional[list] = None, description: Optional[str] = None) -> str:
+        return json.dumps(
+            {"unavailable": True, "message": "Forms are not available here. Ask the question in plain text in your reply, then stop and wait."},
+            ensure_ascii=False,
+        )

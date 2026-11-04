@@ -104,7 +104,11 @@ class AgentOrchestrator:
         allow_browser: bool = True,
         user_timezone: Optional[str] = None,
         runtime: Optional["AgentRuntime"] = None,
+        channel: bool = False,
+        approver=None,
     ):
+        self.channel = channel  # 메신저(Telegram) 대화: 사용자가 있지만 폼 UI 가 없다
+        self.approver = approver  # 위험 도구 실행 전 사용자 승인 (app.channels.approval)
         self.runtime = runtime  # 커스텀 에이전트 설정 (None 이면 기본 에이전트)
         self.user_timezone = _valid_timezone(user_timezone)
         self.headless = headless
@@ -138,7 +142,7 @@ class AgentOrchestrator:
             CallMcpToolTool, LoadMcpToolTool, RunMcpCodeTool, build_mcp_catalog_prompt,
         )
         from app.tools.browser_tools import CliBrowserAgentTool
-        from app.tools.interaction_tools import FormAskUserTool, HeadlessAskUserTool, NarrateTool, TodoTool
+        from app.tools.interaction_tools import ChatAskUserTool, FormAskUserTool, HeadlessAskUserTool, NarrateTool, TodoTool
         from app.tools.skill_tool import LoadSkillTool
         from app.tools.schedule_tool import ManageScheduleTool
         from app.tools.sub_agent_tool import CallSubAgentTool
@@ -158,6 +162,8 @@ class AgentOrchestrator:
             # 사용자가 없는 실행에서는 응답을 기다리며 멈추지 않도록 질문 도구를 대체한다
             HeadlessAskUserTool()
             if self.headless
+            else ChatAskUserTool()
+            if self.channel
             else FormAskUserTool(user_id=self.user_id, conversation_id=conversation_id),
         ]
         if not self.headless:
@@ -208,6 +214,10 @@ class AgentOrchestrator:
 
         # 커스텀 에이전트의 도구 허용 목록 적용
         tools = filter_tools(tools, self.runtime)
+        if self.approver:  # 서브에이전트가 받는 목록에도 같은 인스턴스가 들어가므로 위임해도 승인을 우회하지 못한다
+            from app.channels.approval import gate_tools
+
+            tools = gate_tools(tools, self.approver)
 
         # 서브에이전트는 call_sub_agent 를 제외한 도구를 사용한다 (재귀 위임 방지)
         tools.append(
@@ -316,7 +326,7 @@ class AgentOrchestrator:
 
         skills = await self._get_active_skills(db, sandbox_cid)
         tools, mcp_prompt = await self._get_tools(db, skills, conversation_id, user_input, sandbox_cid)
-        system_prompt = compose_prompt(SYSTEM_PROMPT, self.runtime) + _time_context(self.user_timezone) + memory_context + build_skills_prompt(skills) + mcp_prompt + route_note + ("\n\n" + load("headless") if self.headless else "")
+        system_prompt = compose_prompt(SYSTEM_PROMPT, self.runtime) + _time_context(self.user_timezone) + memory_context + build_skills_prompt(skills) + mcp_prompt + route_note + ("\n\n" + load("headless") if self.headless else "") + ("\n\n" + load("channel") if self.channel else "")
 
         if settings.AGENT_ENGINE == "agno":
             from app.agent.agno_engine import AgnoRunner

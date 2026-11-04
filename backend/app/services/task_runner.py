@@ -206,3 +206,7 @@ async def execute_run(run_id: str) -> None:
                         task.enabled, task.next_run_at, task.last_status = False, None, "auto_paused"
                         logger.warning("[scheduler] 연속 실패로 자동 일시중지 task=%s", task.id)
         await db.commit()
+        if task is not None and status in ("succeeded", "failed"):
+            from app.channels.outbound import notify_schedule_result
+
+            await notify_schedule_result(task.user_id, task.name, status, full_response, error)
