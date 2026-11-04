@@ -5,7 +5,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.api import admin, auth, chat, documents, files, mcp, memory, sandbox, agents, schedules, skills, spaces, tools, wiki, ws
+from app.api import admin, auth, channels, chat, documents, files, mcp, memory, sandbox, agents, schedules, skills, spaces, tools, wiki, ws
 from app.db.session import init_db
 from app.config import settings
 
@@ -72,9 +72,16 @@ async def lifespan(app: FastAPI):
 
     reaper = asyncio.create_task(run_idle_reaper())
     scheduler = asyncio.create_task(run_scheduler())
+    channels = None
+    if settings.CHANNELS_ENABLED:
+        from app.channels.gateway import run_channels
+
+        channels = asyncio.create_task(run_channels())
     yield
     reaper.cancel()
     scheduler.cancel()
+    if channels:
+        channels.cancel()
     await VectorStoreManager.cleanup()
 
 
@@ -102,6 +109,7 @@ app.include_router(files.router, prefix="/api/files", tags=["files"])
 app.include_router(agents.router, prefix="/api/agents", tags=["agents"])
 app.include_router(spaces.router, prefix="/api/workspace", tags=["workspace"])
 app.include_router(schedules.router, prefix="/api/schedules", tags=["schedules"])
+app.include_router(channels.router, prefix="/api/channels", tags=["channels"])
 app.include_router(ws.router, prefix="/ws", tags=["ws"])
 
 

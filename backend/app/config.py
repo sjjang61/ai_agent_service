@@ -165,6 +165,18 @@ class Settings(BaseSettings):
     RAG_MAX_FILE_SIZE_MB: int = 50  # 문서 최대 크기
 
     # 예약 작업 (스케줄러)
+    # 메신저 게이트웨이 (Telegram long polling)
+    CHANNELS_ENABLED: bool = True
+    CHANNEL_SYNC_SECONDS: int = 15  # 봇 등록·해제를 반영하는 주기
+    CHANNEL_RUN_TIMEOUT_SECONDS: int = 600
+    CHANNEL_QUEUE_MAX: int = 5  # 실행 중 대기할 수 있는 메시지 수
+    CHANNEL_PAIR_TTL_SECONDS: int = 600
+    CHANNEL_DAILY_MESSAGE_LIMIT: int = 200  # 사용자당 하루 처리 메시지 수
+    # 위험 도구(코드 실행·파일 변경·MCP·브라우저)는 실행 전에 Telegram 버튼으로 승인받는다
+    CHANNEL_ALLOW_MCP: bool = True
+    CHANNEL_ALLOW_BROWSER: bool = True
+    CHANNEL_APPROVAL_TIMEOUT_SECONDS: int = 600
+
     SCHEDULER_ENABLED: bool = True
     SCHEDULER_POLL_SECONDS: int = 30  # 실행 시각이 된 작업을 찾는 주기
     SCHEDULER_MAX_CONCURRENT: int = 3  # 동시에 실행할 예약 작업 수

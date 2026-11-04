@@ -36,7 +36,7 @@ def backup_key(sb: Sandbox) -> str:
 
 async def resolve_scope(conversation_id: Optional[str], user_id: str, db: AsyncSession) -> Optional[str]:
     """어떤 sandbox 를 쓸지 정한다. None = 사용자 단위 공용 sandbox, 값 = 그 대화방 전용 sandbox.
-    대화방 id 가 없거나 스페이스에서 시작한 대화(space_id)면 공용을 쓴다. 남의 대화방 id 는 404."""
+    대화방 id 가 없거나 스페이스·메신저(channel)에서 시작한 대화면 공용을 쓴다. 남의 대화방 id 는 404."""
     if not conversation_id:
         return None
     from fastapi import HTTPException
@@ -45,12 +45,12 @@ async def resolve_scope(conversation_id: Optional[str], user_id: str, db: AsyncS
 
     row = (
         await db.execute(
-            select(Conversation.space_id).where(Conversation.id == conversation_id, Conversation.user_id == user_id)
+            select(Conversation.space_id, Conversation.channel).where(Conversation.id == conversation_id, Conversation.user_id == user_id)
         )
     ).first()
     if row is None:
         raise HTTPException(status_code=404, detail="대화를 찾을 수 없습니다")
-    return None if row[0] else conversation_id
+    return None if (row[0] or row[1]) else conversation_id
 
 
 class SandboxService:

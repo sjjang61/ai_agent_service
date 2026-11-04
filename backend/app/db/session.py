@@ -35,6 +35,7 @@ async def init_db():
         await conn.run_sync(_ensure_token_usage_nullable)
         await conn.run_sync(_ensure_wiki_columns)
         await conn.run_sync(_ensure_sandbox_scope_columns)
+        await conn.run_sync(_ensure_conversation_channel)
 
 
 def _ensure_memory_columns(sync_conn) -> None:
@@ -115,3 +116,14 @@ def _ensure_sandbox_scope_columns(sync_conn) -> None:
     if "space_id" not in {c["name"] for c in insp.get_columns("conversations")}:
         sync_conn.execute(text("ALTER TABLE conversations ADD COLUMN space_id VARCHAR(36) NULL"))
         sync_conn.execute(text("CREATE INDEX ix_conversations_space_id ON conversations (space_id)"))
+
+
+def _ensure_conversation_channel(sync_conn) -> None:
+    """메신저 대화 표시: conversations.channel (alembic l2a1b2c3d4e5 와 같은 변경)."""
+    from sqlalchemy import inspect, text
+
+    insp = inspect(sync_conn)
+    if "channel" not in {c["name"] for c in insp.get_columns("conversations")}:
+        sync_conn.execute(text("ALTER TABLE conversations ADD COLUMN channel VARCHAR(20) NULL"))
+    if "notify_schedules" not in {c["name"] for c in insp.get_columns("channel_accounts")}:
+        sync_conn.execute(text("ALTER TABLE channel_accounts ADD COLUMN notify_schedules BOOLEAN NOT NULL DEFAULT 1"))

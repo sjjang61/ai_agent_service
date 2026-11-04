@@ -12,6 +12,7 @@ from app.models.token_usage import TokenUsage
 from app.models.tool_execution import ToolExecution
 from app.models.document import Document
 from app.models.document_chunk import DocumentChunk
+from app.models.channel_account import ChannelAccount
 
 __all__ = [
     "User",
@@ -30,4 +31,5 @@ __all__ = [
     "ToolExecution",
     "Document",
     "DocumentChunk",
+    "ChannelAccount",
 ]
