@@ -2,6 +2,7 @@ import { Routes, Route, Navigate } from 'react-router-dom'
 import { useAuthStore } from './store/authStore'
 import AdminUsagePage from './pages/AdminUsagePage'
 import AuthPage from './pages/AuthPage'
+import ChannelsPage from './pages/ChannelsPage'
 import ChatPage from './pages/ChatPage'
 import McpSettingsPage from './pages/McpSettingsPage'
 import MemoryPage from './pages/MemoryPage'
@@ -34,6 +35,7 @@ export default function App() {
       <Route path="/spaces/pages/:pageId" element={<PrivateRoute><PageEditorPage /></PrivateRoute>} />
       <Route path="/schedules" element={<PrivateRoute><SchedulesPage /></PrivateRoute>} />
       <Route path="/sandbox" element={<PrivateRoute><SandboxPage /></PrivateRoute>} />
+      <Route path="/channels" element={<PrivateRoute><ChannelsPage /></PrivateRoute>} />
       <Route path="/skills" element={<PrivateRoute><SkillsPage /></PrivateRoute>} />
       <Route path="/agents" element={<PrivateRoute><AgentsPage /></PrivateRoute>} />
       <Route path="/agents/:agentId" element={<PrivateRoute><AgentBuilderPage /></PrivateRoute>} />
