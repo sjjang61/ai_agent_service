@@ -1,4 +1,5 @@
 import type { RunStatus, TaskInput, TaskStatus } from '../../types/schedule'
+import { currentTimezone, dayKey, parseServerDate } from '../../utils/time'
 
 export const WEEKDAY_LABELS = ['월', '화', '수', '목', '금', '토', '일']
 
@@ -40,7 +41,7 @@ export function emptyInput(): TaskInput {
     day_of_month: 1,
     interval_hours: 6,
     run_at: null,
-    timezone: browserTimezone(),
+    timezone: currentTimezone(),
     new_conversation_each_run: false,
     allow_mcp: false,
     allow_browser: false,
@@ -48,19 +49,19 @@ export function emptyInput(): TaskInput {
   }
 }
 
-const dtf = (opts: Intl.DateTimeFormatOptions) => new Intl.DateTimeFormat('ko-KR', opts)
+const dtf = (opts: Intl.DateTimeFormatOptions) => new Intl.DateTimeFormat('ko-KR', { timeZone: currentTimezone(), ...opts })
 
 export function formatDateTime(iso: string | null | undefined): string {
   if (!iso) return '-'
-  return dtf({ month: 'numeric', day: 'numeric', weekday: 'short', hour: '2-digit', minute: '2-digit', hour12: false }).format(new Date(iso))
+  return dtf({ month: 'numeric', day: 'numeric', weekday: 'short', hour: '2-digit', minute: '2-digit', hour12: false }).format(parseServerDate(iso))
 }
 
 export function formatShort(iso: string | null | undefined): string {
   if (!iso) return '-'
-  const d = new Date(iso)
+  const d = parseServerDate(iso)
   const now = new Date()
   const time = dtf({ hour: '2-digit', minute: '2-digit', hour12: false }).format(d)
-  const dayDiff = Math.round((new Date(d.toDateString()).getTime() - new Date(now.toDateString()).getTime()) / 86400000)
+  const dayDiff = Math.round((Date.parse(dayKey(d)) - Date.parse(dayKey(now))) / 86400000)
   if (dayDiff === 0) return `오늘 ${time}`
   if (dayDiff === 1) return `내일 ${time}`
   if (dayDiff === -1) return `어제 ${time}`
@@ -69,7 +70,7 @@ export function formatShort(iso: string | null | undefined): string {
 
 export function relativeFromNow(iso: string | null | undefined): string {
   if (!iso) return ''
-  const diff = new Date(iso).getTime() - Date.now()
+  const diff = parseServerDate(iso).getTime() - Date.now()
   const abs = Math.abs(diff)
   const unit = abs < 3600_000 ? [Math.max(1, Math.round(abs / 60_000)), '분'] : abs < 86400_000 ? [Math.round(abs / 3600_000), '시간'] : [Math.round(abs / 86400_000), '일']
   return `${unit[0]}${unit[1]} ${diff >= 0 ? '후' : '전'}`
@@ -77,7 +78,7 @@ export function relativeFromNow(iso: string | null | undefined): string {
 
 export function durationText(start: string | null, end: string | null): string {
   if (!start || !end) return ''
-  const s = Math.max(0, Math.round((new Date(end).getTime() - new Date(start).getTime()) / 1000))
+  const s = Math.max(0, Math.round((parseServerDate(end).getTime() - parseServerDate(start).getTime()) / 1000))
   return s < 60 ? `${s}초` : `${Math.floor(s / 60)}분 ${s % 60}초`
 }
 

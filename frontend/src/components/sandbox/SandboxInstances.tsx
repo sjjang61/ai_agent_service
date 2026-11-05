@@ -4,11 +4,10 @@ import { Layers, Loader2, MessageSquare, Square, Trash2 } from 'lucide-react'
 import axios from 'axios'
 import { sandboxApi, type SandboxInstance } from '../../api/sandbox'
 import { T } from '../skills/typography'
+import { formatFullDateTime } from '../../utils/time'
 
 function when(iso: string | null): string {
-  if (!iso) return '-'
-  const d = new Date(iso.endsWith('Z') ? iso : iso + 'Z')
-  return isNaN(d.getTime()) ? '-' : d.toLocaleString()
+  return formatFullDateTime(iso)
 }
 
 /** 내 sandbox 전체: 사용자 공용 1개(스페이스 대화·기존 파일)와 대화방별 sandbox. 중지(백업 후)·삭제할 수 있다. */

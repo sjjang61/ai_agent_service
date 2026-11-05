@@ -6,6 +6,7 @@ import {
   Link2, Loader2, Play, Presentation, RefreshCw, Search,
 } from 'lucide-react'
 import { sandboxApi } from '../../api/sandbox'
+import { formatFullDate, formatFullDateTime, parseServerDate } from '../../utils/time'
 import type { Artifact, ArtifactKind, ArtifactPreview } from '../../types/artifact'
 
 // ─── 유틸 ────────────────────────────────────────────────────────────────────
@@ -17,12 +18,12 @@ export function formatSize(n: number) {
 }
 
 export function relativeTime(iso: string) {
-  const sec = Math.max(0, (Date.now() - new Date(iso).getTime()) / 1000)
+  const sec = Math.max(0, (Date.now() - parseServerDate(iso).getTime()) / 1000)
   if (sec < 60) return '방금'
   if (sec < 3600) return `${Math.floor(sec / 60)}분 전`
   if (sec < 86400) return `${Math.floor(sec / 3600)}시간 전`
   if (sec < 86400 * 30) return `${Math.floor(sec / 86400)}일 전`
-  return new Date(iso).toLocaleDateString()
+  return formatFullDate(iso)
 }
 
 function KindIcon({ kind }: { kind: ArtifactKind }) {
@@ -213,9 +214,9 @@ export default function ArtifactsPanel({ compact = false, refreshTick = 0, conve
       const res = await sandboxApi.publishArtifact(f.path, undefined, conversationId)
       try {
         await navigator.clipboard.writeText(res.data.url)
-        setNotice({ kind: 'ok', text: `링크를 복사했습니다 (만료: ${new Date(res.data.expires_at).toLocaleString()})\n${res.data.url}` })
+        setNotice({ kind: 'ok', text: `링크를 복사했습니다 (만료: ${formatFullDateTime(res.data.expires_at)})\n${res.data.url}` })
       } catch {
-        setNotice({ kind: 'ok', text: `공개 링크 (만료: ${new Date(res.data.expires_at).toLocaleString()})\n${res.data.url}` })
+        setNotice({ kind: 'ok', text: `공개 링크 (만료: ${formatFullDateTime(res.data.expires_at)})\n${res.data.url}` })
       }
     } catch (e) {
       setNotice({ kind: 'error', text: errorMessage(e, '링크를 만들지 못했습니다') })

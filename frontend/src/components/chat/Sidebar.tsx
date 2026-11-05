@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { dayKey, parseServerDate } from '../../utils/time'
 import { useNavigate } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import {
@@ -77,13 +78,9 @@ export default function Sidebar() {
   }
 
   // Group conversations by date (simplified)
-  const today = new Date().toDateString()
-  const todayConversations = conversations.filter(
-    (c) => new Date(c.created_at).toDateString() === today
-  )
-  const olderConversations = conversations.filter(
-    (c) => new Date(c.created_at).toDateString() !== today
-  )
+  const today = dayKey(new Date())
+  const todayConversations = conversations.filter((c) => dayKey(parseServerDate(c.created_at)) === today)
+  const olderConversations = conversations.filter((c) => dayKey(parseServerDate(c.created_at)) !== today)
 
   return (
     <aside className="w-[var(--sidebar-width)] bg-surface-secondary border-r border-border flex flex-col overflow-hidden flex-shrink-0">

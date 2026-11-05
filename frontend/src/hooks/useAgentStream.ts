@@ -5,6 +5,7 @@ import { useAgentStore } from '../store/agentStore'
 import { useChatStore } from '../store/chatStore'
 import type { AgentStreamEvent } from '../types/agent'
 import type { Attachment, Message, Reference } from '../types/chat'
+import { currentTimezone } from '../utils/time'
 
 let stepCounter = 0
 function nextStepId() {
@@ -72,7 +73,7 @@ export function useAgentStream(conversationId: string) {
               attachments,
               references,
               // 예약 도구의 기본 시간대와 '현재 시각' 안내에 쓴다
-              timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+              timezone: currentTimezone(),
             }),
             signal: controller.signal,
           }

@@ -1,6 +1,7 @@
 import { useQuery } from '@tanstack/react-query'
 import { Modal, errorText } from '../skills/common'
 import { agentsApi } from '../../api/agents'
+import { formatFullDateTime } from '../../utils/time'
 import type { AgentVersion, CustomAgent } from '../../types/customAgent'
 import { useState } from 'react'
 
@@ -45,7 +46,7 @@ export default function VersionsDialog({ agent, onClose, onChanged }: Props) {
               <div className="flex items-center gap-2">
                 <span className="text-[14px] font-semibold text-content-primary">v{v.version}</span>
                 {v.is_current && <span className="text-[11px] px-2 py-0.5 rounded-full bg-accent-green/15 text-accent-green">현재</span>}
-                <span className="text-xs text-content-tertiary">{new Date(v.created_at).toLocaleString()}</span>
+                <span className="text-xs text-content-tertiary">{formatFullDateTime(v.created_at)}</span>
               </div>
               {v.note && <p className="text-xs text-content-secondary mt-0.5 truncate">{v.note}</p>}
             </div>

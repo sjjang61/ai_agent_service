@@ -35,15 +35,11 @@ const LINT_LABELS: Record<WikiLintType, string> = {
   no_summary: '요약 없음',
 }
 
+import { formatMonthDay } from '../../utils/time'
+
 type View = 'list' | 'index' | 'lint'
 
-function formatDate(dateString: string): string {
-  const date = new Date(dateString)
-  if (isNaN(date.getTime())) return ''
-  const month = date.getMonth() + 1
-  const day = date.getDate()
-  return `${month}월 ${day}일`
-}
+const formatDate = formatMonthDay
 
 /** addTick: 페이지 제목 줄의 '새 항목' 버튼을 누를 때마다 바뀌는 값. 바뀌면 입력 폼을 연다. */
 export default function WikiList({ addTick = 0 }: { addTick?: number }) {

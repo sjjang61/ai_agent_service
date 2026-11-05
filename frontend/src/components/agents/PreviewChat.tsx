@@ -6,6 +6,7 @@ import { RotateCcw, Send, Square } from 'lucide-react'
 import { chatApi } from '../../api/chat'
 import { useAuthStore } from '../../store/authStore'
 import type { AgentConfig } from '../../types/customAgent'
+import { currentTimezone } from '../../utils/time'
 
 interface Step { tool: string; done: boolean }
 interface Msg { role: 'user' | 'assistant'; content: string; steps: Step[]; error?: string }
@@ -50,7 +51,7 @@ export default function PreviewChat({ agentId, config, starters }: Props) {
       const resp = await fetch(`/api/chat/conversations/${cid}/messages`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ content, agent_config: config, timezone: Intl.DateTimeFormat().resolvedOptions().timeZone }),
+        body: JSON.stringify({ content, agent_config: config, timezone: currentTimezone() }),
         signal: controller.signal,
       })
       if (!resp.ok || !resp.body) {

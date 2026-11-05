@@ -5,6 +5,7 @@ import type { CustomAgentSummary } from '../../types/customAgent'
 import { Loader2, TriangleAlert } from 'lucide-react'
 import type { TaskInput } from '../../types/schedule'
 import { SCHEDULE_TYPE_OPTIONS, WEEKDAY_LABELS, allTimezones, errorText } from './scheduleUtils'
+import { parseServerDate } from '../../utils/time'
 
 interface Props {
   mode: 'create' | 'edit'
@@ -19,7 +20,7 @@ const inputCls =
 /** ISO(UTC) → <input type="datetime-local"> 값(내 컴퓨터 시간대) */
 function toLocalInput(iso: string | null): string {
   if (!iso) return ''
-  const d = new Date(iso)
+  const d = parseServerDate(iso)
   const p = (n: number) => String(n).padStart(2, '0')
   return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}`
 }

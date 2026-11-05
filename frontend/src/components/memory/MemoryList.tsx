@@ -3,6 +3,7 @@ import { Search, Trash2, Edit2, Brain, Star, Tag } from 'lucide-react'
 import { useMemories, useDeleteMemory } from '../../hooks/useMemories'
 import { useMemoryStore } from '../../store/memoryStore'
 import MemoryForm from './MemoryForm'
+import { formatFullDate } from '../../utils/time'
 import type { Memory, MemoryCategory, MemoryType } from '../../types/memory'
 
 const CATEGORY_LABELS: Record<
@@ -197,7 +198,7 @@ export default function MemoryList({ addTick = 0 }: { addTick?: number }) {
                       )}
                       {memory.memory_type === 'episodic' && memory.occurred_at && (
                         <span className="text-[10px] text-content-tertiary">
-                          {new Date(memory.occurred_at).toLocaleDateString()}
+                          {formatFullDate(memory.occurred_at)}
                         </span>
                       )}
                       <span className="text-[10px] px-1.5 py-0.5 rounded bg-surface-tertiary text-content-muted">

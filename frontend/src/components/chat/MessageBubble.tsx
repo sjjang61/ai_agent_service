@@ -17,6 +17,7 @@ import axios from 'axios'
 import { formatSize, saveBlob } from '../sandbox/ArtifactsPanel'
 import { useAuthStore } from '../../store/authStore'
 import { stripWidgetTables } from '../widgets/dedupe'
+import { formatKoreanDateTime } from '../../utils/time'
 import { cloneElement, isValidElement, useState } from 'react'
 import { useTypingAnimation } from '../../hooks/useTypingAnimation'
 import { getTypingSpeed } from '../../config/animation'
@@ -87,22 +88,6 @@ function CodeBlock({ block, className, children, ...props }: any) {
       </SyntaxHighlighter>
     </div>
   )
-}
-
-function formatKoreanDateTime(dateString: string): string {
-  const date = new Date(dateString)
-  if (isNaN(date.getTime())) return ''
-
-  const month = date.getMonth() + 1
-  const day = date.getDate()
-  const hours = date.getHours()
-  const minutes = date.getMinutes()
-
-  const period = hours < 12 ? '오전' : '오후'
-  const displayHours = hours === 0 ? 12 : hours > 12 ? hours - 12 : hours
-  const displayMinutes = minutes.toString().padStart(2, '0')
-
-  return `${month}월 ${day}일 ${period} ${displayHours}:${displayMinutes}`
 }
 
 // URL을 마크다운 링크로 변환하는 함수
