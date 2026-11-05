@@ -24,9 +24,9 @@ class TelegramClient:
         if self._owns_http:
             await self._http.aclose()
 
-    async def call(self, method: str, timeout: Optional[float] = None, **params: Any) -> Any:
+    async def call(self, method: str, http_timeout: Optional[float] = None, **params: Any) -> Any:
         try:
-            r = await self._http.post(f"{API}/bot{self._token}/{method}", json=params, timeout=timeout)
+            r = await self._http.post(f"{API}/bot{self._token}/{method}", json=params, timeout=http_timeout)
         except httpx.HTTPError as e:  # URL(=토큰)이 메시지에 섞이지 않게 형식만 남긴다
             raise TelegramError(method, 0, f"네트워크 오류 {type(e).__name__}") from None
         try:
@@ -42,7 +42,9 @@ class TelegramClient:
 
     async def get_updates(self, offset: int, timeout: int = 25) -> list[dict]:
         # `timeout` 은 Telegram 의 long-poll 대기 시간(초)이고 HTTP 타임아웃은 그보다 길어야 한다
-        return await self.call("getUpdates", float(timeout + 15), offset=offset, allowed_updates=["message", "callback_query"], **{"timeout": timeout})
+        return await self.call(
+            "getUpdates", float(timeout + 15), offset=offset, allowed_updates=["message", "callback_query"], timeout=timeout
+        )
 
     async def delete_webhook(self) -> None:
         await self.call("deleteWebhook", drop_pending_updates=False)

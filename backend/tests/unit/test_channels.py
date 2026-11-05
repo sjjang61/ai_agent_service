@@ -84,3 +84,22 @@ async def test_gate_blocks_until_approved_and_skips_safe_tools():
 
     gate_tools([risky], allow)  # 이미 감싼 도구는 다시 감싸지 않는다
     assert await risky.ainvoke({"command": "ls"}) == DENIED
+
+
+async def test_get_updates_passes_long_poll_timeout_and_longer_http_timeout():
+    import httpx
+
+    from app.channels.telegram_api import TelegramClient
+
+    seen = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen["body"] = json.loads(request.content)
+        seen["timeout"] = request.extensions["timeout"]
+        return httpx.Response(200, json={"ok": True, "result": [{"update_id": 1}]})
+
+    client = TelegramClient("1:fake", httpx.AsyncClient(transport=httpx.MockTransport(handler)))
+    assert await client.get_updates(5, timeout=25) == [{"update_id": 1}]
+    assert seen["body"]["timeout"] == 25 and seen["body"]["offset"] == 5
+    assert seen["body"]["allowed_updates"] == ["message", "callback_query"]
+    assert seen["timeout"]["read"] == 40.0  # long poll 대기(25초)보다 길어야 한다
