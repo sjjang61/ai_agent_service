@@ -385,6 +385,20 @@ class ShortTermMemoryService:
         return out
 
     @staticmethod
+    async def get_many(user_id: str, refs: List[tuple]) -> Dict[tuple, str]:
+        """[(conversation_id, key)] → {(conversation_id, key): 값}. 없어졌거나 만료된 항목은 빠진다."""
+        redis = await ShortTermMemoryService._get_redis()
+        out: Dict[tuple, str] = {}
+        try:
+            for conv, key in refs:
+                v = await redis.get(ShortTermMemoryService._key(user_id, conv, key))
+                if v is not None:
+                    out[(conv, key)] = v.decode()
+        finally:
+            await redis.close()
+        return out
+
+    @staticmethod
     async def delete(user_id: str, conversation_id: str, key: str):
         """Delete a short-term memory."""
         redis = await ShortTermMemoryService._get_redis()

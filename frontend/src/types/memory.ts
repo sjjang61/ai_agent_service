@@ -73,3 +73,26 @@ export interface ShortTermItem {
   /** 남은 유지 시간(초). 없으면 null */
   expires_in_seconds: number | null
 }
+
+export interface ShortRef {
+  conversation_id: string
+  key: string
+}
+
+export interface ShortGroup {
+  title: string
+  items: ShortRef[]
+}
+
+export interface MergedItem {
+  key: string
+  value: string
+}
+
+export interface ShortMergePreview {
+  target_conversation_id: string
+  target_conversation_title: string | null
+  merged: MergedItem[]
+  source_count: number
+  conversation_count: number
+}

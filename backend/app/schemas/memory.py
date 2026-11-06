@@ -97,3 +97,47 @@ class ShortTermItem(BaseModel):
     key: str
     value: str
     expires_in_seconds: Optional[int] = None  # 남은 유지 시간 (없으면 None)
+
+
+class ShortRef(BaseModel):
+    """단기 메모리 한 항목의 식별 (대화방 + 키)"""
+
+    conversation_id: str
+    key: str
+
+
+class ShortGroup(BaseModel):
+    title: str = ""
+    items: List[ShortRef]
+
+
+class ShortGroupResult(BaseModel):
+    groups: List[ShortGroup]
+
+
+class ShortMergeRequest(BaseModel):
+    items: List[ShortRef] = Field(..., min_length=2, max_length=60)
+
+
+class MergedItem(BaseModel):
+    key: str = Field(..., min_length=1, max_length=100)
+    value: str = Field(..., min_length=1, max_length=500)
+
+
+class ShortMergePreview(BaseModel):
+    target_conversation_id: str
+    target_conversation_title: Optional[str] = None
+    merged: List[MergedItem]
+    source_count: int
+    conversation_count: int
+
+
+class ShortMergeApply(BaseModel):
+    items: List[ShortRef] = Field(..., min_length=2, max_length=60)
+    merged: List[MergedItem] = Field(..., min_length=1, max_length=20)
+    target_conversation_id: str
+
+
+class ShortMergeResult(BaseModel):
+    saved: int
+    removed: int

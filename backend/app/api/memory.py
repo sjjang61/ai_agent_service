@@ -12,6 +12,14 @@ from app.schemas.memory import (
     MemoryUpdate,
     MemoryResponse,
     MemorySearchParams,
+    MergedItem,
+    ShortGroup,
+    ShortGroupResult,
+    ShortMergeApply,
+    ShortMergePreview,
+    ShortMergeRequest,
+    ShortMergeResult,
+    ShortRef,
     ShortTermItem,
     ShortTermMemoryResponse,
 )
@@ -109,6 +117,117 @@ async def list_all_short_term_memories(
                       key=i["key"], value=i["value"], expires_in_seconds=i["ttl"])
         for i in items
     ]
+
+
+async def _short_items(user_id: str, db: AsyncSession) -> List[dict]:
+    """GET /short 와 같은 항목 목록(대화 제목 포함)을 dict 로."""
+    from sqlalchemy import select
+
+    from app.models.conversation import Conversation
+
+    items = await ShortTermMemoryService.list_all(user_id)
+    ids = {i["conversation_id"] for i in items}
+    convs = {}
+    if ids:
+        rows = (await db.execute(select(Conversation.id, Conversation.title, Conversation.updated_at).where(
+            Conversation.id.in_(ids), Conversation.user_id == user_id))).all()
+        convs = {r[0]: (r[1], r[2]) for r in rows}
+    out = []
+    for i in items:
+        if i["conversation_id"] in convs:
+            out.append({**i, "conversation_title": convs[i["conversation_id"]][0], "updated_at": convs[i["conversation_id"]][1]})
+    out.sort(key=lambda i: (i["updated_at"], i["key"]), reverse=True)
+    return out
+
+
+@router.post("/short/group", response_model=ShortGroupResult)
+async def group_short_term_memories(
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_session),
+):
+    """모든 대화방의 단기 메모리를 비슷한 내용(주제)끼리 묶는다 (AI). 데이터는 바꾸지 않는다."""
+    from app.services import short_memory_merge as sm
+
+    items = await _short_items(current_user.id, db)
+    if not items:
+        return ShortGroupResult(groups=[])
+    try:
+        groups = await sm.group_items(items)
+    except Exception as e:  # noqa: BLE001
+        raise HTTPException(status_code=502, detail=f"AI 가 묶지 못했습니다: {type(e).__name__}")
+    shown = items[: sm.MAX_GROUP_ITEMS]
+    return ShortGroupResult(groups=[
+        ShortGroup(title=g["title"], items=[ShortRef(conversation_id=shown[i]["conversation_id"], key=shown[i]["key"]) for i in g["indices"]])
+        for g in groups
+    ])
+
+
+async def _load_group(user_id: str, refs: List[ShortRef], db: AsyncSession):
+    """요청한 항목을 Redis 에서 읽어 [{conversation_id, conversation_title, key, value, updated_at}] 로 (내 항목만, 없어진 것은 제외)."""
+    by_ref = {(i["conversation_id"], i["key"]): i for i in await _short_items(user_id, db)}
+    chosen = [by_ref[(r.conversation_id, r.key)] for r in refs if (r.conversation_id, r.key) in by_ref]
+    seen, uniq = set(), []
+    for it in chosen:
+        k = (it["conversation_id"], it["key"])
+        if k not in seen:
+            seen.add(k)
+            uniq.append(it)
+    return uniq
+
+
+@router.post("/short/merge/preview", response_model=ShortMergePreview)
+async def preview_short_term_merge(
+    data: ShortMergeRequest,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_session),
+):
+    """한 그룹의 항목을 합친 결과를 미리 보여 준다 (저장하지 않는다). 합친 항목은 가장 최근에 쓴 대화방에 저장된다."""
+    from app.services import short_memory_merge as sm
+
+    items = await _load_group(current_user.id, data.items, db)
+    if len(items) < 2:
+        raise HTTPException(status_code=404, detail="합칠 항목을 찾을 수 없습니다 (이미 만료되었거나 삭제되었습니다)")
+    try:
+        merged = await sm.merge_group(items)
+    except Exception as e:  # noqa: BLE001
+        raise HTTPException(status_code=502, detail=f"AI 가 합치지 못했습니다: {type(e).__name__}")
+    target = max(items, key=lambda i: i["updated_at"])
+    return ShortMergePreview(
+        target_conversation_id=target["conversation_id"], target_conversation_title=target["conversation_title"],
+        merged=[MergedItem(**m) for m in merged], source_count=len(items),
+        conversation_count=len({i["conversation_id"] for i in items}),
+    )
+
+
+@router.post("/short/merge/apply", response_model=ShortMergeResult)
+async def apply_short_term_merge(
+    data: ShortMergeApply,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_session),
+):
+    """미리보기에서 확인한 합친 항목을 대상 대화방에 저장하고, 합쳐진 원본 항목을 지운다."""
+    from app.services.short_memory_merge import unique_key
+
+    items = await _load_group(current_user.id, data.items, db)
+    originals = {(i["conversation_id"], i["key"]) for i in items}
+    if len(originals) < 2:
+        raise HTTPException(status_code=404, detail="합칠 항목을 찾을 수 없습니다 (이미 만료되었거나 삭제되었습니다)")
+    if data.target_conversation_id not in {c for c, _ in originals}:
+        raise HTTPException(status_code=400, detail="합친 항목은 선택한 항목이 있는 대화방에만 저장할 수 있습니다")
+    # 대상 대화방에서 합치는 항목이 아닌 기존 key 와 겹치지 않게 한다
+    taken = set(await ShortTermMemoryService.list_keys(current_user.id, data.target_conversation_id)) - {k for c, k in originals if c == data.target_conversation_id}
+    saved_keys = set()
+    for m in data.merged:
+        key = unique_key(m.key, taken | saved_keys)
+        saved_keys.add(key)
+        await ShortTermMemoryService.store(current_user.id, data.target_conversation_id, key, m.value)
+    removed = 0
+    for conv, key in originals:
+        if conv == data.target_conversation_id and key in saved_keys:
+            continue  # 같은 key 로 덮어쓴 항목은 지우지 않는다
+        await ShortTermMemoryService.delete(current_user.id, conv, key)
+        removed += 1
+    return ShortMergeResult(saved=len(saved_keys), removed=removed)
 
 
 @router.delete("/short/{conversation_id}/{key}")
