@@ -11,6 +11,7 @@
 기존 LangChain BaseTool(내장 도구, MCP 도구)을 agno Function 으로 감싸서 그대로 재사용하고,
 Agno 이벤트를 기존 WebSocket/SSE 프로토콜(token / tool_call / tool_result / error)로 변환한다.
 """
+import asyncio
 import json
 import logging
 from typing import Any, AsyncIterator, List, Optional
@@ -267,6 +268,10 @@ def _extract_metrics(obj) -> tuple[int, int]:
     return input_tokens, output_tokens
 
 
+# 독립 태스크가 완료 전에 수거되지 않도록 참조를 잡아 둔다
+_background_tasks: set = set()
+
+
 async def stream_team(
     team,
     user_input: str,
@@ -332,27 +337,31 @@ async def stream_team(
                 total_input_tokens += inp
                 total_output_tokens += outp
         if not got_token:
-            logger.warning("[agno] 응답 토큰이 없습니다")
+            from app.core.runs import RunRegistry
+
+            if not RunRegistry.cancel_requested(session_id):  # 사용자가 중단한 실행은 응답이 없는 것이 정상이다
+                logger.warning("[agno] 응답 토큰이 없습니다")
 
     if total_input_tokens > 0 or total_output_tokens > 0:
+        # 토큰 사용량 기록: 요청의 DB 세션은 이 시점에 취소·종료됐을 수 있어(중단·연결 끊김) 별도 세션의 독립 태스크로 기록한다.
+        # 아래 yield 로 소비자가 먼저 끊겨도 기록이 유실되지 않도록 yield 보다 먼저 시작한다.
+        if db is not None:
+            from app.services.token_usage_service import TokenUsageService
+
+            task = asyncio.create_task(
+                TokenUsageService.record_usage_detached(
+                    user_id=user_id,
+                    conversation_id=session_id,
+                    llm_provider=llm_provider,
+                    model_name=model,
+                    input_tokens=total_input_tokens,
+                    output_tokens=total_output_tokens,
+                )
+            )
+            _background_tasks.add(task)
+            task.add_done_callback(_background_tasks.discard)
         # 화면의 '이번 요청 사용량' 표시용 (소요 시간·응답 시각은 API 계층이 덧붙인다)
         yield {"type": "usage", "input_tokens": total_input_tokens, "output_tokens": total_output_tokens, "requests": model_requests}
-
-    # 토큰 사용량 기록
-    if db and (total_input_tokens > 0 or total_output_tokens > 0):
-        try:
-            from app.services.token_usage_service import TokenUsageService
-            await TokenUsageService.record_usage(
-                db=db,
-                user_id=user_id,
-                conversation_id=session_id,
-                llm_provider=llm_provider,
-                model_name=model,
-                input_tokens=total_input_tokens,
-                output_tokens=total_output_tokens,
-            )
-        except Exception:
-            logger.exception("[agno] 토큰 사용량 기록 실패")
 
 
 def _events_from_output(out) -> list:

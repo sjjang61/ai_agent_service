@@ -37,6 +37,20 @@ class TokenUsageService:
         return usage
 
     @staticmethod
+    async def record_usage_detached(**kwargs) -> None:
+        """요청과 별개의 DB 세션으로 사용량을 기록한다. 응답이 끝나는 순간 요청이 취소되거나 연결이 끊겨도
+        (요청의 세션·연결은 그때 함께 취소된다) 기록이 유실되거나 오류 로그가 쏟아지지 않게 한다."""
+        import logging
+
+        from app.db.session import AsyncSessionLocal
+
+        try:
+            async with AsyncSessionLocal() as session:
+                await TokenUsageService.record_usage(db=session, **kwargs)
+        except Exception as e:  # noqa: BLE001  (취소 포함: 부가 기록이라 응답에 영향을 주지 않는다)
+            logging.getLogger(__name__).warning("[usage] 토큰 사용량 기록 실패: %s: %s", type(e).__name__, e)
+
+    @staticmethod
     async def get_summary(
         db: AsyncSession, user_id: Optional[str] = None
     ) -> Dict[str, Any]:
