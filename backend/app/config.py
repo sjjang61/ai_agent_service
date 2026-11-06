@@ -163,7 +163,7 @@ class Settings(BaseSettings):
     APP_REQUIRE_TOKEN: bool = False  # true 면 새 앱은 접근 토큰이 필수 (배포 때 private 로 앱별 지정도 가능)
     APP_CONTAINER_PORT: int = 5173  # 앱이 컨테이너 안에서 듣는 포트 (환경변수 PORT 로 전달)
     APP_MAX_PER_USER: int = 5
-    APP_ARTIFACT_MAX_MB: int = 100
+    APP_ARTIFACT_MAX_MB: int = 200
     APP_ARTIFACT_MAX_FILES: int = 50000
     APP_DATA_DIR: str = str(Path(__file__).parent.parent.parent / "data" / "apps")  # 아카이브·앱별 데이터(/workspace/data)
     APP_IDLE_MINUTES: int = 10  # 이 시간 동안 요청이 없으면 컨테이너를 내린다 (다음 요청에 다시 깨움)
