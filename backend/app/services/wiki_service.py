@@ -5,10 +5,11 @@ import re
 from datetime import datetime, timedelta, timezone
 from typing import Dict, List, Optional, Tuple
 
-from sqlalchemy import select, or_, delete
+from sqlalchemy import select, or_, delete, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models.wiki_entry import WikiEntry
+from app.config import settings
+from app.models.wiki_entry import WikiEdge, WikiEntry
 from app.schemas.wiki import (
     WikiEntryCreate, WikiEntryUpdate, WikiLinkRef, WikiLintIssue, WikiLintReport, WikiMergeRequest, WikiSearchParams,
 )
@@ -31,6 +32,8 @@ class WikiService:
     ) -> List[WikiEntry]:
         """List wiki entries with optional filtering."""
         query = select(WikiEntry).where(WikiEntry.user_id == user_id)
+        if not params.include_auto:  # AI 가 만든 스텁(개체·개념) 문서는 기본으로 숨긴다
+            query = query.where(WikiEntry.auto_generated.is_(False))
 
         # Category filter
         if params.category:
@@ -98,10 +101,12 @@ class WikiService:
             source_text=data.source_text,
             source_message_id=data.source_message_id,
             source_conversation_id=data.source_conversation_id,
+            graph_status="pending" if settings.WIKI_GRAPH_AUTO else "",
         )
         db.add(entry)
         await db.commit()
         await db.refresh(entry)
+        WikiService._queue_graph(user_id, entry.id)
         return entry
 
     @staticmethod
@@ -119,11 +124,18 @@ class WikiService:
         changes = data.model_dump(exclude_none=True)
         if "links" in changes:
             changes["links"] = await WikiService._valid_links(user_id, changes["links"], db, exclude=entry.id)
+        if changes.get("auto_generated") is False:
+            entry.auto_generated = False  # 스텁 승격: 이제부터 지식화 대상이 된다
         for k, v in changes.items():
             setattr(entry, k, v)
+        stale = ("title" in changes or "content" in changes) and not entry.auto_generated and settings.WIKI_GRAPH_AUTO
+        if stale:
+            entry.graph_status = "pending"
 
         await db.commit()
         await db.refresh(entry)
+        if stale:
+            WikiService._queue_graph(user_id, entry.id)
         return entry
 
     @staticmethod
@@ -137,8 +149,21 @@ class WikiService:
                 WikiEntry.user_id == user_id,
             )
         )
+        if result.rowcount > 0:
+            from app.services.wiki_extract import _prune_stubs
+
+            await db.execute(delete(WikiEdge).where(WikiEdge.user_id == user_id, or_(WikiEdge.src_id == entry_id, WikiEdge.dst_id == entry_id, WikiEdge.origin_id == entry_id)))
+            await _prune_stubs(db, user_id)  # 이 문서에서만 쓰이던 AI 스텁도 함께 정리
         await db.commit()
         return result.rowcount > 0
+
+    @staticmethod
+    def _queue_graph(user_id: str, entry_id: str):
+        """저장 후 백그라운드로 지식화(개체·관계 추출)를 시작한다."""
+        if settings.WIKI_GRAPH_AUTO:
+            from app.services.wiki_extract import schedule
+
+            schedule(user_id, entry_id)
 
     @staticmethod
     async def search_entries(
@@ -181,6 +206,10 @@ class WikiService:
         rows = r.all()
         titles = {i: t for i, t, _ in rows}
         out: Dict[str, List[str]] = {i: [x for x in (links or []) if x in titles and x != i] for i, _, links in rows}
+        # AI 가 추출한 연결(언급·관계)도 연결된 문서로 보여 준다
+        for src, dst in (await db.execute(select(WikiEdge.src_id, WikiEdge.dst_id).where(WikiEdge.user_id == user_id))).all():
+            if src in out and dst in titles and src != dst and dst not in out[src]:
+                out[src].append(dst)
         back: Dict[str, List[str]] = {i: [] for i in titles}
         for src, targets in out.items():
             for t in targets:
@@ -200,8 +229,11 @@ class WikiService:
         entry.links = await WikiService._valid_links(user_id, [*(entry.links or []), *data.add_links], db, exclude=entry.id)
         if data.new_source_text:
             entry.source_text = (entry.source_text + "\n\n---\n\n" if entry.source_text else "") + data.new_source_text
+        if settings.WIKI_GRAPH_AUTO and not entry.auto_generated:
+            entry.graph_status = "pending"
         await db.commit()
         await db.refresh(entry)
+        WikiService._queue_graph(user_id, entry.id)
         return entry
 
     # ── 에이전트용 검색 ───────────────────────────────────────────────────────

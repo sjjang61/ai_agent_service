@@ -7,6 +7,8 @@ import type {
   WikiLintReport,
   WikiMergeRequest,
   WikiSearchParams,
+  WikiGraph,
+  GraphInsight,
 } from '../types/wiki'
 
 export const wikiApi = {
@@ -18,6 +20,12 @@ export const wikiApi = {
 
   merge: (id: string, data: WikiMergeRequest) =>
     apiClient.post<WikiEntry>(`/wiki/${id}/merge`, data),
+
+  graph: (types?: string[]) => apiClient.get<WikiGraph>('/wiki/graph', { params: types?.length ? { types: types.join(',') } : undefined }),
+
+  graphInsights: () => apiClient.get<{ insights: GraphInsight[] }>('/wiki/graph/insights'),
+
+  graphRebuild: (force = false) => apiClient.post<{ queued: number }>('/wiki/graph/rebuild', null, { params: { force } }),
 
   lint: () => apiClient.get<WikiLintReport>('/wiki/lint'),
 

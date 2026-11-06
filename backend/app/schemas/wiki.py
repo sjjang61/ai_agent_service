@@ -7,6 +7,7 @@ from pydantic import BaseModel, Field
 
 
 WikiCategory = Literal["general", "work", "learning", "reference"]
+WikiNodeType = Literal["source", "entity", "concept", "overview", "other"]
 
 
 class WikiLinkRef(BaseModel):
@@ -38,6 +39,9 @@ class WikiEntryUpdate(BaseModel):
     summary: Optional[str] = Field(None, max_length=500)
     source_text: Optional[str] = None
     links: Optional[List[str]] = None
+    node_type: Optional[WikiNodeType] = None
+    aliases: Optional[List[str]] = None
+    auto_generated: Optional[bool] = None  # false 로 바꾸면 AI 스텁 문서를 정식 문서로 승격
 
 
 class WikiEntryResponse(BaseModel):
@@ -53,6 +57,10 @@ class WikiEntryResponse(BaseModel):
     source_text: Optional[str] = None
     links: List[WikiLinkRef] = []  # 이 문서가 연결한 문서
     backlinks: List[WikiLinkRef] = []  # 이 문서를 연결한 문서
+    node_type: str = "source"
+    aliases: List[str] = []
+    auto_generated: bool = False
+    graph_status: str = ""
     source_message_id: Optional[str]
     source_conversation_id: Optional[str]
     created_at: datetime
@@ -67,6 +75,7 @@ class WikiSearchParams(BaseModel):
     tags: Optional[List[str]] = None
     limit: int = Field(default=50, le=200)
     offset: int = 0
+    include_auto: bool = False  # AI 스텁 문서 포함 여부
 
 
 class WikiDraftRequest(BaseModel):
@@ -105,3 +114,47 @@ class WikiLintIssue(BaseModel):
 class WikiLintReport(BaseModel):
     total: int
     issues: List[WikiLintIssue]
+
+
+# ── 지식 그래프 ──────────────────────────────────────────────────────────────
+
+
+class GraphNode(BaseModel):
+    id: str
+    title: str
+    node_type: str
+    degree: int
+    community: int
+    summary: Optional[str] = None
+    auto_generated: bool = False
+    graph_status: str = ""
+
+
+class GraphEdge(BaseModel):
+    source: str
+    target: str
+    relation: str = ""
+    kind: str = "link"
+    weight: float = 1.0
+
+
+class GraphResponse(BaseModel):
+    nodes: List[GraphNode]
+    edges: List[GraphEdge]
+    type_counts: dict
+    communities: int
+    pending: int = 0  # 지식화 대기·진행 중인 문서 수
+
+
+class GraphInsight(BaseModel):
+    type: Literal["hub", "isolated", "bridge", "suggestion"]
+    message: str
+    entries: List[WikiLinkRef]
+
+
+class GraphInsights(BaseModel):
+    insights: List[GraphInsight]
+
+
+class GraphRebuildResult(BaseModel):
+    queued: int

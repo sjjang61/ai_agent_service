@@ -218,6 +218,9 @@ class Settings(BaseSettings):
         "http://localhost:80",
     ]
 
+    # 위키 지식 그래프: 저장·수정·병합한 문서를 백그라운드에서 자동으로 지식화(개체·관계 추출)
+    WIKI_GRAPH_AUTO: bool = True
+
     class Config:
         env_file = str(_ENV_FILE)
         env_file_encoding = "utf-8"

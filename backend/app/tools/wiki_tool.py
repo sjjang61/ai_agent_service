@@ -33,6 +33,10 @@ class SearchWikiTool(BaseTool):
         async with AsyncSessionLocal() as db:
             entries = await WikiService.search_for_agent(self.user_id, query, db, limit=min(max(limit, 1), 5))
             titles, out, _ = await WikiService.link_graph(self.user_id, db)
+            # 지식 그래프: 찾은 문서의 1-hop 이웃(개체·개념 등) 중 검색 결과에 없는 것을 '관련 지식'으로 덧붙인다
+            from app.services.wiki_graph import neighbors
+
+            nb = await neighbors(self.user_id, [e.id for e in entries], db)
         if not entries:
             return "위키에서 관련 문서를 찾지 못했습니다."
         blocks = []
@@ -45,4 +49,8 @@ class SearchWikiTool(BaseTool):
                 + (f"연결된 문서: {related}\n" if related else "")
                 + f"\n{body}"
             )
+        found = {e.id for e in entries}
+        extra = [titles[i] for i in dict.fromkeys(x for e in entries for x in nb.get(e.id, [])) if i not in found and i in titles][:12]
+        if extra:
+            blocks.append("### 관련 지식 (위키 지식 그래프의 이웃 노드)\n" + ", ".join(extra) + "\n더 알고 싶으면 이 이름으로 다시 검색하세요.")
         return "\n\n---\n\n".join(blocks)

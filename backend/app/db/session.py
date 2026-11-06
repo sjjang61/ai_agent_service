@@ -107,6 +107,18 @@ def _ensure_wiki_columns(sync_conn) -> None:
         sync_conn.execute(text("ALTER TABLE wiki_entries ADD COLUMN source_text TEXT NULL"))
     if "links" not in cols:
         sync_conn.execute(text("ALTER TABLE wiki_entries ADD COLUMN links JSON NULL"))
+    # 지식 그래프 컬럼 (alembic t3a1b2c3d4e5 와 같은 변경)
+    if "node_type" not in cols:
+        sync_conn.execute(text("ALTER TABLE wiki_entries ADD COLUMN node_type VARCHAR(20) NOT NULL DEFAULT 'source'"))
+        sync_conn.execute(text("CREATE INDEX ix_wiki_entries_node_type ON wiki_entries (node_type)"))
+    if "aliases" not in cols:
+        sync_conn.execute(text("ALTER TABLE wiki_entries ADD COLUMN aliases JSON NULL"))
+    if "auto_generated" not in cols:
+        sync_conn.execute(text("ALTER TABLE wiki_entries ADD COLUMN auto_generated BOOLEAN NOT NULL DEFAULT 0"))
+    if "graph_hash" not in cols:
+        sync_conn.execute(text("ALTER TABLE wiki_entries ADD COLUMN graph_hash VARCHAR(40) NULL"))
+    if "graph_status" not in cols:
+        sync_conn.execute(text("ALTER TABLE wiki_entries ADD COLUMN graph_status VARCHAR(12) NOT NULL DEFAULT ''"))
 
 
 def _ensure_sandbox_scope_columns(sync_conn) -> None:

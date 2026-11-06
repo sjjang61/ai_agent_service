@@ -18,6 +18,9 @@ from app.schemas.wiki import (
     WikiLinkRef,
     WikiLintReport,
     WikiMergeRequest,
+    GraphInsights,
+    GraphRebuildResult,
+    GraphResponse,
 )
 from app.services.wiki_service import WikiService
 
@@ -40,6 +43,10 @@ def _to_response(entry, graph=None) -> WikiEntryResponse:
         tags=entry.tags or [],
         summary=entry.summary,
         source_text=entry.source_text,
+        node_type=entry.node_type or "source",
+        aliases=entry.aliases or [],
+        auto_generated=bool(entry.auto_generated),
+        graph_status=entry.graph_status or "",
         links=links,
         backlinks=backlinks,
         source_message_id=entry.source_message_id,
@@ -56,6 +63,7 @@ async def list_wiki_entries(
     tags: Optional[str] = Query(None, description="Comma-separated tags"),
     limit: int = Query(50, le=200),
     offset: int = Query(0),
+    include_auto: bool = Query(False, description="AI 가 만든 개체·개념 스텁 문서 포함"),
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_session),
 ):
@@ -68,6 +76,7 @@ async def list_wiki_entries(
         tags=tag_list,
         limit=limit,
         offset=offset,
+        include_auto=include_auto,
     )
 
     entries = await WikiService.list_entries(current_user.id, params, db)
@@ -106,6 +115,49 @@ async def create_wiki_entry(
     """Create a new wiki entry."""
     entry = await WikiService.create_entry(current_user.id, data, db)
     return _to_response(entry, await WikiService.link_graph(current_user.id, db))
+
+
+@router.get("/graph", response_model=GraphResponse)
+async def wiki_graph(
+    types: Optional[str] = Query(None, description="Comma-separated node types (source,entity,concept,overview,other)"),
+    min_weight: float = Query(0.0, ge=0),
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_session),
+):
+    """지식 그래프: 노드(문서)·간선·유형별 개수·커뮤니티."""
+    from app.services.wiki_graph import build_graph
+
+    return await build_graph(current_user.id, db, [t.strip() for t in types.split(",")] if types else None, min_weight)
+
+
+@router.get("/graph/insights", response_model=GraphInsights)
+async def wiki_graph_insights(current_user: User = Depends(get_current_user), db: AsyncSession = Depends(get_session)):
+    """허브·고립 문서·다리 노드·연결 후보."""
+    from app.services.wiki_graph import build_graph, make_insights
+
+    return make_insights(await build_graph(current_user.id, db))
+
+
+@router.post("/graph/rebuild", response_model=GraphRebuildResult)
+async def wiki_graph_rebuild(
+    force: bool = Query(False, description="이미 지식화한 문서도 다시"),
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_session),
+):
+    """기존 문서를 모두(또는 아직 안 된 것만) 백그라운드로 지식화한다."""
+    from sqlalchemy import select as _select
+
+    from app.models.wiki_entry import WikiEntry
+    from app.services.wiki_extract import content_hash, schedule_many
+
+    rows = (await db.execute(_select(WikiEntry).where(WikiEntry.user_id == current_user.id, WikiEntry.auto_generated.is_(False)))).scalars().all()
+    todo = [e for e in rows if force or e.graph_status != "done" or e.graph_hash != content_hash(e.title, e.content)]
+    for e in todo:
+        e.graph_status = "pending"
+    await db.commit()
+    if todo:
+        schedule_many(current_user.id, [e.id for e in todo], force)
+    return GraphRebuildResult(queued=len(todo))
 
 
 @router.get("/lint", response_model=WikiLintReport)
