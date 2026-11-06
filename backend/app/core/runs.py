@@ -27,9 +27,10 @@ class RunRegistry:
     _runs: dict[str, _Run] = {}
 
     @classmethod
-    def is_running(cls, conversation_id: str) -> bool:
+    def is_running(cls, conversation_id: str, user_id: str = "") -> bool:
+        """실행 중인지. user_id 를 주면 그 사용자의 실행만 센다."""
         run = cls._runs.get(conversation_id)
-        return bool(run and not run.task.done())
+        return bool(run and not run.task.done() and (not user_id or run.user_id == user_id))
 
     @classmethod
     def cancel_requested(cls, conversation_id: str) -> bool:

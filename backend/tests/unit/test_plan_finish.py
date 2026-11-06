@@ -50,3 +50,27 @@ def test_cancel_requested_keeps_plan(monkeypatch):
 
 def test_no_plan_adds_nothing():
     assert [e["type"] for e in _run("c-noplan", [{"type": "token", "content": "x"}])] == ["token"]
+
+
+def test_run_registry_is_running_by_user():
+    async def go():
+        gate = asyncio.Event()
+
+        async def src():
+            await gate.wait()
+            yield {"type": "token", "content": "x"}
+
+        from app.core.runs import cancellable_events
+
+        agen = cancellable_events("c-run", "u1", src())
+        task = asyncio.create_task(agen.__anext__())
+        await asyncio.sleep(0.05)
+        assert RunRegistry.is_running("c-run") and RunRegistry.is_running("c-run", "u1")
+        assert not RunRegistry.is_running("c-run", "other")      # 남의 실행은 보이지 않는다
+        gate.set()
+        await task
+        await agen.aclose()
+        await asyncio.sleep(0.05)
+        assert not RunRegistry.is_running("c-run", "u1")
+
+    asyncio.run(go())

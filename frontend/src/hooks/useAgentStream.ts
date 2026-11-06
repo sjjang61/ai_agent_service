@@ -19,6 +19,18 @@ export function isStreaming(conversationId: string): boolean {
   return controllers.has(conversationId)
 }
 
+// 서버가 이미 끝났는데 연결만 남아 정리하는 경우: 사용자가 중단한 것이 아니므로 중단 안내를 붙이지 않는다
+const quietAborts = new Set<string>()
+
+/** 이 대화의 스트리밍 요청을 조용히 끊는다 (요청이 없으면 false) */
+export function releaseStream(conversationId: string): boolean {
+  const c = controllers.get(conversationId)
+  if (!c) return false
+  quietAborts.add(conversationId)
+  c.abort()
+  return true
+}
+
 const CANCEL_NOTE = '_(사용자가 실행을 중단했습니다)_'
 
 const MESSAGE_RENDERED_TOOLS = new Set(['create_widget', 'todo', 'form_ask_user', 'manage_schedule'])
@@ -165,6 +177,7 @@ export function useAgentStream(conversationId: string) {
       } catch (e) {
         // 취소 API 가 늦거나 실패해 연결을 직접 끊은 경우
         if ((e as Error)?.name !== 'AbortError') throw e
+        if (quietAborts.delete(conversationId)) return
         if (!fullContent.endsWith(CANCEL_NOTE)) {
           fullContent += (fullContent ? '\n\n' : '') + CANCEL_NOTE
           updateLastAssistantMessage(conversationId, fullContent)

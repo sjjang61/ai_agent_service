@@ -10,6 +10,7 @@ import WelcomeScreen from './WelcomeScreen'
 import RightPanel from '../layout/RightPanel'
 import DocumentsPanel from '../documents/DocumentsPanel'
 import { useDocuments } from '../../hooks/useDocuments'
+import { useRunWatchdog } from '../../hooks/useRunWatchdog'
 import { useEffect, useRef } from 'react'
 import { FileText, FolderOpen, ListChecks, Loader2 } from 'lucide-react'
 import type { AgentStep } from '../../types/agent'
@@ -36,6 +37,7 @@ export default function ChatLayout() {
   const panelSteps = liveSteps.length > 0 ? liveSteps : savedSteps
   const taskCount = buildTaskItems(panelSteps).length
   const running = isRunning && stepsOwner === currentConversationId
+  useRunWatchdog(currentConversationId, running) // 서버는 끝났는데 화면이 '진행 중'으로 남는 것을 정리
 
   // 실행이 시작돼 첫 단계가 생기면 우측에 작업 진행 패널을 자동으로 연다. 사용자가 닫으면 그 실행 동안은 다시 열지 않고,
   // 다른 패널(문서·Artifacts)을 보고 있으면 건드리지 않는다.

@@ -248,6 +248,15 @@ async def answer_form(
     return {"status": "ok"}
 
 
+@router.get("/conversations/{conversation_id}/run-status")
+async def run_status(
+    conversation_id: str,
+    current_user: User = Depends(get_current_user),
+):
+    """이 대화에서 에이전트가 실제로 실행 중인지 (화면의 '진행 중' 표시가 남아 있는지 확인하는 데 쓴다)."""
+    return {"running": RunRegistry.is_running(conversation_id, current_user.id)}
+
+
 @router.post("/conversations/{conversation_id}/cancel")
 async def cancel_run(
     conversation_id: str,
