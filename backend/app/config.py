@@ -148,7 +148,16 @@ class Settings(BaseSettings):
     # 웹앱 배포(deploy_web_app): 불변 아카이브 + 앱 전용 경량 컨테이너 + 20000번대 프록시 포트 (요청 시 깨우기)
     APP_HOST_ENABLED: bool = True
     APP_PORT_START: int = 20000
-    APP_PORT_END: int = 20100  # 포함
+    APP_PORT_END: int = 20099  # 포함. 비공개 앱(소유자 전용)이 쓰는 포트 범위
+    APP_PUBLIC_PORT: int = 20100  # 공개 앱(App Store) 게이트웨이 포트: Host 헤더({slug}.APP_PUBLIC_DOMAIN)로 앱을 구분한다
+    APP_PUBLIC_DOMAIN: str = "localhost"  # 공개 앱 호스트명의 도메인. 로컬은 *.localhost 가 브라우저에서 127.0.0.1 로 풀린다. 운영은 와일드카드 DNS(*.apps.example.com)
+    APP_PUBLIC_SCHEME: str = "http"
+    APP_PUBLIC_BIND: str = ""  # 공개 게이트웨이 바인드 주소 (비우면 APP_BIND_HOST)
+    APP_MAX_RUNNING: int = 20  # 동시에 실행 중인 앱 컨테이너 전체 상한 (넘으면 가장 오래 쓰지 않은 앱을 내린다)
+    APP_PUBLIC_RATE_PER_MIN: int = 600  # 공개 앱: IP·앱별 분당 요청 상한
+    APP_PUBLIC_WAKE_PER_MIN: int = 6  # 공개 앱: 앱별 분당 깨우기 시도 상한 (익명 요청이 컨테이너를 계속 만들지 못하게)
+    APP_REPORT_SUSPEND_THRESHOLD: int = 3  # 서로 다른 사용자 신고가 이 수에 이르면 자동 정지(검수 대기)
+    ADMIN_EMAILS: str = ""  # 쉼표로 구분한 관리자 이메일 (App Store 검수·정지 권한)
     APP_BIND_HOST: str = "127.0.0.1"  # 프록시 리스너 바인드 주소. 원격 서버에서 외부에 열려면 0.0.0.0 (+ 방화벽, APP_REQUIRE_TOKEN)
     APP_PUBLIC_HOST: str = "localhost"  # 앱 URL 에 쓰는 호스트명
     APP_REQUIRE_TOKEN: bool = False  # true 면 새 앱은 접근 토큰이 필수 (배포 때 private 로 앱별 지정도 가능)

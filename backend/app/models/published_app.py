@@ -1,7 +1,7 @@
 import uuid
 from datetime import datetime, timezone
 
-from sqlalchemy import Boolean, Column, DateTime, ForeignKey, Integer, String, Text, UniqueConstraint
+from sqlalchemy import JSON, Boolean, Column, DateTime, ForeignKey, Integer, String, Text, UniqueConstraint
 
 from app.db.base import Base
 
@@ -29,5 +29,31 @@ class PublishedApp(Base):
     container_id = Column(String(80), nullable=True)
     last_request_at = Column(DateTime, nullable=True)
     last_log = Column(Text, nullable=True)  # 컨테이너를 내릴 때 남기는 마지막 로그
+    # 접근 제어: private(소유자만, 실행 티켓으로 접속) | public(App Store 등록, 호스트명 {slug}.도메인 으로 누구나)
+    visibility = Column(String(10), nullable=False, default="private", index=True)
+    slug = Column(String(70), nullable=True, unique=True)  # 공개 호스트명 라벨
+    session_epoch = Column(Integer, nullable=False, default=0)  # 올리면 발급된 모든 소유자 세션 쿠키가 무효가 된다
+    # 공개 앱 검수 상태: approved(서비스 중) | pending(승인 대기) | rejected | suspended(신고로 정지). 비공개 앱은 ''
+    moderation_status = Column(String(12), nullable=False, default="")
+    moderation_note = Column(Text, nullable=True)
+    title = Column(String(100), nullable=True)  # 스토어 표시 제목
+    description = Column(Text, nullable=True)
+    category = Column(String(30), nullable=True)
+    tags = Column(JSON, nullable=True)
+    listed_at = Column(DateTime, nullable=True)
+    launch_count = Column(Integer, nullable=False, default=0)
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
     updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
+
+
+class AppReport(Base):
+    """공개 앱 신고. 서로 다른 사용자의 신고가 임계치에 이르면 앱이 자동 정지된다."""
+
+    __tablename__ = "app_reports"
+    __table_args__ = (UniqueConstraint("app_id", "reporter_id", name="uq_app_report"),)
+
+    id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    app_id = Column(String(36), nullable=False, index=True)
+    reporter_id = Column(String(36), nullable=False)
+    reason = Column(Text, nullable=False)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))

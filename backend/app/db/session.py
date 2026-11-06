@@ -38,6 +38,7 @@ async def init_db():
         await conn.run_sync(_ensure_conversation_channel)
         await conn.run_sync(_ensure_message_order_index)
         await conn.run_sync(_ensure_skill_type)
+        await conn.run_sync(_ensure_published_app_columns)
 
 
 def _ensure_memory_columns(sync_conn) -> None:
@@ -160,3 +161,37 @@ def _ensure_skill_type(sync_conn) -> None:
 
     if "skill_type" not in {c["name"] for c in inspect(sync_conn).get_columns("skills")}:
         sync_conn.execute(text("ALTER TABLE skills ADD COLUMN skill_type VARCHAR(10) NOT NULL DEFAULT 'builtin'"))
+
+
+def _ensure_published_app_columns(sync_conn) -> None:
+    """published_apps 에 가시성·스토어 컬럼 보강 (alembic v5a1b2c3d4e5 와 같은 변경). 기존 앱은 모두 비공개가 된다."""
+    from sqlalchemy import inspect, text
+
+    insp = inspect(sync_conn)
+    if "published_apps" not in insp.get_table_names():
+        return
+    cols = {c["name"] for c in insp.get_columns("published_apps")}
+    adds = {
+        "visibility": "VARCHAR(10) NOT NULL DEFAULT 'private'",
+        "slug": "VARCHAR(70) NULL",
+        "session_epoch": "INT NOT NULL DEFAULT 0",
+        "moderation_status": "VARCHAR(12) NOT NULL DEFAULT ''",
+        "moderation_note": "TEXT NULL",
+        "title": "VARCHAR(100) NULL",
+        "description": "TEXT NULL",
+        "category": "VARCHAR(30) NULL",
+        "tags": "JSON NULL",
+        "listed_at": "DATETIME NULL",
+        "launch_count": "INT NOT NULL DEFAULT 0",
+    }
+    for name, ddl in adds.items():
+        if name not in cols:
+            sync_conn.execute(text(f"ALTER TABLE published_apps ADD COLUMN {name} {ddl}"))
+    if "slug" not in cols:
+        sync_conn.execute(text("CREATE UNIQUE INDEX ux_published_apps_slug ON published_apps (slug)"))
+        sync_conn.execute(text("CREATE INDEX ix_published_apps_visibility ON published_apps (visibility)"))
+    # slug 가 없는 기존 앱에 채운다
+    for (app_id, name) in sync_conn.execute(text("SELECT id, name FROM published_apps WHERE slug IS NULL")).all():
+        from app.services.app_policy import make_slug
+
+        sync_conn.execute(text("UPDATE published_apps SET slug = :s WHERE id = :i"), {"s": make_slug(name, app_id), "i": app_id})

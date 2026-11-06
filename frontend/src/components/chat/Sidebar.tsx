@@ -231,6 +231,16 @@ export default function Sidebar() {
           )}
         </div>
 
+        {/* App Store: 공개된 앱 둘러보기 */}
+        <button
+          onClick={() => navigate('/store')}
+          className="w-full flex items-center gap-2.5 px-3 py-2.5 rounded-[var(--radius-md)]
+            text-content-primary hover:bg-surface-hover transition-colors text-left"
+        >
+          <span className="text-base">🛍️</span>
+          <span className="text-sm flex-1">App Store</span>
+        </button>
+
         {/* Projects Section */}
         <div className="mt-4">
           <div className="px-3 py-2 text-xs font-medium text-content-tertiary uppercase tracking-wider">

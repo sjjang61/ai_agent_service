@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { ExternalLink, Loader2, Play, Square, Trash2, ScrollText, Copy, Lock, Rocket } from 'lucide-react'
+import { ExternalLink, Loader2, Play, Square, Trash2, ScrollText, Globe, Lock, Rocket } from 'lucide-react'
 import { appsApi, type DeployedApp } from '../../api/apps'
 import { T } from '../skills/typography'
 
@@ -25,7 +25,15 @@ function AppRow({ app }: { app: DeployedApp }) {
   }
   const st = STATUS[app.status]
   const busy = start.isPending || stop.isPending || remove.isPending
-  const copy = () => app.url && navigator.clipboard?.writeText(app.url)
+  const openNew = async () => {
+    const w = window.open('', '_blank')
+    try {
+      const u = await appsApi.launch(app.id)
+      if (w) w.location.href = u
+    } catch {
+      w?.close()
+    }
+  }
 
   return (
     <div className="rounded-xl border border-border bg-surface-secondary p-4">
@@ -35,17 +43,14 @@ function AppRow({ app }: { app: DeployedApp }) {
             <span className="text-[14px] font-medium text-content-primary">{app.name}</span>
             <span className={`text-[11px] px-2 py-0.5 rounded-full ${st.cls}`}>{app.status === 'starting' || start.isPending ? '시작 중' : st.label}</span>
             <span className="text-[11px] text-content-tertiary">{app.kind === 'server' ? '서버형' : '정적'} · v{app.version} · :{app.port}</span>
-            {app.require_token && <span title="접근 토큰이 필요한 비공개 앱" className="text-content-tertiary"><Lock size={12} /></span>}
+            {app.visibility === 'public' ? <span title="App Store 공개" className="text-accent-done"><Globe size={12} /></span> : <span title="비공개 (소유자만)" className="text-content-tertiary"><Lock size={12} /></span>}
           </div>
-          {app.url && (
-            <a href={app.url} target="_blank" rel="noreferrer" className="mt-1 inline-flex items-center gap-1 text-xs text-accent-primary hover:underline break-all">
-              {app.url.replace(/\?t=.*/, app.require_token ? '?t=…' : '')} <ExternalLink size={11} />
-            </a>
-          )}
+          <button onClick={openNew} className="mt-1 inline-flex items-center gap-1 text-xs text-accent-primary hover:underline border-none bg-transparent cursor-pointer p-0">
+            열기 <ExternalLink size={11} />
+          </button>
           {app.status === 'failed' && app.error && <p className="mt-1 text-xs text-accent-red whitespace-pre-wrap break-words max-h-24 overflow-auto">{app.error}</p>}
         </div>
         <div className="flex items-center gap-1 flex-shrink-0">
-          <button onClick={copy} title="URL 복사" className="p-1.5 text-content-muted hover:text-content-primary"><Copy size={14} /></button>
           <button onClick={loadLogs} title="로그" className="p-1.5 text-content-muted hover:text-content-primary"><ScrollText size={14} /></button>
           {app.status === 'running' ? (
             <button onClick={() => stop.mutate()} disabled={busy} title="중지 (다음 요청에 다시 시작)" className="p-1.5 text-content-muted hover:text-content-primary disabled:opacity-50">

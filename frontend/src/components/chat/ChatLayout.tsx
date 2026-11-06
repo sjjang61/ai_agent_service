@@ -11,6 +11,7 @@ import WelcomeScreen from './WelcomeScreen'
 import RightPanel from '../layout/RightPanel'
 import AppPreviewPanel from './AppPreviewPanel'
 import { latestDeployedApp } from './deployedApp'
+import { appsApi } from '../../api/apps'
 import DocumentsPanel from '../documents/DocumentsPanel'
 import { useDocuments } from '../../hooks/useDocuments'
 import { useRunWatchdog } from '../../hooks/useRunWatchdog'
@@ -172,7 +173,7 @@ export default function ChatLayout() {
       )}
       {!selectedStep && rightPanel === 'app' && deployedApp && (
         <RightPanel wide title={deployedApp.name} subtitle="배포된 앱 미리보기" icon={<AppWindow size={15} />} onClose={closePanel}>
-          <AppPreviewPanel app={deployedApp} />
+          <AppPreviewPanel key={deployedApp.appId} name={deployedApp.name} launch={() => appsApi.launch(deployedApp.appId)} />
         </RightPanel>
       )}
       {!selectedStep && rightPanel === 'artifacts' && (

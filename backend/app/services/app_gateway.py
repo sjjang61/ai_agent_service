@@ -1,10 +1,13 @@
-"""웹앱 게이트웨이: 앱마다 하나씩 열리는 프록시 리스너(20000번대)의 ASGI 앱.
+"""웹앱 게이트웨이: 프록시 리스너의 ASGI 앱 (HTTP 스트리밍, SSE, WebSocket).
 
-요청을 받으면 접근 토큰을 확인하고, 앱 컨테이너가 꺼져 있으면 깨운 뒤(HTML 은 로딩 페이지, 그 외는 최대 APP_WAKE_WAIT_SECONDS 대기),
-컨테이너의 loopback 게시 포트로 스트리밍 포워딩한다 (HTTP, SSE, WebSocket). 업스트림 주소는 서버가 아는 값만 쓴다.
+두 가지 모드가 있다.
+- port   : 비공개 앱마다 열리는 20000번대 포트. 소유자만 접속 — 메인 앱이 발급한 일회용 실행 티켓(?t=)을 세션 쿠키로 바꿔 인증한다.
+- public : App Store 에 공개(승인)된 앱. 포트 하나에서 Host 헤더({slug}.도메인)로 앱을 구분하고 익명 접속을 허용한다 (요청률·깨우기 횟수 제한).
+
+앱 컨테이너가 꺼져 있으면 깨운 뒤(HTML 은 로딩 페이지, 그 외는 최대 APP_WAKE_WAIT_SECONDS 대기) 컨테이너의 loopback 게시 포트로 포워딩한다.
+업스트림 주소는 서버가 아는 값만 쓴다.
 """
 import asyncio
-import hmac
 import logging
 from typing import Optional
 from urllib.parse import urlencode
@@ -19,13 +22,18 @@ from starlette.routing import Route, WebSocketRoute
 from starlette.websockets import WebSocket, WebSocketDisconnect, WebSocketState
 
 from app.config import settings
+from app.services import app_auth
+from app.services.app_policy import RateLimiter, host_slug
 
 logger = logging.getLogger(__name__)
 
 STATUS_PATH = "/__app/status"
+SESSION_COOKIE = "appsess_"
 HOP_BY_HOP = {"connection", "keep-alive", "proxy-authenticate", "proxy-authorization", "te", "trailers", "transfer-encoding", "upgrade"}
 
 _client: Optional[httpx.AsyncClient] = None
+_req_limiter = RateLimiter(settings.APP_PUBLIC_RATE_PER_MIN)
+_wake_limiter = RateLimiter(settings.APP_PUBLIC_WAKE_PER_MIN)
 
 
 def _http() -> httpx.AsyncClient:
@@ -36,15 +44,8 @@ def _http() -> httpx.AsyncClient:
     return _client
 
 
-def token_ok(st, query_token: Optional[str], cookie_token: Optional[str], header_token: Optional[str] = None) -> bool:
-    """접근 토큰이 필요 없는 앱이면 항상 True. 필요하면 쿼리·쿠키·헤더 중 하나가 맞아야 한다 (상수 시간 비교)."""
-    if not st.require_token:
-        return True
-    return any(t and hmac.compare_digest(t, st.token) for t in (query_token, cookie_token, header_token))
-
-
 def _cookie_name(st) -> str:
-    return f"apptok_{st.port}"
+    return f"{SESSION_COOKIE}{st.port}"
 
 
 _PAGE = """<!doctype html><html lang="ko"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
@@ -76,9 +77,10 @@ def _wants_html(request: Request) -> bool:
 
 def _fwd_headers(request: Request, st) -> dict:
     h = {k: v for k, v in request.headers.items() if k.lower() not in HOP_BY_HOP and k.lower() not in ("host", "cookie")}
-    cookies = "; ".join(c.strip() for c in request.headers.get("cookie", "").split(";") if c.strip() and not c.strip().startswith(_cookie_name(st) + "="))
+    # 소유자 세션 쿠키(appsess_*)는 어떤 앱에도 넘기지 않는다 (같은 호스트의 다른 포트 앱이 받을 수 있다)
+    cookies = "; ".join(c.strip() for c in request.headers.get("cookie", "").split(";") if c.strip() and not c.strip().startswith(SESSION_COOKIE))
     if cookies:
-        h["cookie"] = cookies  # 접근 토큰 쿠키는 앱에 넘기지 않는다
+        h["cookie"] = cookies
     h["host"] = f"localhost:{st.container_port}"  # vite preview 등의 allowedHosts 검사를 통과하도록 업스트림 기준 호스트
     h["x-forwarded-host"] = request.headers.get("host", "")
     h["x-forwarded-proto"] = request.url.scheme
@@ -94,51 +96,78 @@ def _rewrite_location(loc: str, request: Request, st) -> str:
     return loc
 
 
-def make_gateway(host, app_id: str) -> Starlette:
-    def state():
-        return host.states.get(app_id)
+def _strip_token(request) -> str:
+    """실행 티켓(t)은 앱에 넘기지 않는다."""
+    return urlencode([(k, v) for k, v in request.query_params.multi_items() if k != "t"])
+
+
+def make_gateway(host, app_id: Optional[str], mode: str = "port") -> Starlette:
+    def resolve(scope_headers_host: str, app_id=app_id):
+        if mode == "port":
+            return host.states.get(app_id)
+        slug = host_slug(scope_headers_host)
+        return host.by_slug(slug) if slug else None
+
+    def try_wake(st) -> Optional[asyncio.Task]:
+        t = host._wake.get(st.id)
+        if t and not t.done():
+            return t  # 이미 시작 중이면 합류 (횟수 제한에 포함하지 않는다)
+        if mode == "public" and not _wake_limiter.allow(st.id):
+            return None
+        return host.wake(st.id)
 
     async def ready_upstream(st, wait: bool) -> Optional[int]:
-        """업스트림 포트. 꺼져 있으면 깨운다 (wait=True 면 APP_WAKE_WAIT_SECONDS 까지 기다림). 아직 준비 안 됐으면 None."""
         if st.status == "running" and st.upstream:
             return st.upstream
-        task = host.wake(app_id)
-        if wait:
+        task = try_wake(st)
+        if wait and task:
             try:
                 await asyncio.wait_for(asyncio.shield(task), settings.APP_WAKE_WAIT_SECONDS)
             except (asyncio.TimeoutError, Exception):  # noqa: BLE001
                 pass
         return st.upstream if st.status == "running" else None
 
+    def check_access(st, query_t: Optional[str], cookies: dict, client_ip: str) -> tuple:
+        """(허용 여부, 거부 응답 또는 None, 세션 쿠키로 바꿔야 할 티켓이 유효한지). WebSocket 에서도 쓴다."""
+        if mode == "public":
+            if not host.public_ok(st):
+                return False, _error_page("공개되지 않은 앱입니다", "이 앱은 공개되지 않았거나 공개가 중단되었습니다.", 404), False
+            if not _req_limiter.allow((client_ip, st.id)):
+                return False, Response("요청이 너무 많습니다. 잠시 후 다시 시도하세요.", status_code=429, headers={"Retry-After": "30"}), False
+            return True, None, False
+        if app_auth.check_session(cookies.get(_cookie_name(st)), st.id, st.user_id, st.epoch):
+            return True, None, False
+        if query_t and app_auth.check_ticket(query_t, st.id, st.user_id):
+            return True, None, True
+        return False, _error_page("비공개 앱입니다", "이 앱은 소유자만 열 수 있습니다. 서비스의 My Apps 에서 '실행'으로 여세요.", 401), False
+
     async def authorize(request: Request, st) -> Optional[Response]:
-        """인증 실패 응답을 돌려준다. 통과면 None. 쿼리로 토큰이 오면 쿠키를 심고 토큰이 없는 주소로 리다이렉트한다."""
-        qt = request.query_params.get("t")
-        if not token_ok(st, qt, request.cookies.get(_cookie_name(st)), request.headers.get("x-app-token")):
-            return _error_page("접근 토큰이 필요합니다", "이 앱은 비공개입니다. 공유받은 링크(?t=...)로 접속하세요.", 401)
-        if st.require_token and qt:
-            params = [(k, v) for k, v in request.query_params.multi_items() if k != "t"]
-            url = request.url.path + (("?" + urlencode(params)) if params else "")
-            resp = RedirectResponse(url, status_code=303)
-            resp.set_cookie(_cookie_name(st), st.token, httponly=True, samesite="lax", path="/")
+        ok, denied, ticket = check_access(st, request.query_params.get("t"), request.cookies, request.client.host if request.client else "")
+        if not ok:
+            return denied
+        if ticket:  # 티켓 → 세션 쿠키로 교환하고 티켓 없는 주소로 이동
+            q = _strip_token(request)
+            resp = RedirectResponse(request.url.path + (f"?{q}" if q else ""), status_code=303)
+            resp.set_cookie(_cookie_name(st), app_auth.make_session(st.id, st.user_id, st.epoch), httponly=True, samesite="lax", path="/", max_age=app_auth.SESSION_TTL)
             return resp
         return None
 
     async def status(request: Request):
-        st = state()
+        st = resolve(request.headers.get("host", ""))
         if not st:
             return JSONResponse({"status": "missing", "ready": False, "message": "앱을 찾을 수 없습니다"}, status_code=404)
-        denied = await authorize(request, st)
-        if denied is not None and denied.status_code == 401:
-            return JSONResponse({"detail": "token required"}, status_code=401)
+        ok, denied, _ = check_access(st, None, request.cookies, request.client.host if request.client else "")
+        if not ok:
+            return JSONResponse({"detail": "denied"}, status_code=denied.status_code if denied else 403)
         if st.status == "stopped":
-            host.wake(app_id)
+            try_wake(st)
         msg = host.cooldown_message(st) or {"starting": "앱을 시작하는 중...", "stopped": "앱을 깨우는 중...", "running": "준비되었습니다", "failed": st.error or "실패"}.get(st.status, "")
         return JSONResponse({"status": st.status, "ready": st.status == "running", "message": msg})
 
     async def proxy(request: Request):
-        st = state()
+        st = resolve(request.headers.get("host", ""))
         if not st:
-            return _error_page("앱을 찾을 수 없습니다", "삭제된 앱입니다.", 404)
+            return _error_page("앱을 찾을 수 없습니다", "존재하지 않거나 삭제된 앱입니다.", 404)
         denied = await authorize(request, st)
         if denied is not None:
             return denied
@@ -153,7 +182,8 @@ def make_gateway(host, app_id: str) -> Starlette:
                 return HTMLResponse(_LOADING, status_code=503, headers={"Retry-After": "3", "Cache-Control": "no-store"})
             return JSONResponse({"error": "app_starting" if st.status != "failed" else "app_failed", "message": note or st.error or "앱을 시작하는 중입니다. 잠시 후 다시 시도하세요."},
                                 status_code=503, headers={"Retry-After": "3"})
-        url = f"http://127.0.0.1:{up}{request.url.path}" + (f"?{_strip_token(request)}" if request.url.query else "")
+        q = _strip_token(request)
+        url = f"http://127.0.0.1:{up}{request.url.path}" + (f"?{q}" if q else "")
         try:
             req = _http().build_request(request.method, url, headers=_fwd_headers(request, st), content=request.stream())
             resp = await _http().send(req, stream=True)
@@ -169,17 +199,22 @@ def make_gateway(host, app_id: str) -> Starlette:
         headers = {k: v for k, v in resp.headers.items() if k.lower() not in HOP_BY_HOP}
         if "location" in headers:
             headers["location"] = _rewrite_location(headers["location"], request, st)
+        if mode == "public":
+            headers.setdefault("x-content-type-options", "nosniff")
         return StreamingResponse(resp.aiter_raw(), status_code=resp.status_code, headers=headers, background=BackgroundTask(resp.aclose))
 
     async def _upstream_lost(st):
-        """업스트림 연결이 끊겼다면 컨테이너가 아직 살아 있는지 확인하고, 아니면 stopped 로 돌려 다음 요청이 깨우게 한다."""
         if st.container_id and not await host._manager().is_running(st.container_id):
             st.status, st.upstream, st.container_id = "stopped", None, None
             await host._persist(st.id, status="stopped", container_id=None)
 
     async def ws_proxy(ws: WebSocket):
-        st = state()
-        if not st or not token_ok(st, ws.query_params.get("t"), ws.cookies.get(_cookie_name(st)), ws.headers.get("x-app-token")):
+        st = resolve(ws.headers.get("host", ""))
+        if not st:
+            await ws.close(code=4404)
+            return
+        ok, _, _ = check_access(st, None, ws.cookies, ws.client.host if ws.client else "")
+        if not ok:
             await ws.close(code=4401)
             return
         host.touch(st)
@@ -196,9 +231,7 @@ def make_gateway(host, app_id: str) -> Starlette:
                 await _relay(ws, upstream)
         except Exception as e:  # noqa: BLE001
             logger.debug("[apps] websocket 프록시 종료 (%s): %s", st.name, e)
-            if ws.client_state == WebSocketState.CONNECTING:
-                await ws.close(code=1011)
-            elif ws.client_state == WebSocketState.CONNECTED:
+            if ws.client_state in (WebSocketState.CONNECTING, WebSocketState.CONNECTED):
                 await ws.close(code=1011)
 
     async def _relay(ws: WebSocket, upstream):
@@ -237,9 +270,3 @@ def make_gateway(host, app_id: str) -> Starlette:
         WebSocketRoute("/{path:path}", ws_proxy),
         Route("/{path:path}", proxy, methods=methods),
     ])
-
-
-def _strip_token(request) -> str:
-    """접근 토큰(t)은 앱에 넘기지 않는다."""
-    items = [(k, v) for k, v in request.query_params.multi_items() if k != "t"]
-    return urlencode(items)

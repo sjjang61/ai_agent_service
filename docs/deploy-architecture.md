@@ -170,7 +170,7 @@
 | 아카이브를 통한 경로 이탈·링크·장치 파일 | `normalize_archive` 에서 거부 |
 | 명령 주입 | 아카이브를 Docker API 로 전달, 셸 문자열에 외부 값을 넣지 않음 |
 | 프록시 SSRF | 업스트림은 서버가 기록한 `127.0.0.1:{게시 포트}` 만 사용, 요청 값으로 목적지를 정하지 않음 |
-| 포트가 추측 가능 (20000~20100) | 앱별 접근 토큰: `?t=` 첫 방문 시 HttpOnly 쿠키(`apptok_{port}`) 발급 후 토큰 없는 주소로 303. 토큰은 앱에 전달하지 않음 |
+| 포트가 추측 가능 (20000~20099) | 비공개 앱은 소유자 전용: 메인 앱이 발급한 일회용 실행 티켓(§10)이 있어야 열린다 (이전의 링크 토큰 방식은 폐기) |
 | 앱 코드의 메인 앱 접근 | 포트가 달라 origin 분리 (메인 앱 JWT 가 localStorage 라면 읽을 수 없음), CORS 미개방 |
 | 컨테이너 격리 | 기존 sandbox 와 동일: `cap_drop ALL`, `no-new-privileges`, 메모리 512m, CPU 0.5, 전용 네트워크 |
 | 남용 | 사용자당 앱 수 상한(5), 아카이브 크기·파일 수 상한, 외부 공개 도구는 메신저 승인 대상(`RISKY_TOOLS`) |
@@ -183,9 +183,9 @@
 
 ### 5.8 설정 (`.env`)
 
-`APP_HOST_ENABLED`, `APP_PORT_START`, `APP_PORT_END`, `APP_BIND_HOST`(기본 127.0.0.1), `APP_PUBLIC_HOST`(기본 localhost), `APP_REQUIRE_TOKEN`, `APP_CONTAINER_PORT`, `APP_MAX_PER_USER`, `APP_ARTIFACT_MAX_MB`, `APP_ARTIFACT_MAX_FILES`, `APP_DATA_DIR`, `APP_IDLE_MINUTES`, `APP_STARTUP_TIMEOUT`, `APP_WAKE_WAIT_SECONDS`, `APP_IMAGE`, `APP_MEMORY_LIMIT`, `APP_CPU_LIMIT`, `APP_FAILURE_COOLDOWN`, `APP_MAX_RETRIES`. 기본값은 `backend/app/config.py`, 예시는 `.env.example`.
+`APP_HOST_ENABLED`, `APP_PORT_START`, `APP_PORT_END`, `APP_BIND_HOST`(기본 127.0.0.1), `APP_PUBLIC_HOST`(기본 localhost), `APP_CONTAINER_PORT`, `APP_MAX_PER_USER`, `APP_ARTIFACT_MAX_MB`, `APP_ARTIFACT_MAX_FILES`, `APP_DATA_DIR`, `APP_IDLE_MINUTES`, `APP_STARTUP_TIMEOUT`, `APP_WAKE_WAIT_SECONDS`, `APP_IMAGE`, `APP_MEMORY_LIMIT`, `APP_CPU_LIMIT`, `APP_FAILURE_COOLDOWN`, `APP_MAX_RETRIES`. 기본값은 `backend/app/config.py`, 예시는 `.env.example`.
 
-**원격 서버로 외부 공개할 때:** `APP_BIND_HOST=0.0.0.0`, `APP_PUBLIC_HOST=서버 주소`, 방화벽에서 포트 범위 개방, `APP_REQUIRE_TOKEN=true`.
+**원격 서버로 외부 공개할 때:** `APP_BIND_HOST=0.0.0.0`, `APP_PUBLIC_HOST=서버 주소`, 방화벽에서 포트 범위 개방. 비공개 앱은 소유자 세션이 있어야만 열리므로 외부에 열어도 안전하다. 공개 앱은 §10 의 와일드카드 도메인 설정이 필요하다.
 
 ## 6. 검증한 것
 
@@ -193,7 +193,7 @@
 
 - 정적 앱: 루트 응답, SPA 폴백(없는 경로 → `index.html`), 정적 자산.
 - 서버형 앱(Node): API 응답, **중지 후 JSON 요청으로 깨우기 → `$DATA_DIR` 의 카운터가 이어짐** (데이터 유지).
-- 비공개 앱: 토큰 없이 401, `?t=` 로 303 + 쿠키, 쿠키로 접속.
+- 비공개 앱: 티켓 없이 401, 실행 티켓으로 303 + 쿠키, 쿠키로 접속 (자세한 검증은 §10).
 - 같은 이름 재배포: 같은 포트·URL, 버전 증가.
 - 삭제: 컨테이너·포트 정리 확인.
 - 단위 테스트: 아카이브 검증(안전하지 않은 항목 거부, 한도), 포트 할당(최저 빈 포트·고갈), 토큰 판정, `Location` 재작성 등.
@@ -267,3 +267,74 @@
 
 ### 마이그레이션
 - (중) Alembic 체인 정리(충돌 표시 해결, 단일 헤드 복구는 완료)와 DB 버전 표시를 실제 상태에 맞추는 작업. 지금은 `create_all` 과 컬럼 보강 코드가 실제 스키마를 만든다.
+
+## 10. 접근 제어와 App Store (비공개 / 공개)
+
+배포된 앱은 **기본 비공개(소유자만)** 이고, App Store 에 등록하면 **공개(로그인 없이 누구나 접속)** 가 된다.
+
+### 10.1 결정 사항
+
+| 결정 | 내용 |
+|---|---|
+| 익명 접속 | 허용. 대신 요청률·깨우기 횟수 제한, 전체 실행 상한을 둔다 |
+| 공개 앱 URL | **호스트명 라우팅**: `http://{slug}.localhost:20100/` — 포트 하나에서 `Host` 헤더로 앱을 구분 (포트 고갈·쿠키 격리 문제 해소) |
+| 비공개 앱 URL | 기존 포트 방식(20000~20099) 유지 |
+| 서버형 앱 공개 | 관리자 승인 후 공개 (`moderation_status=pending`). 정적 앱은 자동 점검 통과 시 즉시 공개 |
+| 재배포 | 공개 중인 앱의 새 버전은 다시 점검한다 (걸리면 비공개로 되돌림, 서버형은 다시 승인 대기) |
+| 공개 앱의 인스턴스 | 방문자 전원이 하나의 인스턴스·데이터 디렉터리를 공유 (설치형 복사본은 후속 과제) |
+| 링크 토큰 공유 | 제거 (필요하면 중간 단계로 나중에 추가) |
+
+### 10.2 비공개 = 소유자만: 실행 티켓
+
+앱은 다른 origin 이라 메인 앱의 로그인 정보를 알 수 없다. 메인 앱이 소유자를 확인하고 서명한 **일회용 티켓(60초)** 을 URL 로 넘기면 게이트웨이가 이를 **세션 쿠키**(`appsess_{port}`, HttpOnly, 8시간)로 교환한다.
+
+1. `POST /api/apps/{id}/launch` (소유자 인증) → `http://localhost:{port}/?t={ticket}` 반환
+2. 게이트웨이: 서명(HMAC-SHA256, `SECRET_KEY`)·만료·앱·소유자·**일회 사용** 검증 → 쿠키 발급 → 티켓 없는 주소로 303
+3. 티켓·세션이 없는 직접 접속은 401 ("My Apps 에서 실행하세요")
+4. 앱의 `session_epoch` 를 올리면 발급된 세션이 모두 무효화된다
+5. 소유자 세션 쿠키(`appsess_*`)는 어떤 앱에도 전달하지 않는다 (같은 호스트의 다른 포트 앱이 받을 수 있기 때문)
+
+그래서 채팅 우측 iframe·My Apps 는 **열 때마다 `launch` 를 호출**한다. 에이전트의 도구 결과에는 URL 대신 `App ID` 만 담는다.
+
+### 10.3 공개 = App Store
+
+- 등록: `POST /api/apps/{id}/publish` (제목·설명·카테고리·태그·**약관 동의**). 사람만 할 수 있고 에이전트 도구는 없다.
+- 등록 전 **자동 점검**: 비밀 파일 이름(`.env`, `*.pem`, `id_rsa`…), 코드·설정 안의 키/토큰 패턴(`sk-`, `AKIA`, `ghp_`, 개인 키 등). `node_modules` 와 큰 파일·바이너리는 건너뜀. 걸리면 등록 거부.
+- 공개 게이트웨이는 `visibility=public` **그리고** `moderation_status=approved` 인 앱만 서비스한다. 그 외는 404.
+- 등록 취소(`unpublish`)는 즉시 익명 접속을 막고 스토어 목록에서 뺀다 (데이터 보존).
+- 신고: 서로 다른 사용자의 신고가 `APP_REPORT_SUSPEND_THRESHOLD`(3) 건이면 **자동 정지**(서비스 중단 + 컨테이너 종료) 후 관리자 검토.
+- 관리자(`ADMIN_EMAILS`): 검수 큐(승인 대기·공개 중·정지·반려)에서 승인/반려/정지. 스토어 화면의 "검수" 탭.
+
+### 10.4 공개 앱의 방어
+
+| 위협 | 대응 |
+|---|---|
+| 쿠키 오염 | 앱마다 호스트명이 달라 쿠키가 분리된다 (포트 방식은 쿠키를 공유함) |
+| 익명 요청으로 컨테이너 생성(DoS) | 앱별 분당 깨우기 상한(`APP_PUBLIC_WAKE_PER_MIN`), 이미 시작 중이면 합류 |
+| 과도한 요청 | IP·앱별 분당 요청 상한(`APP_PUBLIC_RATE_PER_MIN`) → 429 |
+| 컨테이너 과다 | 전체 실행 상한(`APP_MAX_RUNNING`), 가장 오래 쓰지 않은 앱을 내림 |
+| MIME 스니핑 | 공개 응답에 `X-Content-Type-Options: nosniff` |
+| 임베드된 공개 앱의 탈출 | iframe `sandbox` 에 `allow-top-navigation` 없음 |
+| 비밀 유출 | 등록 전 자동 점검 |
+| 악성 앱 | 신고 → 자동 정지, 관리자 검수, 서버형은 승인제 |
+
+### 10.5 구성 요소 (추가·변경)
+
+`services/app_auth.py`(티켓·세션), `services/app_policy.py`(slug, 공개 URL, 점검, 요청률 제한), `services/app_gateway.py`(port/public 두 모드), `services/app_host.py`(공개 리스너·전체 상한), `services/app_service.py`(publish·moderate·report), `api/store.py`, `api/apps.py`(launch·publish), `pages/StorePage.tsx`, `pages/MyAppsPage.tsx`, `components/apps/PublishDialog.tsx`. 컬럼·테이블은 `published_apps`(visibility, slug, session_epoch, moderation_*, title, description, category, tags, listed_at, launch_count)와 `app_reports`. 별도 listing 테이블 없이 한 테이블에 두었다.
+
+### 10.6 운영 설정
+
+- `APP_PUBLIC_DOMAIN`/`APP_PUBLIC_SCHEME`/`APP_PUBLIC_PORT`: 운영에서는 와일드카드 DNS(`*.apps.example.com`)와 TLS 를 리버스 프록시(nginx 등)에서 종료하고 `APP_PUBLIC_PORT` 로 넘긴다. 로컬 `*.localhost` 는 Chrome/Firefox 에서 동작하며 Safari 는 풀리지 않을 수 있다.
+- `ADMIN_EMAILS`: 검수 권한자 (비어 있으면 아무도 검수할 수 없다).
+- 리버스 프록시 뒤에서는 클라이언트 IP 가 프록시 주소로 보이므로, 요청률 제한이 의미를 가지려면 신뢰하는 프록시의 `X-Forwarded-For` 처리(미구현)가 필요하다.
+
+### 10.7 검증 (실제 서버, Docker)
+
+비공개 직접 접속 401 → 실행 티켓 303 + 쿠키 → 티켓 재사용 401 → 다른 사용자의 launch 404 → 약관 미동의·비밀 파일 포함 등록 거부 → 정적 앱 등록 즉시 공개, **익명 접속(Host 헤더) 성공**, 엉뚱한 Host 404, 공개 앱의 포트 직접 접속은 여전히 401 → 스토어 목록·열기(접속 수 증가)·신고 → 비관리자의 검수 API 403 → 서버형 앱 등록은 승인 대기이며 승인 전 공개 호스트 404, 스토어 목록 제외 → 등록 취소 즉시 404. 점검·티켓·요청률·slug/Host 해석은 단위 테스트.
+
+### 10.8 미검증·후속
+
+- 관리자 승인/반려/정지 API 의 실제 호출(`ADMIN_EMAILS` 를 설정한 환경에서)과 신고 3건 자동 정지 흐름은 단위 수준까지만 확인했다.
+- 화면(스토어·My Apps·등록 대화상자·검수 탭)은 타입 체크만 했고 브라우저에서 확인하지 않았다.
+- 공개 앱을 실제 `{slug}.apps.<도메인>` + HTTPS 로 서비스하는 구성, 프록시 뒤 클라이언트 IP, 공개 앱의 egress 제한, 서버형 앱 공개 시의 추가 격리, 스크린샷·아이콘 업로드, 접속 수 중복 제거는 후속 과제다.
+- 이미 만들어진 앱은 시작 시 컬럼 보강 코드로 `private` 이 된다 (이전에 토큰 없이 열려 있던 앱도 소유자 전용으로 바뀐다).

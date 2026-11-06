@@ -11,13 +11,13 @@ class DeployInput(BaseModel):
     path: str = Field(description="Directory in the workspace to deploy: the build output (e.g. dist, build, out) for a static app, or the app directory that contains .scripts/start.sh for a server app")
     name: str = Field(description="App name (letters, digits, spaces, _ . -; max 60). Deploying with an existing name updates that app in place and keeps its URL")
     kind: Literal["auto", "static", "server"] = Field(default="auto", description="auto: server if <path>/.scripts/start.sh exists, otherwise static. static needs <path>/index.html")
-    private: Optional[bool] = Field(default=None, description="true: require an access token (the returned URL contains ?t=... — share that exact URL). Default follows the server setting")
+    private: Optional[bool] = Field(default=None, description="Ignored. Deployed apps are always private (owner only) until the user publishes them in the App Store")
 
 
 class DeployWebAppTool(_AsyncTool):
     name: str = "deploy_web_app"
     description: str = (
-        "Deploy a web app built in the workspace so the user can open it in a browser, and return its URL. "
+        "Deploy a web app built in the workspace so the user can open it in a browser (private to the owner; shown in the chat preview panel and in My Apps). "
         "The directory is archived (immutable snapshot) and served from a dedicated lightweight container on its own port; "
         "the container sleeps when idle and wakes automatically on the next request, so the URL stays stable. "
         "STATIC app: pass the build output directory (must contain index.html; single-page-app routing works; the app is served at the URL root, so the default Vite base '/' is fine). "
@@ -25,7 +25,7 @@ class DeployWebAppTool(_AsyncTool):
         "listening on 0.0.0.0:$PORT (the PORT env var is always set); persistent data (SQLite etc.) must be written under $DATA_DIR, which survives restarts. "
         "The archive must be self-contained (include node_modules/ or build output; there is no network install at wake time unless start.sh does it). "
         "Max size and file count are limited. Re-run this tool with the same name after rebuilding to publish a new version. "
-        "Give the user the returned URL; tell them the first request after idle may take a few seconds."
+        "The app opens in the preview panel automatically; tell the user the first request after idle may take a few seconds."
     )
     args_schema: type[BaseModel] = DeployInput
 
@@ -41,8 +41,9 @@ class DeployWebAppTool(_AsyncTool):
                 if rec.status != "running":
                     logs = await AppService.logs(rec, 40)
                     return f"Error: 배포는 저장되었지만 앱을 시작하지 못했습니다 ({rec.kind}). {rec.error or ''}\n--- log ---\n{logs}"
-                return (f"Deployed '{rec.name}' (v{rec.version}, {rec.kind}). Open: {app_url(rec)}\n"
-                        f"Port {rec.proxy_port}. It sleeps after {settings.APP_IDLE_MINUTES} min without requests and wakes on the next request.")
+                return (f"Deployed '{rec.name}' (v{rec.version}, {rec.kind}). App ID: {rec.id}\n"
+                        f"The app is private (owner only). Tell the user to open it from the My Apps menu or the app preview panel; the user can register it in the App Store to make it public. "
+                        f"Do not hand out the port URL as a link — it needs the owner's session. It sleeps after {settings.APP_IDLE_MINUTES} min without requests and wakes on the next request.")
         except DeployError as e:
             return f"Error: {e}"
         except Exception as e:  # noqa: BLE001
@@ -64,7 +65,10 @@ class ManageWebAppTool(_AsyncTool):
 
     async def _arun(self, action: str, name: Optional[str] = None) -> str:
         from app.db.session import AsyncSessionLocal
-        from app.services.app_service import AppService, app_url
+        from app.services.app_service import AppService, app_url, is_public
+
+        def where(r) -> str:
+            return f"public {app_url(r)}" if is_public(r) else "private (open from My Apps)"
 
         try:
             async with AsyncSessionLocal() as db:
@@ -72,7 +76,7 @@ class ManageWebAppTool(_AsyncTool):
                     recs = await AppService.list_for_user(self.user_id, db)
                     if not recs:
                         return "배포된 앱이 없습니다."
-                    return "\n".join(f"- {AppService.live(r).name} [{r.status}] {r.kind} v{r.version} {app_url(r)}" for r in recs)
+                    return "\n".join(f"- {AppService.live(r).name} [{r.status}] {r.kind} v{r.version} {where(r)}" for r in recs)
                 if not name:
                     return "Error: name 이 필요합니다"
                 rec = await AppService.get(self.user_id, name, db)
@@ -80,11 +84,11 @@ class ManageWebAppTool(_AsyncTool):
                     return f"Error: '{name}' 앱을 찾을 수 없습니다"
                 if action == "status":
                     AppService.live(rec)
-                    return f"{rec.name}: {rec.status} ({rec.kind} v{rec.version}) {app_url(rec)}" + (f"\n{rec.error}" if rec.error else "")
+                    return f"{rec.name}: {rec.status} ({rec.kind} v{rec.version}) {where(rec)}" + (f"\n{rec.error}" if rec.error else "")
                 if action == "start":
                     ok = await AppService.start(rec)
                     await db.refresh(rec)
-                    return f"{rec.name}: {'running' if ok else 'failed'} {app_url(rec)}" + ("" if ok else f"\n{AppService.live(rec).error or ''}")
+                    return f"{rec.name}: {'running' if ok else 'failed'} {where(rec)}" + ("" if ok else f"\n{AppService.live(rec).error or ''}")
                 if action == "stop":
                     await AppService.stop(rec)
                     return f"{rec.name}: stopped (다음 요청에 다시 깨어납니다)"

@@ -49,6 +49,10 @@ class AppState:
     failed_at: float = 0.0
     last_touch: float = field(default_factory=time.monotonic)
     last_db_touch: float = 0.0
+    visibility: str = "private"
+    moderation: str = ""
+    slug: str = ""
+    epoch: int = 0
 
 
 def pick_port(used: set, start: int, end: int, is_free=lambda p: True) -> Optional[int]:
@@ -113,7 +117,16 @@ class AppHost:
             self.states[rec.id] = st
         st.name, st.kind, st.port = rec.name, rec.kind, rec.proxy_port
         st.container_port, st.require_token, st.token, st.version = rec.container_port, bool(rec.require_token), rec.access_token, rec.version
+        st.visibility, st.moderation, st.slug, st.epoch = rec.visibility or "private", rec.moderation_status or "", rec.slug or "", rec.session_epoch or 0
         return st
+
+    @staticmethod
+    def public_ok(st: AppState) -> bool:
+        """익명 접속을 허용하는 상태: 스토어에 공개되었고 검수를 통과(승인)한 앱."""
+        return st.visibility == "public" and st.moderation == "approved"
+
+    def by_slug(self, slug: str) -> Optional[AppState]:
+        return next((s for s in self.states.values() if s.slug == slug), None)
 
     async def _persist(self, app_id: str, **fields):
         from app.db.session import AsyncSessionLocal
@@ -143,6 +156,7 @@ class AppHost:
                     await self._persist(rec.id, status="stopped", container_id=None)
             if st.port:
                 await self.ensure_listener(st)
+        await self.ensure_public_listener()
         logger.info("[apps] %d개 앱 로드, 리스너 %d개", len(recs), len(self._servers))
 
     # ── 프록시 리스너 ─────────────────────────────────────────────────────────
@@ -165,6 +179,28 @@ class AppHost:
                 logger.exception("[apps] 리스너 오류 (포트 %s)", st.port)
 
         self._servers[st.id] = (server, asyncio.create_task(run()))
+
+    async def ensure_public_listener(self):
+        """공개 앱 게이트웨이: 포트 하나에서 Host 헤더({slug}.도메인)로 앱을 구분한다."""
+        key = "__public__"
+        if key in self._servers:
+            return
+        from app.services.app_gateway import make_gateway
+
+        bind = settings.APP_PUBLIC_BIND or settings.APP_BIND_HOST
+        cfg = uvicorn.Config(make_gateway(self, None, "public"), host=bind, port=settings.APP_PUBLIC_PORT, log_config=None,
+                             access_log=False, lifespan="off", ws="websockets", timeout_keep_alive=30)
+        server = _QuietServer(cfg)
+
+        async def run():
+            try:
+                await server.serve()
+            except SystemExit:
+                logger.error("[apps] 공개 게이트웨이 포트 %s 를 열지 못했습니다", settings.APP_PUBLIC_PORT)
+            except Exception:  # noqa: BLE001
+                logger.exception("[apps] 공개 게이트웨이 오류")
+
+        self._servers[key] = (server, asyncio.create_task(run()))
 
     async def stop_listener(self, app_id: str):
         entry = self._servers.pop(app_id, None)
@@ -257,6 +293,7 @@ class AppHost:
         art = artifact_path(st.id)
         if not os.path.exists(art):
             raise AppError("배포 아카이브가 없습니다. 다시 배포하세요.")
+        await self._ensure_capacity(st)
         image = settings.APP_IMAGE or settings.SANDBOX_IMAGE
         cid, host_port = await mgr.create_app_container(st.id, st.user_id, st.container_port, data_path(st.id), image,
                                                        settings.APP_MEMORY_LIMIT, settings.APP_CPU_LIMIT, settings.APP_BIND_HOST)
@@ -293,6 +330,17 @@ class AppHost:
         st.last_touch = time.monotonic()
         await self._persist(st.id, status="running", container_id=cid, error=None, retry_count=0)
         logger.info("[apps] %s 시작 (프록시 %s → 컨테이너 %s:%s)", st.name, st.port, host_port, st.container_port)
+
+    async def _ensure_capacity(self, st: AppState):
+        """실행 중 앱 컨테이너가 전체 상한이면 가장 오래 쓰지 않은 앱을 내려 자리를 만든다."""
+        limit = settings.APP_MAX_RUNNING
+        if limit <= 0:
+            return
+        running = [s for s in self.states.values() if s.id != st.id and s.status == "running"]
+        for victim in sorted(running, key=lambda s: s.last_touch)[: max(0, len(running) - limit + 1)]:
+            logger.info("[apps] 실행 상한(%d) — 가장 오래 쓰지 않은 앱 %s 를 내립니다", limit, victim.name)
+            with contextlib.suppress(Exception):
+                await self.stop_container(victim)
 
     # ── 중지 ──────────────────────────────────────────────────────────────────
     async def stop_container(self, st: AppState, status: str = "stopped"):

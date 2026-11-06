@@ -1,11 +1,13 @@
 import { useEffect, useRef, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { ArrowLeft, ExternalLink, Loader2, Lock, Play, Rocket, Square } from 'lucide-react'
+import { ArrowLeft, ExternalLink, Globe, Loader2, Lock, Pencil, Play, Rocket, Square, Store } from 'lucide-react'
 import IconBar from '../components/layout/IconBar'
 import Sidebar from '../components/chat/Sidebar'
 import AppPreviewPanel from '../components/chat/AppPreviewPanel'
 import { appsApi, type DeployedApp } from '../api/apps'
+import PublishDialog from '../components/apps/PublishDialog'
+import { errorDetail } from '../components/apps/appStoreMeta'
 import { chatApi } from '../api/chat'
 import { useChatStore } from '../store/chatStore'
 import type { Conversation } from '../types/chat'
@@ -17,9 +19,24 @@ const STATUS: Record<DeployedApp['status'], { label: string; dot: string }> = {
   failed: { label: '실패', dot: 'bg-accent-red' },
 }
 
-const errText = (e: unknown) => (e as { response?: { data?: { detail?: string } } })?.response?.data?.detail ?? '앱을 시작하지 못했습니다'
+const errText = (e: unknown) => errorDetail(e, '앱을 시작하지 못했습니다')
 
-function AppCard({ app, running, onRun }: { app: DeployedApp; running: boolean; onRun: () => void }) {
+function VisibilityBadge({ app }: { app: DeployedApp }) {
+  if (app.visibility !== 'public') return <span className="inline-flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded bg-surface-tertiary text-content-tertiary"><Lock size={9} /> 비공개</span>
+  const m = { approved: ['공개 중', 'bg-accent-done/15 text-accent-done'], pending: ['승인 대기', 'bg-accent-amber/15 text-accent-amber'], suspended: ['정지됨', 'bg-accent-red/15 text-accent-red'], rejected: ['반려됨', 'bg-accent-red/15 text-accent-red'], '': ['공개', ''] }[app.moderation_status] ?? ['공개', '']
+  return <span className={`inline-flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded ${m[1]}`}><Globe size={9} /> {m[0]}</span>
+}
+
+function AppCard({ app, running, onRun, onPublish, onUnpublish }: { app: DeployedApp; running: boolean; onRun: () => void; onPublish: () => void; onUnpublish: () => void }) {
+  const openNew = async () => {
+    const w = window.open('', '_blank')
+    try {
+      const u = await appsApi.launch(app.id)
+      if (w) w.location.href = u
+    } catch {
+      w?.close()
+    }
+  }
   const st = STATUS[app.status]
   const when = app.last_request_at ? new Date(app.last_request_at + (app.last_request_at.endsWith('Z') ? '' : 'Z')).toLocaleString('ko-KR', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : null
   return (
@@ -29,7 +46,7 @@ function AppCard({ app, running, onRun }: { app: DeployedApp; running: boolean; 
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-1.5">
             <span className="text-[14px] font-medium text-content-primary truncate">{app.name}</span>
-            {app.require_token && <Lock size={11} className="text-content-tertiary flex-shrink-0" aria-label="비공개" />}
+            <VisibilityBadge app={app} />
           </div>
           <div className="text-[11px] text-content-tertiary">{app.kind === 'server' ? '서버형' : '정적'} · v{app.version}{app.port ? ` · :${app.port}` : ''}</div>
         </div>
@@ -39,14 +56,24 @@ function AppCard({ app, running, onRun }: { app: DeployedApp; running: boolean; 
         {st.label}
         {when && <span className="text-content-tertiary">· 마지막 접속 {when}</span>}
       </div>
+      {app.moderation_note && app.visibility !== 'private' || app.moderation_status === 'rejected' ? <p className="text-xs text-accent-amber whitespace-pre-wrap break-words">{app.moderation_note}</p> : null}
       {app.status === 'failed' && app.error && <p className="text-xs text-accent-red whitespace-pre-wrap break-words max-h-20 overflow-auto">{app.error}</p>}
       <div className="flex items-center gap-2 mt-auto">
         <button onClick={onRun} disabled={running} className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg bg-accent-primary text-white text-sm font-medium hover:opacity-90 disabled:opacity-60 cursor-pointer border-none">
           {running ? <Loader2 size={14} className="animate-spin" /> : <Play size={14} />}
           {running ? '시작 중...' : '실행'}
         </button>
-        {app.url && (
-          <a href={app.url} target="_blank" rel="noreferrer" title="새 창에서 열기" aria-label="새 창에서 열기" className="p-2 rounded-lg border border-border text-content-secondary hover:text-content-primary"><ExternalLink size={14} /></a>
+        <button onClick={openNew} title="새 창에서 열기" aria-label="새 창에서 열기" className="p-2 rounded-lg border border-border text-content-secondary hover:text-content-primary bg-transparent cursor-pointer"><ExternalLink size={14} /></button>
+      </div>
+      <div className="flex items-center gap-2 text-xs">
+        {app.visibility === 'public' ? (
+          <>
+            <button onClick={onPublish} className="flex items-center gap-1 text-content-secondary hover:text-content-primary border-none bg-transparent cursor-pointer"><Pencil size={11} /> 스토어 정보 수정</button>
+            <span className="flex-1" />
+            <button onClick={onUnpublish} className="text-accent-red hover:underline border-none bg-transparent cursor-pointer">등록 취소</button>
+          </>
+        ) : (
+          <button onClick={onPublish} className="flex items-center gap-1 text-accent-primary hover:underline border-none bg-transparent cursor-pointer"><Store size={11} /> App Store에 등록 (공개)</button>
         )}
       </div>
     </div>
@@ -61,6 +88,11 @@ export default function MyAppsPage() {
   const openId = params.get('open')
   const [error, setError] = useState<string | null>(null)
   const [runningId, setRunningId] = useState<string | null>(null)
+  const [publishing, setPublishing] = useState<DeployedApp | null>(null)
+  const unpublish = useMutation({
+    mutationFn: async (a: DeployedApp) => appsApi.unpublish(a.id),
+    onSettled: () => qc.invalidateQueries({ queryKey: ['deployed-apps'] }),
+  })
   const { setConversations } = useChatStore()
 
   // 왼쪽 사이드바(대화 목록)를 채운다
@@ -127,8 +159,8 @@ export default function MyAppsPage() {
               )}
             </div>
             <div className="flex-1 min-h-0">
-              {selected.status === 'running' && selected.url ? (
-                <AppPreviewPanel app={{ stepId: selected.id, name: selected.name, url: selected.url }} />
+              {selected.status === 'running' ? (
+                <AppPreviewPanel key={selected.id} name={selected.name} launch={() => appsApi.launch(selected.id)} />
               ) : (
                 <div className="h-full flex flex-col items-center justify-center gap-3 text-sm text-content-muted px-6 text-center">
                   {selected.status === 'failed' ? (
@@ -161,7 +193,8 @@ export default function MyAppsPage() {
               ) : (
                 <div className="mt-6 grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
                   {apps.map((a) => (
-                    <AppCard key={a.id} app={a} running={runningId === a.id || a.status === 'starting'} onRun={() => run.mutate(a)} />
+                    <AppCard key={a.id} app={a} running={runningId === a.id || a.status === 'starting'} onRun={() => run.mutate(a)} onPublish={() => setPublishing(a)}
+                      onUnpublish={() => confirm(`'${a.name}' 의 등록을 취소할까요?\n공개 주소로의 접속이 즉시 차단되고 스토어 목록에서 사라집니다.`) && unpublish.mutate(a)} />
                   ))}
                 </div>
               )}
@@ -169,6 +202,7 @@ export default function MyAppsPage() {
           </div>
         )}
       </main>
+      {publishing && <PublishDialog app={publishing} onClose={() => setPublishing(null)} onDone={() => qc.invalidateQueries({ queryKey: ['deployed-apps'] })} />}
     </div>
   )
 }
