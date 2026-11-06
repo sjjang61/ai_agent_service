@@ -145,8 +145,20 @@ export default function LiveBrowser({ conversationId, initialUrl, doneLabel, onD
                 draggable={false}
                 className="w-full block select-none"
                 style={{ aspectRatio: `${VIEW_W} / ${VIEW_H}` }}
-                onClick={(e) => { inputRef.current?.focus(); send({ t: 'click', ...toViewport(e) }) }}
-                onDoubleClick={(e) => send({ t: 'click', ...toViewport(e), count: 2 })}
+                onMouseDown={(e) => {
+                  if (e.button !== 0) return
+                  e.preventDefault() // 이미지 드래그·선택 방지, 대신 포커스는 직접 옮긴다
+                  inputRef.current?.focus()
+                  // 누름과 뗌을 따로 보내서 '버튼을 길게 누르세요' 같은 캡차도 사용자가 누른 시간만큼 그대로 전달된다
+                  send({ t: 'down', ...toViewport(e), count: Math.min(e.detail || 1, 2) })
+                  const release = () => {
+                    window.removeEventListener('mouseup', release)
+                    window.removeEventListener('blur', release)
+                    send({ t: 'up' })
+                  }
+                  window.addEventListener('mouseup', release)
+                  window.addEventListener('blur', release)
+                }}
                 onContextMenu={(e) => { e.preventDefault(); send({ t: 'click', ...toViewport(e), button: 'right' }) }}
                 onWheel={(e) => send({ t: 'wheel', ...toViewport(e), dy: e.deltaY })}
               />

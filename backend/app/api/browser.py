@@ -27,6 +27,7 @@ ws_router = APIRouter()
 
 LIVE_MAX_SECONDS = 30 * 60
 FRAME_INTERVAL = 0.7
+HELD_FRAME_INTERVAL = 0.25  # 마우스를 누르고 있는 동안(길게 누르기 캡차)은 화면을 더 자주 갱신한다
 
 
 class Domain(BaseModel):
@@ -186,6 +187,7 @@ async def browser_live(websocket: WebSocket):
 
     lock = asyncio.Lock()
     wake = asyncio.Event()
+    held = {"down": False, "button": "left", "count": 1}
     deadline = asyncio.get_running_loop().time() + LIVE_MAX_SECONDS
 
     async def frames():
@@ -193,7 +195,7 @@ async def browser_live(websocket: WebSocket):
         last_touch = 0.0
         while True:
             try:
-                await asyncio.wait_for(wake.wait(), FRAME_INTERVAL)
+                await asyncio.wait_for(wake.wait(), HELD_FRAME_INTERVAL if held["down"] else FRAME_INTERVAL)
             except asyncio.TimeoutError:
                 pass
             wake.clear()
@@ -228,6 +230,16 @@ async def browser_live(websocket: WebSocket):
         cmd: Optional[dict] = None
         if t == "click":
             cmd = {"cmd": "mouse", "x": float(msg["x"]), "y": float(msg["y"]), "button": msg.get("button") if msg.get("button") in ("left", "right") else "left", "count": min(int(msg.get("count") or 1), 2)}
+        elif t == "down":
+            button = msg.get("button") if msg.get("button") in ("left", "right") else "left"
+            count = min(int(msg.get("count") or 1), 2)
+            held.update(down=True, button=button, count=count)
+            cmd = {"cmd": "mousedown", "x": float(msg["x"]), "y": float(msg["y"]), "button": button, "count": count}
+        elif t == "up":
+            if not held["down"]:
+                return
+            cmd = {"cmd": "mouseup", "button": held["button"], "count": held["count"]}
+            held["down"] = False
         elif t == "wheel":
             cmd = {"cmd": "wheel", "x": float(msg.get("x") or 640), "y": float(msg.get("y") or 400), "dy": max(-2000.0, min(2000.0, float(msg.get("dy") or 0)))}
         elif t == "text":
@@ -267,6 +279,11 @@ async def browser_live(websocket: WebSocket):
         pass
     finally:
         ftask.cancel()
+        if held["down"]:  # 누른 채로 창을 닫았으면 뗀다
+            try:
+                await daemon_post(cid, {"cmd": "mouseup", "button": held["button"], "count": held["count"]}, timeout=10)
+            except Exception:
+                pass
         # 창을 닫을 때도 로그인 상태를 저장해 둔다 (사용자가 로그인을 마치고 그냥 닫은 경우)
         try:
             await persist_profile(user.id, scope)

@@ -22,7 +22,7 @@ from app.config import settings
 DAEMON_PATH = "/tmp/_browser_daemon.py"
 STATE_PATH = "/tmp/_browser_state.json"  # 저장된 로그인 상태. 데몬이 읽자마자 지운다
 DAEMON_PORT = 9333
-DAEMON_VERSION = 4
+DAEMON_VERSION = 5
 LOGIN_TIMEOUT_SECONDS = 600
 
 DAEMON_SOURCE = r'''
@@ -31,7 +31,7 @@ from http.server import BaseHTTPRequestHandler, HTTPServer
 from urllib.parse import urlparse
 from playwright.sync_api import sync_playwright
 
-PORT, IDLE_SECONDS, VERSION = 9333, 900, 4
+PORT, IDLE_SECONDS, VERSION = 9333, 900, 5
 STATE_PATH = "/tmp/_browser_state.json"
 SHOT_DIR = "/workspace/browser"
 
@@ -155,6 +155,11 @@ def handle(c):
         x, y = float(c["x"]), float(c["y"])
         page.mouse.click(x, y, button=c.get("button") or "left", click_count=int(c.get("count") or 1))
         time.sleep(0.3); return {"ok": True}
+    if cmd == "mousedown":   # 길게 누르기(캡차 등)를 위해 누름과 뗌을 따로 보낸다
+        page.mouse.move(float(c["x"]), float(c["y"]))
+        page.mouse.down(button=c.get("button") or "left", click_count=int(c.get("count") or 1)); return {"ok": True}
+    if cmd == "mouseup":
+        page.mouse.up(button=c.get("button") or "left", click_count=int(c.get("count") or 1)); return {"ok": True}
     if cmd == "wheel":
         page.mouse.move(float(c.get("x") or 640), float(c.get("y") or 400))
         page.mouse.wheel(0, float(c.get("dy") or 0)); return {"ok": True}
