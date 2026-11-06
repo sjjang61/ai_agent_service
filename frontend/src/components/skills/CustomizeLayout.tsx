@@ -1,10 +1,10 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { BarChart3, Blocks, BookOpen, Bot, Box, Brain, MessageCircle, Package, Search, Server, Settings2, Wrench } from 'lucide-react'
+import { BarChart3, Blocks, BookOpen, Bot, Box, Brain, Globe, MessageCircle, Package, Search, Server, Settings2, Wrench } from 'lucide-react'
 import IconBar from '../layout/IconBar'
 import { Tile } from './common'
 
-export type CustomizeSection = 'agents' | 'tools' | 'mcp' | 'skills' | 'plugins' | 'memory' | 'wiki' | 'sandbox' | 'channels' | 'usage' | 'etc'
+export type CustomizeSection = 'agents' | 'tools' | 'mcp' | 'skills' | 'plugins' | 'memory' | 'wiki' | 'sandbox' | 'channels' | 'browser' | 'usage' | 'etc'
 
 interface Props {
   active: CustomizeSection
@@ -24,6 +24,7 @@ const NAV: { key: CustomizeSection; label: string; icon: React.ReactNode; path: 
   { key: 'wiki', label: '위키', icon: <BookOpen size={17} />, path: '/wiki' },
   { key: 'sandbox', label: '샌드박스', icon: <Box size={17} />, path: '/sandbox' },
   { key: 'channels', label: '메신저', icon: <MessageCircle size={17} />, path: '/channels' },
+  { key: 'browser', label: '브라우저 로그인', icon: <Globe size={17} />, path: '/browser' },
   { key: 'usage', label: '토큰 사용량', icon: <BarChart3 size={17} />, path: '/admin/usage' },
   { key: 'etc', label: '기타 설정', icon: <Settings2 size={17} />, path: '/settings' },
 ]

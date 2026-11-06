@@ -9,6 +9,7 @@ import ThinkingIndicator from './ThinkingIndicator'
 import WidgetRenderer, { extractWidgets } from '../widgets/WidgetRenderer'
 import TodoCard, { extractLatestTodos } from './TodoCard'
 import FormCard, { extractLatestForm } from './FormCard'
+import LoginRequestCard from './LoginRequestCard'
 import ScheduleCard, { extractScheduleResults } from './ScheduleCard'
 import { useAgentStore } from '../../store/agentStore'
 import { useChatStore } from '../../store/chatStore'
@@ -229,6 +230,8 @@ export default function MessageBubble({ message }: { message: Message }) {
             interactive={isLastAssistant && isRunning}
           />
         )}
+
+        <LoginRequestCard conversationId={message.conversation_id} active={isLastAssistant && isRunning} />
 
         <WidgetRenderer widgets={widgets} />
 
