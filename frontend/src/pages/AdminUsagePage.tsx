@@ -200,8 +200,9 @@ export default function AdminUsagePage() {
                       <tbody>
                         {userUsage.map((u) => (
                           <tr key={u.user_id} className="border-b border-border/50 hover:bg-surface-hover">
-                            <td className="py-2 px-2 text-content-primary truncate max-w-[200px]">
+                            <td className="py-2 px-2 text-content-primary truncate max-w-[280px]" title={`${u.display_name} (${u.email})`}>
                               {u.display_name}
+                              <span className="text-content-muted"> ({u.email})</span>
                             </td>
                             <td className="py-2 px-2 text-right text-content-secondary">
                               {formatNumber(u.total_tokens)}
