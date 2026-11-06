@@ -1,7 +1,7 @@
 from datetime import datetime
 from typing import List, Optional
 
-from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
+from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -19,6 +19,7 @@ from app.schemas.skill import (
     SkillInstallResponse,
     SkillResponse,
     SkillSyncResponse,
+    SkillTypeRequest,
 )
 from app.config import settings
 from app.services.skill_service import SkillService
@@ -36,6 +37,7 @@ def _to_response(s: Skill, plugins: dict | None = None) -> SkillResponse:
         description=s.description,
         source_url=s.source_url,
         is_active=s.is_active,
+        skill_type=s.skill_type or "builtin",
         created_at=s.created_at,
     )
 
@@ -69,7 +71,7 @@ async def create_custom_skill(
 ):
     """직접 작성한 SKILL.md 로 skill 추가"""
     skill, sandbox_error = await SkillService.create_custom(
-        current_user.id, data.name, data.description, data.content, db
+        current_user.id, data.name, data.description, data.content, db, data.skill_type
     )
     return SkillInstallResponse(
         installed=[_to_response(skill)], sandbox_synced=sandbox_error is None, sandbox_error=sandbox_error
@@ -243,13 +245,26 @@ async def set_skill_active(
     return _to_response(skill, owners)
 
 
+@router.post("/{skill_id}/type", response_model=SkillInstallResponse)
+async def set_skill_type(
+    skill_id: str,
+    data: SkillTypeRequest,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_session),
+):
+    """스킬 타입 변경. builtin: sandbox 가 만들어질 때 자동 설치 / custom: 자동 설치하지 않고 load_skill 때 필요한 sandbox 에 설치."""
+    skill, err = await SkillService.set_type(skill_id, current_user.id, data.skill_type, db)
+    owners = _owner_map(await SkillService.list_plugins(current_user.id, db))
+    return SkillInstallResponse(installed=[_to_response(skill, owners)], sandbox_synced=err is None, sandbox_error=err)
+
+
 @router.post("/install", response_model=SkillInstallResponse)
 async def install_skill(
     data: SkillInstallRequest,
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_session),
 ):
-    skills, sandbox_error = await SkillService.install(current_user.id, data.url, db)
+    skills, sandbox_error = await SkillService.install(current_user.id, data.url, db, data.skill_type)
     return SkillInstallResponse(
         installed=[_to_response(s) for s in skills],
         sandbox_synced=sandbox_error is None,
@@ -260,6 +275,7 @@ async def install_skill(
 @router.post("/upload", response_model=SkillInstallResponse)
 async def upload_skill_zip(
     file: UploadFile = File(...),
+    skill_type: Optional[str] = Form(None),
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_session),
 ):
@@ -271,7 +287,9 @@ async def upload_skill_zip(
     data = await file.read(limit + 1)
     if len(data) > limit:
         raise HTTPException(413, f"파일이 너무 큽니다 (최대 {settings.SKILL_MAX_DOWNLOAD_MB}MB)")
-    skills, sandbox_error = await SkillService.install_zip(current_user.id, name, data, db)
+    if skill_type not in (None, "", "builtin", "custom"):
+        raise HTTPException(400, "타입은 builtin 또는 custom 이어야 합니다")
+    skills, sandbox_error = await SkillService.install_zip(current_user.id, name, data, db, skill_type or None)
     return SkillInstallResponse(
         installed=[_to_response(s) for s in skills],
         sandbox_synced=sandbox_error is None,
@@ -285,7 +303,7 @@ async def sync_skills(
     db: AsyncSession = Depends(get_session),
 ):
     """설치된 skill 전체를 sandbox 로 다시 복사 (sandbox 가 재생성된 경우 등)."""
-    skills = [s for s in await SkillService.list_skills(current_user.id, db) if s.is_active]
+    skills = [s for s in await SkillService.list_skills(current_user.id, db) if s.is_active and s.skill_type != "custom"]
     err = await SkillService.sync_to_sandbox(current_user.id, skills, db)
     return SkillSyncResponse(synced=0 if err else len(skills), sandbox_error=err)
 

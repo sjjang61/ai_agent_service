@@ -22,6 +22,7 @@ from app.models.plugin import Plugin
 from app.models.skill import Skill
 from app.services.sandbox_service import SandboxService, sandbox_manager
 
+SKILL_TYPES = ("builtin", "custom")
 MAX_SKILLS_PER_INSTALL = 20
 MAX_PLUGINS_PER_INSTALL = 10
 MAX_CUSTOM_SKILL_BYTES = 200 * 1024
@@ -344,6 +345,7 @@ class SkillService:
     async def sync_to_sandbox(user_id: str, skills: list[Skill], db: AsyncSession) -> Optional[str]:
         """skill 을 사용자의 **실행 중인 모든 sandbox**(공용 + 대화방별)의 /workspace/skills/{name} 으로 복사. 실패 시 오류 메시지 반환.
         꺼져 있는 sandbox 는 건드리지 않는다 — 새로 만들어질 때 활성 skill 이 자동으로 채워진다."""
+        skills = [s for s in skills if s.skill_type != "custom"]  # custom 은 자동 설치하지 않는다 (load_skill 로 불러올 때 설치)
         if not skills:
             return None
         try:
@@ -382,7 +384,7 @@ class SkillService:
 
     @staticmethod
     async def _save_skills(
-        user_id: str, extracted: list[dict], url: str, db: AsyncSession
+        user_id: str, extracted: list[dict], url: str, db: AsyncSession, skill_type: Optional[str] = None
     ) -> list[Skill]:
         """추출된 skill 을 DB 에 등록 (이미 있으면 업데이트). commit/refresh 까지 수행."""
         installed: list[Skill] = []
@@ -391,10 +393,12 @@ class SkillService:
                 select(Skill).where(Skill.user_id == user_id, Skill.name == item["name"])
             )
             skill = r.scalar_one_or_none()
-            if skill:  # 재설치 = 업데이트
+            if skill:  # 재설치 = 업데이트 (타입은 명시했을 때만 바꾼다)
                 skill.description = item["description"]
                 skill.source_url = url
                 skill.install_path = item["path"]
+                if skill_type:
+                    skill.skill_type = skill_type
             else:
                 skill = Skill(
                     user_id=user_id,
@@ -402,6 +406,7 @@ class SkillService:
                     description=item["description"],
                     source_url=url,
                     install_path=item["path"],
+                    skill_type=skill_type or "builtin",
                 )
                 db.add(skill)
             installed.append(skill)
@@ -411,30 +416,30 @@ class SkillService:
         return installed
 
     @staticmethod
-    async def install(user_id: str, url: str, db: AsyncSession) -> tuple[list[Skill], Optional[str]]:
+    async def install(user_id: str, url: str, db: AsyncSession, skill_type: Optional[str] = None) -> tuple[list[Skill], Optional[str]]:
         g = parse_github_url(url)
         data = await _download_zip(g)
         dest_root = Path(settings.SKILLS_DIR) / user_id
         extracted = await asyncio.to_thread(_extract_skills, data, g, dest_root)
-        installed = await SkillService._save_skills(user_id, extracted, url, db)
+        installed = await SkillService._save_skills(user_id, extracted, url, db, skill_type)
         sandbox_error = await SkillService.sync_to_sandbox(user_id, installed, db)
         return installed, sandbox_error
 
     @staticmethod
     async def install_zip(
-        user_id: str, filename: str, data: bytes, db: AsyncSession
+        user_id: str, filename: str, data: bytes, db: AsyncSession, skill_type: Optional[str] = None
     ) -> tuple[list[Skill], Optional[str]]:
         """업로드한 zip(SKILL.md 가 있는 폴더 하나 또는 여러 개)에서 skill 을 설치한다."""
         stem = _safe_name(Path(filename or "skill").stem) or "skill"
         norm = await asyncio.to_thread(_normalize_upload_zip, data, stem)
         dest_root = Path(settings.SKILLS_DIR) / user_id
         extracted = await asyncio.to_thread(_extract_skills, norm, GithubRef("", stem, None, ""), dest_root)
-        installed = await SkillService._save_skills(user_id, extracted, f"upload:{filename}"[:500], db)
+        installed = await SkillService._save_skills(user_id, extracted, f"upload:{filename}"[:500], db, skill_type)
         return installed, await SkillService.sync_to_sandbox(user_id, installed, db)
 
     @staticmethod
     async def create_custom(
-        user_id: str, name: str, description: str, content: str, db: AsyncSession
+        user_id: str, name: str, description: str, content: str, db: AsyncSession, skill_type: Optional[str] = None
     ) -> tuple[Skill, Optional[str]]:
         """직접 작성한 SKILL.md 로 skill 을 만든다. content 가 frontmatter(---)로 시작하면 그대로 쓴다."""
         safe = _safe_name(name)
@@ -468,7 +473,7 @@ class SkillService:
         (target / "SKILL.md").write_text(text, encoding="utf-8")
         skill = Skill(
             user_id=user_id, name=safe, description=" ".join(description.split()),
-            source_url="manual:direct", install_path=str(target),
+            source_url="manual:direct", install_path=str(target), skill_type=skill_type or "builtin",
         )
         db.add(skill)
         await db.commit()
@@ -518,6 +523,21 @@ class SkillService:
         if b"\0" in raw:
             return {"path": rel, "size": size, "binary": True, "truncated": False, "content": ""}
         return {"path": rel, "size": size, "binary": False, "truncated": truncated, "content": raw.decode("utf-8", errors="replace")}
+
+    @staticmethod
+    async def set_type(skill_id: str, user_id: str, skill_type: str, db: AsyncSession) -> tuple[Skill, Optional[str]]:
+        """타입을 바꾼다. builtin 으로 바꾸면 실행 중인 sandbox 에 바로 설치한다 (custom 으로 바꿔도 이미 설치된 복사본은 지우지 않는다)."""
+        if skill_type not in SKILL_TYPES:
+            raise HTTPException(400, "타입은 builtin 또는 custom 이어야 합니다")
+        skill = await SkillService.get_skill(skill_id, user_id, db)
+        changed = skill.skill_type != skill_type
+        skill.skill_type = skill_type
+        await db.commit()
+        await db.refresh(skill)
+        err = None
+        if changed and skill_type == "builtin" and skill.is_active:
+            err = await SkillService.sync_to_sandbox(user_id, [skill], db)
+        return skill, err
 
     @staticmethod
     async def set_active(skill_id: str, user_id: str, active: bool, db: AsyncSession) -> Skill:

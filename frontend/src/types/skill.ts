@@ -7,7 +7,11 @@ export interface Skill {
   created_at: string
   plugin_id: string | null
   plugin_name: string | null
+  /** builtin: sandbox 가 만들어질 때 자동 설치 / custom: 자동 설치하지 않고 필요할 때(load_skill) 설치 */
+  skill_type: SkillType
 }
+
+export type SkillType = 'builtin' | 'custom'
 
 export interface Plugin {
   id: string
@@ -24,6 +28,7 @@ export interface SkillCreateInput {
   name: string
   description: string
   content: string
+  skill_type?: SkillType
 }
 
 export interface SkillFileInfo {

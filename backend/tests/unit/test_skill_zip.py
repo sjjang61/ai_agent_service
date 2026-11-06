@@ -112,3 +112,35 @@ def test_skill_file_listing_and_read(tmp_path):
     for bad in ("../x", "link", "missing.txt", "/etc/passwd"):
         with pytest.raises(HTTPException):
             SkillService.read_file(sk, bad)
+
+
+def test_skills_prompt_marks_custom_and_sync_skips_custom():
+    import asyncio
+    from types import SimpleNamespace
+    from unittest.mock import patch
+
+    from app.services.skill_service import SkillService
+    from app.tools.skill_tool import build_skills_prompt
+
+    skills = [
+        SimpleNamespace(name="a", description="빌트인", skill_type="builtin", install_path="/x"),
+        SimpleNamespace(name="b", description="커스텀", skill_type="custom", install_path="/y"),
+    ]
+    p = build_skills_prompt(skills)
+    assert "- a: 빌트인" in p and "- b [custom]: 커스텀" in p and "custom" in p.split("{{")[0]
+
+    async def go():
+        copied = []
+
+        async def fake_list(user_id, db):
+            return [(SimpleNamespace(status="running", container_id="c1"), None)]
+
+        class M:
+            async def is_running(self, cid): return True
+            async def put_directory(self, cid, path, dest, name): copied.append(name)
+
+        with patch("app.services.skill_service.SandboxService.list_for_user", fake_list), patch("app.services.skill_service.sandbox_manager", M()):
+            assert await SkillService.sync_to_sandbox("u", skills, None) is None
+        return copied
+
+    assert asyncio.run(go()) == ["a"]               # custom 은 자동 설치하지 않는다

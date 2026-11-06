@@ -23,7 +23,8 @@ class LoadSkillTool(BaseTool):
     description: str = (
         "Load the instructions (SKILL.md) of an installed skill that matches the type of task, or one of its bundled files. "
         "When the user's request matches an installed skill, call this first and follow the instructions. "
-        "The result also lists the other files bundled with the skill."
+        "The result also lists the other files bundled with the skill. "
+        "Skills marked [custom] are not pre-installed: loading one installs its files into the sandbox at /workspace/skills/<name>/."
     )
     args_schema: type[BaseModel] = LoadSkillInput
     # {skill_name: install_path} — 해당 사용자의 활성 skill 만 전달된다
@@ -142,5 +143,6 @@ def build_skills_prompt(skills: list) -> str:
     lines = []
     for s in skills:
         desc = " ".join((s.description or "").split())[:300]
-        lines.append(f"- {s.name}: {desc}" if desc else f"- {s.name}")
+        tag = " [custom]" if getattr(s, "skill_type", "builtin") == "custom" else ""
+        lines.append(f"- {s.name}{tag}: {desc}" if desc else f"- {s.name}{tag}")
     return "\n" + render("skills_installed", skills="\n".join(lines))

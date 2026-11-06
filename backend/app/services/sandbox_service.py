@@ -109,11 +109,11 @@ class SandboxService:
             except Exception:
                 logger.exception("[sandbox] session=%s 복구 실패 — 빈 workspace 로 시작", backup_key(sb))
 
-            # 새 컨테이너의 /workspace 는 비어 있으므로(복구된 백업에 없는 경우 포함) 등록된 활성 skill 을 채운다
+            # 새 컨테이너의 /workspace 는 비어 있으므로(복구된 백업에 없는 경우 포함) 활성 builtin skill 을 채운다 (custom 은 load_skill 때 설치)
             try:
                 from app.services.skill_service import SkillService
 
-                active = [s for s in await SkillService.list_skills(user_id, db) if s.is_active]
+                active = [s for s in await SkillService.list_skills(user_id, db) if s.is_active and s.skill_type != "custom"]
                 copied = await SkillService.ensure_in_sandbox(container_id, active)
                 if copied:
                     logger.info("[sandbox] session=%s skill %d개를 새 sandbox 로 복사: %s", backup_key(sb), len(copied), ", ".join(copied))

@@ -6,7 +6,7 @@ import rehypeSanitize from 'rehype-sanitize'
 import { File, FileText, Loader2, X } from 'lucide-react'
 import { skillsApi } from '../../api/skills'
 import { formatFullDateTime } from '../../utils/time'
-import type { Skill, SkillDetail, SkillFileContent, SkillTranslation } from '../../types/skill'
+import type { Skill, SkillDetail, SkillFileContent, SkillTranslation, SkillType } from '../../types/skill'
 
 /** SKILL.md 맨 앞의 --- frontmatter 를 본문과 분리한다 */
 function splitFrontmatter(text: string): { meta: string; body: string } {
@@ -161,6 +161,25 @@ export function SkillBrowser({ skill }: { skill: Skill }) {
 
 /** 스킬 상세: 메타 정보와 SKILL.md 등 파일 보기 */
 export default function SkillDetailDialog({ skill, onClose }: { skill: Skill; onClose: () => void }) {
+  const queryClient = useQueryClient()
+  const [type, setType] = useState<SkillType>(skill.skill_type ?? 'builtin')
+  const [typeBusy, setTypeBusy] = useState(false)
+  const [typeNote, setTypeNote] = useState('')
+  const changeType = async (next: SkillType) => {
+    if (next === type || typeBusy) return
+    setTypeBusy(true)
+    setTypeNote('')
+    try {
+      const res = await skillsApi.setType(skill.id, next)
+      setType(next)
+      queryClient.invalidateQueries({ queryKey: ['skills'] })
+      setTypeNote(res.data.sandbox_synced ? '' : `타입은 바뀌었지만 실행 중인 sandbox 에 설치하지 못했습니다: ${res.data.sandbox_error ?? ''}`)
+    } catch {
+      setTypeNote('타입을 바꾸지 못했습니다')
+    } finally {
+      setTypeBusy(false)
+    }
+  }
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => e.key === 'Escape' && onClose()
     window.addEventListener('keydown', onKey)
@@ -192,6 +211,25 @@ export default function SkillDetailDialog({ skill, onClose }: { skill: Skill; on
               {source.startsWith('http') ? <a href={source} target="_blank" rel="noopener noreferrer" className="text-accent-primary">{source}</a> : source}
               {' · 설치 '}{formatFullDateTime(skill.created_at)}
             </p>
+            <div className="mt-3 flex items-center gap-2 flex-wrap">
+              <span className="text-xs text-content-muted">타입</span>
+              <div className="flex rounded-md border border-border overflow-hidden">
+                {(['builtin', 'custom'] as SkillType[]).map((t) => (
+                  <button
+                    key={t}
+                    disabled={typeBusy}
+                    onClick={() => changeType(t)}
+                    className={`px-3 py-1 border-none cursor-pointer text-xs disabled:opacity-60 ${type === t ? 'bg-accent-primary text-white' : 'bg-transparent text-content-secondary hover:text-content-primary'}`}
+                  >
+                    {t === 'builtin' ? '빌트인' : '커스텀'}
+                  </button>
+                ))}
+              </div>
+              <span className="text-xs text-content-muted">
+                {type === 'builtin' ? 'sandbox 가 만들어질 때 자동으로 설치됩니다.' : '자동 설치하지 않고, 에이전트가 불러올 때(load_skill) 필요한 sandbox 에 설치됩니다.'}
+              </span>
+            </div>
+            {typeNote && <p className="mt-1.5 text-xs text-accent-red">{typeNote}</p>}
           </div>
           <button onClick={onClose} aria-label="닫기" className="text-content-tertiary hover:text-content-primary border-none bg-transparent cursor-pointer">
             <X size={18} />

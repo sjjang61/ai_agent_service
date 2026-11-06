@@ -7,7 +7,7 @@ import AddSkillDialog from '../components/skills/AddSkillDialog'
 import SkillDetailDialog from '../components/skills/SkillDetailDialog'
 import { GithubDialog, ItemCard, errorText } from '../components/skills/common'
 import { skillsApi } from '../api/skills'
-import type { Skill, SkillCreateInput } from '../types/skill'
+import type { Skill, SkillCreateInput, SkillType } from '../types/skill'
 
 const PAGE = 12
 
@@ -21,6 +21,8 @@ export default function SkillsPage() {
   const [source, setSource] = useState<'all' | 'personal' | string>('all') // string = plugin_id
   const [dialog, setDialog] = useState<'github' | 'custom' | null>(null)
   const [detail, setDetail] = useState<Skill | null>(null)
+  const [typeFilter, setTypeFilter] = useState<'all' | SkillType>('all')
+  const [newType, setNewType] = useState<SkillType>('builtin') // 새로 추가하는 스킬의 타입
   const [expanded, setExpanded] = useState(false)
   const [notice, setNotice] = useState<{ kind: 'ok' | 'err'; text: string } | null>(null)
 
@@ -34,6 +36,7 @@ export default function SkillsPage() {
 
   const q = query.trim().toLowerCase()
   const visible = skills.filter((s) => {
+    if (typeFilter !== 'all' && s.skill_type !== typeFilter) return false
     if (source === 'personal' && s.plugin_id) return false
     if (source !== 'all' && source !== 'personal' && s.plugin_id !== source) return false
     return !q || s.name.toLowerCase().includes(q) || (s.description ?? '').toLowerCase().includes(q)
@@ -44,7 +47,7 @@ export default function SkillsPage() {
     setNotice(synced ? { kind: 'ok', text: `${okText} (sandbox /workspace/skills/ 에 복사됨)` } : { kind: 'err', text: `${okText} — sandbox 복사 실패: ${err ?? '알 수 없는 오류'}` })
 
   const installGithub = async (url: string) => {
-    const res = await skillsApi.install(url)
+    const res = await skillsApi.install(url, newType)
     refresh()
     syncNote(res.data.sandbox_synced, res.data.sandbox_error, `설치됨: ${(res.data.installed as Skill[]).map((s) => s.name).join(', ')}`)
     return ''
@@ -54,7 +57,7 @@ export default function SkillsPage() {
   const uploadZip = async (file: File) => {
     setNotice({ kind: 'ok', text: `'${file.name}' 올리는 중...` })
     try {
-      const res = await skillsApi.uploadZip(file)
+      const res = await skillsApi.uploadZip(file, newType)
       refresh()
       syncNote(res.data.sandbox_synced, res.data.sandbox_error, `설치됨: ${(res.data.installed as Skill[]).map((s) => s.name).join(', ')}`)
     } catch (err) {
@@ -63,7 +66,7 @@ export default function SkillsPage() {
   }
 
   const create = async (input: SkillCreateInput) => {
-    const res = await skillsApi.create(input)
+    const res = await skillsApi.create({ ...input, skill_type: newType })
     refresh()
     syncNote(res.data.sandbox_synced, res.data.sandbox_error, `추가됨: ${res.data.installed[0].name}`)
   }
@@ -145,6 +148,25 @@ export default function SkillsPage() {
               {p.name}
             </button>
           ))}
+          <span className="w-px h-5 bg-border mx-1" aria-hidden />
+          <button className={chip(typeFilter === 'builtin')} onClick={() => setTypeFilter(typeFilter === 'builtin' ? 'all' : 'builtin')} title="sandbox 가 만들어질 때 자동 설치되는 스킬">
+            빌트인 <span className="text-[12px] text-content-tertiary">{skills.filter((s) => s.skill_type === 'builtin').length}</span>
+          </button>
+          <button className={chip(typeFilter === 'custom')} onClick={() => setTypeFilter(typeFilter === 'custom' ? 'all' : 'custom')} title="자동 설치하지 않고 필요할 때 설치되는 스킬">
+            커스텀 <span className="text-[12px] text-content-tertiary">{skills.filter((s) => s.skill_type === 'custom').length}</span>
+          </button>
+          <div className="flex-1" />
+          <label className="flex items-center gap-1.5 text-[12px] text-content-tertiary" title="새로 추가하는 스킬(GitHub·ZIP·직접 추가)에 지정되는 타입. 추가한 뒤에는 스킬 상세에서 바꿀 수 있습니다.">
+            새 스킬 타입
+            <select
+              value={newType}
+              onChange={(e) => setNewType(e.target.value as SkillType)}
+              className="bg-surface-secondary border border-border rounded-md px-2 py-1 text-[12px] text-content-primary"
+            >
+              <option value="builtin">빌트인 (자동 설치)</option>
+              <option value="custom">커스텀 (필요할 때 설치)</option>
+            </select>
+          </label>
         </div>
 
         {isLoading ? (
@@ -161,7 +183,7 @@ export default function SkillsPage() {
                   key={s.id}
                   name={s.name}
                   description={s.description}
-                  meta={s.plugin_name ? `플러그인 · ${s.plugin_name}` : undefined}
+                  meta={[s.skill_type === 'custom' ? '커스텀' : null, s.plugin_name ? `플러그인 · ${s.plugin_name}` : null].filter(Boolean).join(' · ') || undefined}
                   active={s.is_active}
                   onToggle={() => toggle(s)}
                   onDelete={() => remove(s)}

@@ -1,12 +1,14 @@
 import apiClient from './client'
-import type { SkillCreateInput } from '../types/skill'
+import type { SkillCreateInput, SkillType } from '../types/skill'
 
 export const skillsApi = {
   list: () => apiClient.get('/skills'),
-  install: (url: string) => apiClient.post('/skills/install', { url }),
-  uploadZip: (file: File) => {
+  install: (url: string, skill_type?: SkillType) => apiClient.post('/skills/install', { url, skill_type }),
+  setType: (id: string, skill_type: SkillType) => apiClient.post(`/skills/${id}/type`, { skill_type }),
+  uploadZip: (file: File, skill_type?: SkillType) => {
     const form = new FormData()
     form.append('file', file)
+    if (skill_type) form.append('skill_type', skill_type)
     // axios 기본 Content-Type(application/json)을 지워 브라우저가 multipart 경계를 붙이게 한다
     return apiClient.post('/skills/upload', form, { headers: { 'Content-Type': undefined }, timeout: 120000 })
   },

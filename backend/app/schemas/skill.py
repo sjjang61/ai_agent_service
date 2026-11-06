@@ -1,11 +1,16 @@
 from datetime import datetime
-from typing import List, Optional
+from typing import List, Literal, Optional
 
 from pydantic import BaseModel
 
 
 class SkillInstallRequest(BaseModel):
     url: str
+    skill_type: Optional[Literal["builtin", "custom"]] = None  # 스킬 설치에만 쓴다 (플러그인은 builtin)
+
+
+class SkillTypeRequest(BaseModel):
+    skill_type: Literal["builtin", "custom"]
 
 
 class SkillResponse(BaseModel):
@@ -17,6 +22,7 @@ class SkillResponse(BaseModel):
     created_at: datetime
     plugin_id: Optional[str] = None
     plugin_name: Optional[str] = None
+    skill_type: str = "builtin"  # builtin: sandbox 생성 시 자동 설치 / custom: 필요할 때 설치
 
 
 class SkillCreateRequest(BaseModel):
@@ -24,6 +30,7 @@ class SkillCreateRequest(BaseModel):
     name: str
     description: str
     content: str
+    skill_type: Optional[Literal["builtin", "custom"]] = None
 
 
 class ActiveRequest(BaseModel):

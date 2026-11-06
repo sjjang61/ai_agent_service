@@ -17,4 +17,6 @@ class Skill(Base):
     source_url = Column(String(500), nullable=False)
     install_path = Column(String(500), nullable=False)
     is_active = Column(Boolean, default=True)
+    # builtin: sandbox 가 만들어질 때 자동으로 설치된다 / custom: 자동 설치하지 않고 load_skill 로 불러올 때 필요한 sandbox 에 설치한다
+    skill_type = Column(String(10), nullable=False, default="builtin", server_default="builtin")
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))

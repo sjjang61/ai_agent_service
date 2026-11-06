@@ -37,6 +37,7 @@ async def init_db():
         await conn.run_sync(_ensure_sandbox_scope_columns)
         await conn.run_sync(_ensure_conversation_channel)
         await conn.run_sync(_ensure_message_order_index)
+        await conn.run_sync(_ensure_skill_type)
 
 
 def _ensure_memory_columns(sync_conn) -> None:
@@ -137,3 +138,11 @@ def _ensure_message_order_index(sync_conn) -> None:
     names = {i["name"] for i in inspect(sync_conn).get_indexes("messages")}
     if "ix_messages_conversation_created" not in names:
         sync_conn.execute(text("CREATE INDEX ix_messages_conversation_created ON messages (conversation_id, created_at)"))
+
+
+def _ensure_skill_type(sync_conn) -> None:
+    """skills.skill_type 컬럼 보강 (alembic p7a1b2c3d4e5 와 같은 변경). 기존 스킬은 모두 builtin(예전 동작과 같음)."""
+    from sqlalchemy import inspect, text
+
+    if "skill_type" not in {c["name"] for c in inspect(sync_conn).get_columns("skills")}:
+        sync_conn.execute(text("ALTER TABLE skills ADD COLUMN skill_type VARCHAR(10) NOT NULL DEFAULT 'builtin'"))
