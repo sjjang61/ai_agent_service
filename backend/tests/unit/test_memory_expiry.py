@@ -50,3 +50,27 @@ def test_not_expired_filter_clause_compiles():
 
     sql = str(select(Memory.id).where(not_expired()).compile(compile_kwargs={"literal_binds": False}))
     assert "expires_at IS NULL" in sql and "expires_at >" in sql
+
+
+def test_short_term_routes_are_declared_before_memory_id_routes():
+    """GET /short 가 GET /{memory_id} 에 먼저 걸리면 404('Memory not found')가 난다 — 선언 순서를 고정한다."""
+    from app.api.memory import router
+
+    order = [(r.path, sorted(r.methods)) for r in router.routes]
+    paths_get = [p for p, m in order if "GET" in m]
+    assert paths_get.index("/short") < paths_get.index("/{memory_id}")
+    assert paths_get.index("/short/{conversation_id}") < paths_get.index("/{memory_id}") or "/short/{conversation_id}" in paths_get
+
+
+def test_short_term_list_route_resolves_to_its_handler():
+    from starlette.routing import Match
+
+    from app.main import app
+
+    scope = {"type": "http", "method": "GET", "path": "/api/memory/short", "root_path": "", "headers": [], "query_string": b""}
+    for route in app.routes:
+        match, child = route.matches(scope)
+        if match == Match.FULL:
+            assert getattr(route, "name", "") == "list_all_short_term_memories"      # get_memory(/{memory_id}) 가 아니어야 한다
+            return
+    raise AssertionError("라우트를 찾지 못했습니다")

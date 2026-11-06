@@ -83,49 +83,8 @@ async def create_memory(
     return _to_response(memory)
 
 
-@router.get("/{memory_id}", response_model=MemoryResponse)
-async def get_memory(
-    memory_id: str,
-    current_user: User = Depends(get_current_user),
-    db: AsyncSession = Depends(get_session),
-):
-    """Get a specific memory by ID."""
-    memory = await MemoryService.get_memory(current_user.id, memory_id, db)
-    if not memory:
-        raise HTTPException(status_code=404, detail="Memory not found")
-    return _to_response(memory)
-
-
-@router.put("/{memory_id}", response_model=MemoryResponse)
-async def update_memory(
-    memory_id: str,
-    data: MemoryUpdate,
-    current_user: User = Depends(get_current_user),
-    db: AsyncSession = Depends(get_session),
-):
-    """Update an existing memory."""
-    memory = await MemoryService.update_memory(current_user.id, memory_id, data, db)
-    if not memory:
-        raise HTTPException(status_code=404, detail="Memory not found")
-    return _to_response(memory)
-
-
-@router.delete("/{memory_id}")
-async def delete_memory(
-    memory_id: str,
-    current_user: User = Depends(get_current_user),
-    db: AsyncSession = Depends(get_session),
-):
-    """Delete a memory."""
-    deleted = await MemoryService.delete_memory(current_user.id, memory_id, db)
-    if not deleted:
-        raise HTTPException(status_code=404, detail="Memory not found")
-    return {"status": "deleted"}
-
-
 # Short-term memory endpoints
-
-
+# ⚠ GET /short 는 아래 GET /{memory_id} 보다 먼저 선언해야 한다 (뒤에 두면 'short' 가 memory_id 로 해석되어 404 가 난다)
 @router.get("/short", response_model=List[ShortTermItem])
 async def list_all_short_term_memories(
     current_user: User = Depends(get_current_user),
@@ -184,3 +143,43 @@ async def clear_short_term_memories(
     """Clear all short-term memories for a conversation."""
     await ShortTermMemoryService.clear_conversation(current_user.id, conversation_id)
     return {"status": "cleared"}
+
+
+@router.get("/{memory_id}", response_model=MemoryResponse)
+async def get_memory(
+    memory_id: str,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_session),
+):
+    """Get a specific memory by ID."""
+    memory = await MemoryService.get_memory(current_user.id, memory_id, db)
+    if not memory:
+        raise HTTPException(status_code=404, detail="Memory not found")
+    return _to_response(memory)
+
+
+@router.put("/{memory_id}", response_model=MemoryResponse)
+async def update_memory(
+    memory_id: str,
+    data: MemoryUpdate,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_session),
+):
+    """Update an existing memory."""
+    memory = await MemoryService.update_memory(current_user.id, memory_id, data, db)
+    if not memory:
+        raise HTTPException(status_code=404, detail="Memory not found")
+    return _to_response(memory)
+
+
+@router.delete("/{memory_id}")
+async def delete_memory(
+    memory_id: str,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_session),
+):
+    """Delete a memory."""
+    deleted = await MemoryService.delete_memory(current_user.id, memory_id, db)
+    if not deleted:
+        raise HTTPException(status_code=404, detail="Memory not found")
+    return {"status": "deleted"}
