@@ -197,6 +197,7 @@ async def send_message(
                         "input_tokens": event.get("input_tokens", 0),
                         "output_tokens": event.get("output_tokens", 0),
                         "requests": event.get("requests", 0),
+                        "cost_usd": event.get("cost_usd"),  # 예상 비용(USD, 캐시 할인 미반영). 단가를 모르는 모델이면 None
                         "elapsed_seconds": round(time.monotonic() - started, 1),
                         "finished_at": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
                     }

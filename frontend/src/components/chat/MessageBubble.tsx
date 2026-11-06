@@ -17,7 +17,7 @@ import { Paperclip, Folder, BookMarked, MessageSquare, Bot, User, Copy, Check, B
 import axios from 'axios'
 import { formatSize, saveBlob } from '../sandbox/ArtifactsPanel'
 import { stripWidgetTables } from '../widgets/dedupe'
-import { formatKoreanClock, formatKoreanDateTime } from '../../utils/time'
+import { formatKoreanClock, formatKoreanDateTime, formatUsd } from '../../utils/time'
 import { useAgentStream } from '../../hooks/useAgentStream'
 import { cloneElement, isValidElement, useState } from 'react'
 import { useTypingAnimation } from '../../hooks/useTypingAnimation'
@@ -431,10 +431,11 @@ export default function MessageBubble({ message }: { message: Message }) {
         {!isUser && message.usage ? (
           <div
             className="mt-2 text-xs text-slate-500 text-right"
-            title="입력·출력 토큰과 LLM 호출 횟수는 이 답변을 만드는 데 쓴 에이전트(팀원 포함) 호출의 합계입니다. 소요 시간은 요청부터 응답 완료까지입니다."
+            title="입력·출력 토큰과 LLM 호출 횟수는 이 답변을 만드는 데 쓴 에이전트(팀원 포함) 호출의 합계입니다. 예상 비용은 모델 단가 × 토큰으로 계산한 USD 추정치이며 프롬프트 캐시 할인은 반영하지 않아 실제 청구액보다 높을 수 있습니다. 소요 시간은 요청부터 응답 완료까지입니다."
           >
             입력 {message.usage.input_tokens.toLocaleString('ko-KR')} · 출력 {message.usage.output_tokens.toLocaleString('ko-KR')} 토큰
             {message.usage.requests > 0 && ` · 요청 ${message.usage.requests}회`}
+            {message.usage.cost_usd != null && ` · 예상 ${formatUsd(message.usage.cost_usd)}`}
             {` · ${message.usage.elapsed_seconds.toFixed(1)}초 · ${formatKoreanClock(message.usage.finished_at)}`}
           </div>
         ) : (

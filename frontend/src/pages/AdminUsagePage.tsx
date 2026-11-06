@@ -1,9 +1,10 @@
 import { useEffect, useState } from 'react'
-import { Database, BarChart3, Users, Cpu } from 'lucide-react'
+import { Database, BarChart3, Users, Cpu, DollarSign } from 'lucide-react'
 import SettingsPage from '../components/skills/SettingsPage'
 import { T } from '../components/skills/typography'
 import { adminApi } from '../api/admin'
 import type { UsageSummary, DailyUsage, UserUsage, ModelUsage } from '../types/admin'
+import { formatUsd } from '../utils/time'
 
 type TimeRange = 'daily' | 'weekly' | 'monthly'
 
@@ -58,7 +59,7 @@ export default function AdminUsagePage() {
         ) : (
           <>
             {/* Summary Cards */}
-            <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-8">
+            <div className="grid grid-cols-1 md:grid-cols-5 gap-4 mb-8">
               <div className="bg-surface-secondary rounded-lg p-4 border border-border">
                 <div className="flex items-center gap-2 text-content-muted mb-2">
                   <Database size={18} />
@@ -85,6 +86,16 @@ export default function AdminUsagePage() {
                 <p className="text-2xl font-bold text-accent-blue">
                   {summary ? formatNumber(summary.total_output_tokens) : '-'}
                 </p>
+              </div>
+              <div className="bg-surface-secondary rounded-lg p-4 border border-border" title="모델 단가 × 토큰으로 계산한 USD 추정치입니다. 프롬프트 캐시 할인은 반영하지 않아 실제 청구액보다 높을 수 있고, 단가를 모르는 모델은 빠집니다.">
+                <div className="flex items-center gap-2 text-content-muted mb-2">
+                  <DollarSign size={18} />
+                  <span className="text-sm">예상 비용</span>
+                </div>
+                <p className="text-2xl font-bold text-accent-amber">
+                  {summary ? formatUsd(summary.cost_usd) : '-'}
+                </p>
+                {summary?.cost_incomplete && <p className="text-[11px] text-content-muted mt-1">단가를 모르는 모델은 제외됨</p>}
               </div>
               <div className="bg-surface-secondary rounded-lg p-4 border border-border">
                 <div className="flex items-center gap-2 text-content-muted mb-2">
@@ -145,6 +156,9 @@ export default function AdminUsagePage() {
                       <span className="text-content-secondary text-xs w-24 text-right shrink-0">
                         {formatNumber(d.total_tokens)}
                       </span>
+                      <span className="text-accent-amber text-xs w-16 text-right shrink-0" title="예상 비용">
+                        {formatUsd(d.cost_usd)}
+                      </span>
                     </div>
                   ))}
                 </div>
@@ -178,6 +192,7 @@ export default function AdminUsagePage() {
                         <tr className="text-content-muted border-b border-border">
                           <th className="text-left py-2 px-2">User</th>
                           <th className="text-right py-2 px-2">Tokens</th>
+                          <th className="text-right py-2 px-2">예상 비용</th>
                           <th className="text-right py-2 px-2">Requests</th>
                         </tr>
                       </thead>
@@ -189,6 +204,9 @@ export default function AdminUsagePage() {
                             </td>
                             <td className="py-2 px-2 text-right text-content-secondary">
                               {formatNumber(u.total_tokens)}
+                            </td>
+                            <td className="py-2 px-2 text-right text-accent-amber">
+                              {formatUsd(u.cost_usd)}{u.cost_incomplete ? '*' : ''}
                             </td>
                             <td className="py-2 px-2 text-right text-content-muted">
                               {formatNumber(u.request_count)}
@@ -216,6 +234,7 @@ export default function AdminUsagePage() {
                         <tr className="text-content-muted border-b border-border">
                           <th className="text-left py-2 px-2">Model</th>
                           <th className="text-right py-2 px-2">Tokens</th>
+                          <th className="text-right py-2 px-2">예상 비용</th>
                           <th className="text-right py-2 px-2">Requests</th>
                         </tr>
                       </thead>
@@ -232,6 +251,9 @@ export default function AdminUsagePage() {
                             <td className="py-2 px-2 text-right text-content-secondary">
                               {formatNumber(m.total_tokens)}
                             </td>
+                            <td className="py-2 px-2 text-right text-accent-amber" title={m.cost_incomplete ? '이 모델의 단가를 알지 못해 비용에서 제외되었습니다' : undefined}>
+                              {m.cost_incomplete && m.cost_usd === 0 ? '단가 없음' : formatUsd(m.cost_usd)}
+                            </td>
                             <td className="py-2 px-2 text-right text-content-muted">
                               {formatNumber(m.request_count)}
                             </td>
@@ -243,6 +265,9 @@ export default function AdminUsagePage() {
                 )}
               </div>
             </div>
+            <p className="mt-6 text-xs text-content-muted">
+              예상 비용은 OpenAI 가격 페이지의 Standard 단가(2026-11-06 확인, USD/1M 토큰) × 토큰으로 계산한 추정치입니다. 입력·출력 토큰만 기록하므로 프롬프트 캐시 할인은 반영하지 않아 실제 청구액보다 높을 수 있고, 목록에 없는 모델(* 표시)은 제외됩니다. 이미지 모델은 텍스트 입력과 이미지 출력 단가로 계산합니다. 동영상 생성 비용은 포함하지 않습니다.
+            </p>
           </>
         )}
       </div>

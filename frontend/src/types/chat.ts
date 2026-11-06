@@ -61,6 +61,8 @@ export interface MessageUsage {
   /** LLM 호출 횟수 */
   requests: number
   elapsed_seconds: number
+  /** 예상 비용(USD, 캐시 할인 미반영). 단가를 모르는 모델이면 없음 */
+  cost_usd?: number | null
   /** 응답이 끝난 시각 (UTC ISO) */
   finished_at: string
 }

@@ -24,6 +24,7 @@ export interface AgentStreamEvent {
   output_tokens?: number
   requests?: number
   elapsed_seconds?: number
+  cost_usd?: number | null
   finished_at?: string
   /** 호출 식별자 (같은 도구가 동시에 여러 번 돌 때 호출과 결과를 정확히 짝짓는다) */
   call_id?: string

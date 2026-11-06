@@ -171,6 +171,7 @@ export function useAgentStream(conversationId: string) {
                   output_tokens: event.output_tokens ?? 0,
                   requests: event.requests ?? 0,
                   elapsed_seconds: event.elapsed_seconds ?? 0,
+                  cost_usd: event.cost_usd ?? null,
                   finished_at: event.finished_at ?? new Date().toISOString(),
                 })
               } else if (event.type === 'suggestions' && event.items?.length) {

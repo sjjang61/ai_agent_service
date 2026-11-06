@@ -68,3 +68,11 @@ export function formatFullDate(iso: string): string {
   const d = parseServerDate(iso)
   return isNaN(d.getTime()) ? '' : d.toLocaleDateString('ko-KR', { timeZone: currentTimezone() })
 }
+
+/** 예상 비용(USD) 표시: 1센트 미만은 4자리, 그 이상은 2~3자리. 예) $0.0123, $1.24 */
+export function formatUsd(v: number | null | undefined): string {
+  if (v == null) return '-'
+  if (v === 0) return '$0'
+  if (v < 0.01) return `$${v.toFixed(4)}`
+  return `$${v < 1 ? v.toFixed(3) : v.toFixed(2)}`
+}

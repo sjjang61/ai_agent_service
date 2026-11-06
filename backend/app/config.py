@@ -138,6 +138,8 @@ class Settings(BaseSettings):
     VIDEO_STRIP_AUDIO: bool = False  # true 면 ffmpeg 로 오디오 트랙을 제거한다 (ffmpeg 가 없으면 원본 사용)
     VIDEO_DAILY_LIMIT: int = 5  # 사용자당 하루 생성 한도 (0 이면 제한 없음, 서버 재시작 시 초기화). 영상은 비용이 크다
     VIDEO_TIMEOUT_SECONDS: int = 900
+    # 토큰 사용량의 예상 비용 계산용 추가·덮어쓸 모델 단가(JSON): {"모델": [입력, 캐시 입력 또는 null, 출력]} (USD/1M tokens). 기본 표는 services/pricing.py
+    MODEL_PRICES_JSON: str = ""
     SANDBOX_MAX_RUNNING_PER_USER: int = 5  # 한 사용자가 동시에 실행할 수 있는 sandbox 수 (넘으면 가장 오래 쓰지 않은 것을 백업 후 종료)
     SANDBOX_IDLE_MINUTES: int = 5  # last_used_at 기준 미사용 시간이 지나면 백업 후 종료
     SANDBOX_REAPER_INTERVAL_SECONDS: int = 60
