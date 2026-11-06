@@ -260,6 +260,17 @@ async def _daemon_up(cid: str) -> bool:
     return code == 0
 
 
+async def _daemon_version(cid: str) -> Optional[int]:
+    """떠 있는 데몬의 버전. 데몬이 없으면 None, 버전 정보가 없는 아주 오래된 데몬은 0."""
+    from app.services.sandbox_service import sandbox_manager
+
+    _, out, _ = await sandbox_manager.exec_command(cid, f"curl -sf -m 2 http://127.0.0.1:{DAEMON_PORT}/ping", timeout=15)
+    try:
+        return int(json.loads(out).get("v", 0))
+    except (ValueError, TypeError, AttributeError):
+        return None
+
+
 async def browser_call(user_id: str, payload: dict, timeout: int = 90, sandbox_cid: str = "", use_profile: bool = True) -> dict:
     """sandbox 의 브라우저 데몬에 명령을 보내고 결과(dict)를 받는다. 데몬이 없으면 시작한다.
     데몬을 새로 시작할 때 사용자의 저장된 로그인 상태(프로필)를 넣어 준다 (use_profile=False 면 깨끗한 세션)."""
@@ -273,7 +284,15 @@ async def browser_call(user_id: str, payload: dict, timeout: int = 90, sandbox_c
         # 같은 컨테이너에서 데몬이 동시에 두 번 시작되면(포트 충돌) 하나가 죽고 로그인 상태 복원도 어긋나므로 시작 구간을 직렬화한다
         async with _start_lock(cid):
             await sandbox_manager.write_file(cid, DAEMON_PATH, DAEMON_SOURCE.encode("utf-8"))
-            if not await _daemon_up(cid):
+            ver = await _daemon_version(cid)
+            if ver is not None and ver != DAEMON_VERSION:
+                # 앱을 업데이트하기 전에 시작된 데몬은 새 기능(스크린샷, 프로필 등)이 없으므로 종료하고 다시 시작한다
+                await daemon_post(cid, {"cmd": "close"}, timeout=5)
+                for _ in range(10):
+                    await asyncio.sleep(0.5)
+                    if await _daemon_version(cid) is None:
+                        break
+            if await _daemon_version(cid) is None:
                 if use_profile:
                     state = await BrowserProfileService.load_state(user_id)
                     if state:
