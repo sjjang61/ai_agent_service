@@ -25,6 +25,7 @@ STATE_PATH = "/tmp/_browser_state.json"  # 저장된 로그인 상태. 데몬이
 DAEMON_PORT = 9333
 DAEMON_VERSION = 6
 LOGIN_TIMEOUT_SECONDS = 600
+MAX_USER_REQUESTS = 3  # 한 번의 브라우저 작업에서 사용자에게 같은 해결을 요청하는 최대 횟수 (해결이 반복해서 실패하면 멈춘다)
 
 DAEMON_SOURCE = r'''
 import base64, ipaddress, json, os, socket, sys, time
@@ -377,6 +378,7 @@ class WaitClock:
 
     def __init__(self) -> None:
         self.waited = 0.0
+        self.requests = 0  # 이번 작업에서 사용자에게 로그인·CAPTCHA 해결을 요청한 횟수
         self._since: Optional[float] = None  # 지금 기다리는 중이면 시작 시각
 
     def total(self) -> float:
@@ -387,6 +389,7 @@ class WaitClock:
     async def ask(self, conversation_id: str, user_id: str, info: dict, timeout: float) -> dict:
         from app.core.login_requests import PendingLogins
 
+        self.requests += 1
         self._since = asyncio.get_running_loop().time()
         try:
             return await PendingLogins.ask(conversation_id, user_id, info, timeout)
@@ -479,17 +482,26 @@ class BrowserActionTool(BaseTool):
 
         url = str(res.get("url", ""))
         host = (urlparse(url).hostname or "사이트").removeprefix("www.")
+        clock = self.clock or WaitClock()
         for attempt in range(2):
-            info = {"site": host[:80], "url": url[:500], "reason": "CAPTCHA(로봇 확인) 화면이 나타났습니다. 열린 브라우저에서 직접 해결해 주세요."}
-            result = await (self.clock or WaitClock()).ask(self.conversation_id, self.user_id, info, LOGIN_TIMEOUT_SECONDS)
+            if clock.requests >= MAX_USER_REQUESTS:
+                break
+            reason = "CAPTCHA(로봇 확인) 화면이 나타났습니다. 열린 브라우저에서 직접 해결해 주세요."
+            if attempt:
+                reason = "CAPTCHA 가 아직 해결되지 않았습니다(사이트가 통과시키지 않았을 수 있습니다). 버튼은 진행 막대가 끝까지 찰 때까지 누른 채로 계세요. 다시 시도해 주세요."
+            info = {"site": host[:80], "url": url[:500], "reason": reason}
+            result = await clock.ask(self.conversation_id, self.user_id, info, LOGIN_TIMEOUT_SECONDS)
             if not result.get("done"):
                 why = "취소했습니다" if result.get("cancelled") else "시간이 초과되었습니다"
                 return res, f"[사용자가 CAPTCHA 해결을 {why}. 우회하지 말고 이 사실을 보고하고 멈추세요.]\n"
-            res = await browser_call(self.user_id, {"cmd": "snapshot"}, sandbox_cid=self.sandbox_cid, use_profile=self.use_profile)
-            if not looks_like_captcha(res):
-                return res, "[사용자가 CAPTCHA 를 해결했습니다. 아래는 해결 후 화면입니다. 이어서 작업하세요.]\n"
+            # 해결 직후에는 사이트가 원래 페이지로 이동하는 데 몇 초 걸리므로, 캡차 화면에서 벗어날 때까지 잠깐 기다린다
+            for _ in range(6):
+                res = await browser_call(self.user_id, {"cmd": "snapshot"}, sandbox_cid=self.sandbox_cid, use_profile=self.use_profile)
+                if not looks_like_captcha(res):
+                    return res, "[사용자가 CAPTCHA 를 해결했습니다. 아래는 해결 후 화면입니다. 이어서 작업하세요.]\n"
+                await asyncio.sleep(1.5)
             url = str(res.get("url", url))
-        return res, "[CAPTCHA 가 아직 남아 있습니다. 해결되지 않았다고 보고하고 멈추세요.]\n"
+        return res, "[CAPTCHA 가 해결되지 않았습니다(사이트가 통과시키지 않는 것으로 보입니다). 다시 요청하지 말고 그렇게 보고하고 멈추세요.]\n"
 
 
 class RequestLoginInput(BaseModel):
@@ -523,8 +535,15 @@ class RequestUserLoginTool(BaseTool):
                  f"that {site} needs a login which they can do in the web app (Customize > 브라우저 로그인), then ask again."},
                 ensure_ascii=False,
             )
+        clock = self.clock or WaitClock()
+        if clock.requests >= MAX_USER_REQUESTS:
+            return json.dumps(
+                {"unavailable": True, "message": f"The user was already asked {clock.requests} times and the page still is not cleared "
+                 "(the site may be rejecting this browser). Stop and report that clearly instead of asking again."},
+                ensure_ascii=False,
+            )
         info = {"site": site[:80], "url": (url or "")[:500], "reason": (reason or "")[:200]}
-        result = await (self.clock or WaitClock()).ask(self.conversation_id, self.user_id, info, LOGIN_TIMEOUT_SECONDS)
+        result = await clock.ask(self.conversation_id, self.user_id, info, LOGIN_TIMEOUT_SECONDS)
         return json.dumps(result, ensure_ascii=False)
 
 

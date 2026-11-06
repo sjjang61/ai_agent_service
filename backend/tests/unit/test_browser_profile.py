@@ -145,3 +145,15 @@ def test_daemon_get_ping_reports_version():
     from app.tools.browser_tools import DAEMON_SOURCE
 
     assert 'def do_GET(self): self._send({"ok": True, "v": VERSION})' in DAEMON_SOURCE
+
+
+def test_login_request_is_capped_per_run():
+    import asyncio
+    import json
+
+    from app.tools.browser_tools import MAX_USER_REQUESTS, RequestUserLoginTool, WaitClock
+
+    clock = WaitClock()
+    clock.requests = MAX_USER_REQUESTS
+    out = json.loads(asyncio.run(RequestUserLoginTool(user_id="u", conversation_id="c", clock=clock)._arun("X")))
+    assert out["unavailable"] is True and "Stop" in out["message"]
