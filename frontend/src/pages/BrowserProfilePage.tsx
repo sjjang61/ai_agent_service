@@ -74,7 +74,7 @@ export default function BrowserProfilePage() {
         <section className="space-y-1">
           <h2 className={T.section}>안내</h2>
           <ul className={`${T.itemDesc} list-disc pl-5 space-y-0.5`}>
-            <li>서버 IP 에서 접속하므로 일부 사이트(LinkedIn 등)는 추가 인증을 요구하거나 계정을 제한할 수 있습니다.</li>
+            <li>서버 IP 에서 접속하므로 일부 사이트는 추가 인증을 요구하거나 계정을 제한할 수 있습니다.</li>
             <li>금융·결제 사이트의 로그인 상태는 저장하지 않습니다.</li>
             <li>사이트의 이용약관이 자동화를 제한하는지 확인하고, 읽기 위주로 사용하세요.</li>
           </ul>
