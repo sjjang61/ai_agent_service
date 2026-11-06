@@ -6,11 +6,13 @@ interface Props {
   subtitle?: string
   icon?: React.ReactNode
   onClose: () => void
+  /** 앱 미리보기처럼 넓은 화면이 필요한 패널 */
+  wide?: boolean
   children: React.ReactNode
 }
 
 /** 채팅 우측 패널 공통 틀 (Artifacts, 문서 등): 머리글 + 스크롤 본문. Esc 로 닫는다. */
-export default function RightPanel({ title, subtitle, icon, onClose, children }: Props) {
+export default function RightPanel({ title, subtitle, icon, onClose, wide, children }: Props) {
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       const el = e.target as HTMLElement | null
@@ -22,7 +24,7 @@ export default function RightPanel({ title, subtitle, icon, onClose, children }:
   }, [onClose])
 
   return (
-    <aside aria-label={title} className="w-[420px] flex-shrink-0 border-l border-border flex flex-col h-screen overflow-hidden bg-surface-primary">
+    <aside aria-label={title} className={`${wide ? 'w-[46vw] min-w-[420px] max-w-[900px]' : 'w-[420px]'} flex-shrink-0 border-l border-border flex flex-col h-screen overflow-hidden bg-surface-primary`}>
       <div className="flex items-center gap-2 px-4 py-3 border-b border-border bg-surface-secondary">
         {icon && <span className="text-content-secondary flex-shrink-0">{icon}</span>}
         <div className="min-w-0 flex-1">

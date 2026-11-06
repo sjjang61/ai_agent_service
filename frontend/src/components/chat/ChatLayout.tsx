@@ -9,11 +9,13 @@ import SandboxDetailPanel from '../sandbox/SandboxDetailPanel'
 import ArtifactsPanel from '../sandbox/ArtifactsPanel'
 import WelcomeScreen from './WelcomeScreen'
 import RightPanel from '../layout/RightPanel'
+import AppPreviewPanel from './AppPreviewPanel'
+import { latestDeployedApp } from './deployedApp'
 import DocumentsPanel from '../documents/DocumentsPanel'
 import { useDocuments } from '../../hooks/useDocuments'
 import { useRunWatchdog } from '../../hooks/useRunWatchdog'
 import { useEffect, useRef } from 'react'
-import { FileText, FolderOpen, ListChecks, Loader2 } from 'lucide-react'
+import { AppWindow, FileText, FolderOpen, ListChecks, Loader2 } from 'lucide-react'
 import type { AgentStep } from '../../types/agent'
 import { useChatStore } from '../../store/chatStore'
 import { useAgentStore } from '../../store/agentStore'
@@ -53,6 +55,16 @@ export default function ChatLayout() {
       if (useAgentStore.getState().rightPanel === null) useAgentStore.getState().togglePanel('steps')
     }
   }, [running, liveSteps.length])
+  // 에이전트가 웹앱을 배포하면(deploy_web_app 성공) 우측에 앱 미리보기를 자동으로 연다. 같은 배포는 한 번만 연다.
+  const deployedApp = latestDeployedApp(panelSteps)
+  const openedApp = useRef<string | null>(null)
+  const liveApp = latestDeployedApp(liveSteps)
+  useEffect(() => {
+    if (!liveApp || openedApp.current === liveApp.stepId) return
+    openedApp.current = liveApp.stepId
+    useAgentStore.getState().openPanel('app')
+    useAgentStore.getState().setSelectedStep(null)
+  }, [liveApp?.stepId])
   const { data: documents = [] } = useDocuments(currentConversationId)
   const docsProcessing = documents.some((d) => d.status === 'processing')
   const headerBtn = (active: boolean) =>
@@ -117,6 +129,17 @@ export default function ChatLayout() {
               </span>
             ) : null}
           </button>
+          {deployedApp && (
+            <button
+              onClick={() => togglePanel('app')}
+              title={`배포된 앱 미리보기: ${deployedApp.name}`}
+              aria-pressed={rightPanel === 'app'}
+              className={headerBtn(rightPanel === 'app')}
+            >
+              <AppWindow size={13} />
+              앱
+            </button>
+          )}
           <button
             onClick={() => togglePanel('artifacts')}
             title="Artifacts (Sandbox Files)"
@@ -145,6 +168,11 @@ export default function ChatLayout() {
       {!selectedStep && rightPanel === 'steps' && currentConversationId && (
         <RightPanel title="작업 진행" subtitle={running ? '에이전트가 작업하고 있습니다' : '마지막 작업의 진행 내역'} icon={<ListChecks size={15} />} onClose={closePanel}>
           <StepsPanel steps={panelSteps} running={running} outcome={planOutcome(lastAssistant?.content, running)} />
+        </RightPanel>
+      )}
+      {!selectedStep && rightPanel === 'app' && deployedApp && (
+        <RightPanel wide title={deployedApp.name} subtitle="배포된 앱 미리보기" icon={<AppWindow size={15} />} onClose={closePanel}>
+          <AppPreviewPanel app={deployedApp} />
         </RightPanel>
       )}
       {!selectedStep && rightPanel === 'artifacts' && (

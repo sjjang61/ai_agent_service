@@ -1,7 +1,7 @@
 import { create } from 'zustand'
 import type { AgentStep, SelectedStepDetail } from '../types/agent'
 
-export type RightPanelKind = 'steps' | 'artifacts' | 'documents' | null
+export type RightPanelKind = 'steps' | 'artifacts' | 'documents' | 'app' | null
 
 interface AgentState {
   isRunning: boolean
@@ -20,6 +20,7 @@ interface AgentState {
   setSelectedStep: (step: SelectedStepDetail | null) => void
   triggerWorkspaceRefresh: () => void
   togglePanel: (panel: Exclude<RightPanelKind, null>) => void
+  openPanel: (panel: Exclude<RightPanelKind, null>) => void
   closePanel: () => void
 }
 
@@ -38,5 +39,6 @@ export const useAgentStore = create<AgentState>((set) => ({
   setSelectedStep: (selectedStep) => set({ selectedStep }),
   triggerWorkspaceRefresh: () => set((s) => ({ workspaceRefreshTick: s.workspaceRefreshTick + 1 })),
   togglePanel: (panel) => set((s) => ({ rightPanel: s.rightPanel === panel ? null : panel })),
+  openPanel: (panel) => set({ rightPanel: panel }),
   closePanel: () => set({ rightPanel: null }),
 }))
