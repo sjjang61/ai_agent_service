@@ -75,43 +75,34 @@ export default function TodoCard({ todos, running = true }: { todos: TodoItem[];
       </div>
 
       {/* 작업 목록 */}
-      <ul className="space-y-2">
-        {todos.map((t) => (
-          <li
-            key={t.id}
-            className={`flex items-start gap-2.5 text-sm p-2 rounded-md transition-all duration-200 ${
-              t.status === 'completed'
-                ? 'bg-accent-done/5 hover:bg-accent-done/10'
-                : t.status === 'in_progress' && running
-                ? 'bg-accent-primary/5 hover:bg-accent-primary/10'
-                : 'hover:bg-surface-tertiary/50'
-            }`}
-          >
-            {t.status === 'completed' ? (
-              <CheckCircle2
-                size={16}
-                className="text-accent-done mt-0.5 flex-shrink-0 animate-check"
-                strokeWidth={2.5}
-              />
-            ) : t.status === 'in_progress' && running ? (
-              <Loader2 size={16} className="text-accent-primary mt-0.5 flex-shrink-0 animate-spin" />
-            ) : (
-              <Circle size={16} className="text-content-muted mt-0.5 flex-shrink-0" strokeWidth={2} />
-            )}
-            <span
-              className={
-                t.status === 'completed'
-                  ? 'text-content-secondary line-through decoration-accent-done/40 decoration-2'
-                  : t.status === 'in_progress' && running
-                  ? 'text-content-primary font-medium'
-                  : 'text-content-secondary'
-              }
-            >
-              {t.content}
-            </span>
-          </li>
-        ))}
-      </ul>
+      <ol className="space-y-1.5" aria-label="작업 계획 단계">
+        {todos.map((t, i) => {
+          const done = t.status === 'completed'
+          const active = t.status === 'in_progress' && running
+          return (
+            <li key={t.id} aria-current={active ? 'step' : undefined} className="flex items-start gap-2 text-[13px]">
+              <span className="mt-0.5 flex-shrink-0" aria-hidden>
+                {done ? (
+                  <CheckCircle2 size={14} className="text-accent-done" />
+                ) : active ? (
+                  <Loader2 size={14} className="animate-spin text-accent-primary" />
+                ) : (
+                  <Circle size={14} className="text-content-muted" />
+                )}
+              </span>
+              <span
+                className={`flex-1 min-w-0 ${
+                  done ? 'line-through text-content-tertiary' : active ? 'text-content-primary font-medium' : 'text-content-secondary'
+                }`}
+              >
+                <span className="text-content-muted mr-1.5">{i + 1}.</span>
+                {t.content}
+              </span>
+              {active && <span className="flex-shrink-0 text-[11px] px-2 py-0.5 rounded-full bg-accent-primary/20 text-accent-primary">진행 중</span>}
+            </li>
+          )
+        })}
+      </ol>
     </div>
   )
 }
