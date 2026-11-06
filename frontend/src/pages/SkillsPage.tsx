@@ -4,6 +4,7 @@ import CustomizeLayout from '../components/skills/CustomizeLayout'
 import { T } from '../components/skills/typography'
 import PageHeader from '../components/skills/PageHeader'
 import AddSkillDialog from '../components/skills/AddSkillDialog'
+import SkillDetailDialog from '../components/skills/SkillDetailDialog'
 import { GithubDialog, ItemCard, errorText } from '../components/skills/common'
 import { skillsApi } from '../api/skills'
 import type { Skill, SkillCreateInput } from '../types/skill'
@@ -19,6 +20,7 @@ export default function SkillsPage() {
   const [query, setQuery] = useState('')
   const [source, setSource] = useState<'all' | 'personal' | string>('all') // string = plugin_id
   const [dialog, setDialog] = useState<'github' | 'custom' | null>(null)
+  const [detail, setDetail] = useState<Skill | null>(null)
   const [expanded, setExpanded] = useState(false)
   const [notice, setNotice] = useState<{ kind: 'ok' | 'err'; text: string } | null>(null)
 
@@ -163,6 +165,7 @@ export default function SkillsPage() {
                   active={s.is_active}
                   onToggle={() => toggle(s)}
                   onDelete={() => remove(s)}
+                  onOpen={() => setDetail(s)}
                 />
               ))}
             </div>
@@ -184,6 +187,7 @@ export default function SkillsPage() {
           onClose={() => setDialog(null)}
         />
       )}
+      {detail && <SkillDetailDialog skill={detail} onClose={() => setDetail(null)} />}
       {dialog === 'custom' && <AddSkillDialog onCreate={create} onClose={() => setDialog(null)} />}
     </CustomizeLayout>
   )

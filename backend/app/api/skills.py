@@ -1,6 +1,7 @@
 from typing import List
 
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
+from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.session import get_session
@@ -141,6 +142,49 @@ async def delete_plugin(
 ):
     await SkillService.delete_plugin(plugin_id, current_user.id, db)
     return {"status": "deleted"}
+
+
+class SkillFileInfo(BaseModel):
+    path: str
+    size: int
+
+
+class SkillDetail(SkillResponse):
+    files: List[SkillFileInfo] = []
+    truncated: bool = False
+
+
+class SkillFileContent(BaseModel):
+    path: str
+    size: int
+    binary: bool = False
+    truncated: bool = False
+    content: str = ""
+
+
+@router.get("/{skill_id}/detail", response_model=SkillDetail)
+async def get_skill_detail(
+    skill_id: str,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_session),
+):
+    """skill 상세: 메타 정보와 폴더의 파일 목록"""
+    skill = await SkillService.get_skill(skill_id, current_user.id, db)
+    owners = _owner_map(await SkillService.list_plugins(current_user.id, db))
+    files, truncated = SkillService.list_files(skill)
+    return SkillDetail(**_to_response(skill, owners).model_dump(), files=files, truncated=truncated)
+
+
+@router.get("/{skill_id}/file", response_model=SkillFileContent)
+async def get_skill_file(
+    skill_id: str,
+    path: str,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_session),
+):
+    """skill 폴더 안의 파일 내용 (텍스트, 최대 200KB)"""
+    skill = await SkillService.get_skill(skill_id, current_user.id, db)
+    return SkillService.read_file(skill, path)
 
 
 @router.post("/{skill_id}/active", response_model=SkillResponse)

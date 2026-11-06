@@ -32,23 +32,34 @@ interface CardProps {
   active: boolean
   onToggle: () => void
   onDelete: () => void
+  /** 있으면 카드를 눌러 상세를 연다 */
+  onOpen?: () => void
 }
 
 /** 목록 카드: 타일 + 이름/설명 + 활성 체크 (마우스를 올리면 삭제 버튼) */
-export function ItemCard({ name, description, meta, active, onToggle, onDelete }: CardProps) {
+export function ItemCard({ name, description, meta, active, onToggle, onDelete, onOpen }: CardProps) {
   return (
     <div
       className={`group flex items-center gap-3.5 p-3.5 rounded-[var(--radius-lg)] hover:bg-surface-hover transition-colors
         ${active ? '' : 'opacity-55'}`}
     >
-      <Tile name={name} />
-      <div className="min-w-0 flex-1">
-        <div className={`${T.itemTitle} truncate`} title={name}>
-          {name}
-          {meta && <span className="ml-2 text-xs font-normal text-content-tertiary">{meta}</span>}
-        </div>
-        <div className={`${T.itemDesc} truncate`} title={description ?? ''}>
-          {description || '설명 없음'}
+      <div
+        className={`flex items-center gap-3.5 min-w-0 flex-1 ${onOpen ? 'cursor-pointer' : ''}`}
+        onClick={onOpen}
+        onKeyDown={(e) => { if (onOpen && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); onOpen() } }}
+        role={onOpen ? 'button' : undefined}
+        tabIndex={onOpen ? 0 : undefined}
+        title={onOpen ? '상세 보기' : undefined}
+      >
+        <Tile name={name} />
+        <div className="min-w-0 flex-1">
+          <div className={`${T.itemTitle} truncate`} title={name}>
+            {name}
+            {meta && <span className="ml-2 text-xs font-normal text-content-tertiary">{meta}</span>}
+          </div>
+          <div className={`${T.itemDesc} truncate`} title={description ?? ''}>
+            {description || '설명 없음'}
+          </div>
         </div>
       </div>
       <button

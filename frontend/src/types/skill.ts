@@ -25,3 +25,21 @@ export interface SkillCreateInput {
   description: string
   content: string
 }
+
+export interface SkillFileInfo {
+  path: string
+  size: number
+}
+
+export interface SkillDetail extends Skill {
+  files: SkillFileInfo[]
+  truncated: boolean
+}
+
+export interface SkillFileContent {
+  path: string
+  size: number
+  binary: boolean
+  truncated: boolean
+  content: string
+}

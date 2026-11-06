@@ -92,3 +92,23 @@ def test_not_a_plugin():
     with pytest.raises(HTTPException) as e:
         _find_plugins(_normalize_upload_zip(_zip({"x/SKILL.md": MD}), "x"), GithubRef("", "x", None, ""))
     assert e.value.status_code == 404
+
+
+def test_skill_file_listing_and_read(tmp_path):
+    from types import SimpleNamespace
+
+    from app.services.skill_service import SkillService
+
+    (tmp_path / "scripts").mkdir()
+    (tmp_path / "SKILL.md").write_text(MD, encoding="utf-8")
+    (tmp_path / "scripts" / "a.py").write_text("print(1)")
+    (tmp_path / "logo.bin").write_bytes(b"\x00\x01")
+    (tmp_path / "link").symlink_to(tmp_path / "SKILL.md")
+    sk = SimpleNamespace(install_path=str(tmp_path))
+    files, trunc = SkillService.list_files(sk)
+    assert files[0]["path"] == "SKILL.md" and {f["path"] for f in files} == {"SKILL.md", "scripts/a.py", "logo.bin"}
+    assert SkillService.read_file(sk, "SKILL.md")["content"].startswith("---")
+    assert SkillService.read_file(sk, "logo.bin")["binary"] is True
+    for bad in ("../x", "link", "missing.txt", "/etc/passwd"):
+        with pytest.raises(HTTPException):
+            SkillService.read_file(sk, bad)

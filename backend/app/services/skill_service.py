@@ -475,6 +475,50 @@ class SkillService:
         await db.refresh(skill)
         return skill, await SkillService.sync_to_sandbox(user_id, [skill], db)
 
+    MAX_VIEW_FILES = 300
+    MAX_VIEW_BYTES = 200 * 1024
+
+    @staticmethod
+    async def get_skill(skill_id: str, user_id: str, db: AsyncSession) -> Skill:
+        r = await db.execute(select(Skill).where(Skill.id == skill_id, Skill.user_id == user_id))
+        skill = r.scalar_one_or_none()
+        if not skill:
+            raise HTTPException(404, "Skill not found")
+        return skill
+
+    @staticmethod
+    def list_files(skill: Skill) -> tuple[list[dict], bool]:
+        """skill 폴더의 파일 목록 (상대 경로, 크기). SKILL.md 가 맨 앞. 링크는 제외하고 최대 MAX_VIEW_FILES 개."""
+        root = Path(skill.install_path)
+        if not root.is_dir():
+            return [], False
+        files: list[dict] = []
+        truncated = False
+        for f in sorted(root.rglob("*"), key=lambda p: (p.name != "SKILL.md" or p.parent != root, str(p))):
+            if f.is_symlink() or not f.is_file():
+                continue
+            if len(files) >= SkillService.MAX_VIEW_FILES:
+                truncated = True
+                break
+            files.append({"path": f.relative_to(root).as_posix(), "size": f.stat().st_size})
+        return files, truncated
+
+    @staticmethod
+    def read_file(skill: Skill, rel: str) -> dict:
+        """skill 폴더 안의 파일 한 개를 텍스트로 읽는다. 폴더 밖·링크는 거부, 바이너리는 내용 없이 표시만."""
+        root = Path(skill.install_path).resolve()
+        target = (root / rel).resolve()
+        if root not in target.parents or (root / rel).is_symlink() or not target.is_file():
+            raise HTTPException(404, "파일을 찾을 수 없습니다")
+        size = target.stat().st_size
+        with target.open("rb") as fh:
+            raw = fh.read(SkillService.MAX_VIEW_BYTES + 1)
+        truncated = len(raw) > SkillService.MAX_VIEW_BYTES
+        raw = raw[: SkillService.MAX_VIEW_BYTES]
+        if b"\0" in raw:
+            return {"path": rel, "size": size, "binary": True, "truncated": False, "content": ""}
+        return {"path": rel, "size": size, "binary": False, "truncated": truncated, "content": raw.decode("utf-8", errors="replace")}
+
     @staticmethod
     async def set_active(skill_id: str, user_id: str, active: bool, db: AsyncSession) -> Skill:
         r = await db.execute(select(Skill).where(Skill.id == skill_id, Skill.user_id == user_id))
