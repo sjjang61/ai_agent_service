@@ -44,14 +44,17 @@ def _count(user_id: str) -> None:
     _daily[(user_id, today)] = _daily.get((user_id, today), 0) + 1
 
 
-def _result_text(path: Optional[str], url: Optional[str], alt: str) -> str:
+def _result_text(path: Optional[str], url: Optional[str], alt: str, video: bool = False) -> str:
     lines = []
     if path:
         lines.append(f"Saved in workspace: {path}")
     if url:
         alt = " ".join(alt.split())[:80].replace("[", "(").replace("]", ")")
         lines.append(f"Public URL: {url}")
-        lines.append(f"Show it to the user in your answer with this markdown: ![{alt}]({url})")
+        if video:
+            lines.append(f"Give the user this link in your answer (it plays inline in the chat): [영상 보기]({url})")
+        else:
+            lines.append(f"Show it to the user in your answer with this markdown: ![{alt}]({url})")
     return "\n".join(lines)
 
 
@@ -151,17 +154,29 @@ _tasks: set = set()
 
 
 # ── upload_to_minio ──────────────────────────────────────────────────────────
+def _video_format(data: bytes):
+    """실제 내용으로 판별한다: mp4(ftyp 상자) / webm(EBML)."""
+    if data[4:8] == b"ftyp":
+        return "mp4"
+    if data.startswith(b"\x1a\x45\xdf\xa3"):
+        return "webm"
+    return None
+
+
+VIDEO_MIME = {"mp4": "video/mp4", "webm": "video/webm"}
+
+
 class UploadInput(BaseModel):
-    path: str = Field(description="Image file in the workspace (png, jpg, gif, webp), e.g. images/logo.png")
+    path: str = Field(description="Image (png, jpg, gif, webp) or video (mp4, webm) file in the workspace, e.g. images/logo.png or videos/clip.mp4")
 
 
 class UploadToMinioTool(_AsyncTool):
     name: str = "upload_to_minio"
     description: str = (
-        "Upload ONE image file from the workspace to the public MinIO bucket and return its public URL "
-        "(anyone with the URL can view it, so only upload images the user wants to share). "
-        "Accepts png, jpg, gif, webp up to the size limit. generate_image already uploads by default; "
-        "use this for images created by code or for retrying a failed upload."
+        "Upload ONE image (png, jpg, gif, webp) or video (mp4, webm) file from the workspace to the public MinIO bucket and return its public URL "
+        "(anyone with the URL can view it, so only upload files the user wants to share). "
+        "generate_image and generate_video already upload by default; "
+        "use this for media created by code or for retrying a failed upload."
     )
     args_schema: type[BaseModel] = UploadInput
 
@@ -170,12 +185,20 @@ class UploadToMinioTool(_AsyncTool):
             return "Error: 공개 업로드(MinIO)가 설정되어 있지 않습니다 (MINIO_ENDPOINT, MINIO_ACCESS_KEY, MINIO_SECRET_KEY)"
         try:
             full = resolve_path(path)
-            limit = settings.PUBLIC_UPLOAD_MAX_MB * 1024 * 1024
-            data, _ = await _manager().read_file(await _container(self.user_id, self.sandbox_cid), full, limit)
-            fmt = _image_format(data)  # 확장자가 아니라 실제 내용으로 판별한다 (svg·html 등 스크립트가 들어갈 수 있는 형식은 거부)
-            if not fmt:
-                return "Error: 이미지(png, jpg, gif, webp)만 공개 업로드할 수 있습니다"
+            image_limit = settings.PUBLIC_UPLOAD_MAX_MB * 1024 * 1024
+            data, _ = await _manager().read_file(await _container(self.user_id, self.sandbox_cid), full, settings.PUBLIC_VIDEO_MAX_MB * 1024 * 1024)
             base = re.sub(r"\.[A-Za-z0-9]+$", "", full.rsplit("/", 1)[-1])
+            vfmt = _video_format(data)  # 확장자가 아니라 실제 내용으로 판별한다 (svg·html 등 스크립트가 들어갈 수 있는 형식은 거부)
+            if vfmt:
+                url = await object_storage.upload_public(
+                    data, object_storage.make_key(self.user_id, f"{base}.{vfmt}", "videos"), VIDEO_MIME[vfmt]
+                )
+                return _result_text(full, url, base, video=True)
+            fmt = _image_format(data)
+            if not fmt:
+                return "Error: 이미지(png, jpg, gif, webp)나 동영상(mp4, webm)만 공개 업로드할 수 있습니다"
+            if len(data) > image_limit:
+                return f"Error: 이미지가 너무 큽니다 (최대 {settings.PUBLIC_UPLOAD_MAX_MB}MB)"
             url = await object_storage.upload_public(
                 data, object_storage.make_key(self.user_id, f"{base}.{EXT[fmt]}", "images"), MIME[fmt]
             )

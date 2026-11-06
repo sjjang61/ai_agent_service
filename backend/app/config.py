@@ -127,6 +127,17 @@ class Settings(BaseSettings):
     MINIO_PUBLIC_BUCKET: str = "agent-public"  # 익명 읽기(GetObject)가 열리는 버킷. 비밀 파일을 올리지 말 것
     MINIO_PUBLIC_URL: str = ""  # 브라우저가 접근하는 MinIO 주소. 비워 두면 MINIO_ENDPOINT 로 만든다 (예: http://localhost:29000)
     PUBLIC_UPLOAD_MAX_MB: int = 10
+    PUBLIC_VIDEO_MAX_MB: int = 100
+    # 동영상 생성(generate_video): Google Gemini Omni (Interactions API, GOOGLE_API_KEY 사용). 영상은 이미지와 같은 공개 버킷에 올린다
+    VIDEO_GENERATION_ENABLED: bool = True
+    VIDEO_API_KEY: str = ""  # 영상 전용 Gemini API 키. 비워 두면 GOOGLE_API_KEY 를 쓴다
+    VIDEO_MODEL: str = "gemini-omni-1.1-flash"  # 모델 ID 는 바뀔 수 있어 설정으로 둔다
+    VIDEO_RESOLUTION: str = "360p"  # 360p | 720p | 1080p | 4k. 360p 는 초안용 저가 단계(720p 의 약 1/3 단가)
+    VIDEO_ASPECT_RATIO: str = "16:9"  # 16:9(가로) | 9:16(세로 숏폼)
+    VIDEO_DEFAULT_SECONDS: int = 6  # 4/6/8/10 중 하나로 보정된다
+    VIDEO_STRIP_AUDIO: bool = False  # true 면 ffmpeg 로 오디오 트랙을 제거한다 (ffmpeg 가 없으면 원본 사용)
+    VIDEO_DAILY_LIMIT: int = 5  # 사용자당 하루 생성 한도 (0 이면 제한 없음, 서버 재시작 시 초기화). 영상은 비용이 크다
+    VIDEO_TIMEOUT_SECONDS: int = 900
     SANDBOX_MAX_RUNNING_PER_USER: int = 5  # 한 사용자가 동시에 실행할 수 있는 sandbox 수 (넘으면 가장 오래 쓰지 않은 것을 백업 후 종료)
     SANDBOX_IDLE_MINUTES: int = 5  # last_used_at 기준 미사용 시간이 지나면 백업 후 종료
     SANDBOX_REAPER_INTERVAL_SECONDS: int = 60

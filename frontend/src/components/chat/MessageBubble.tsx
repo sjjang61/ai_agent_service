@@ -293,6 +293,17 @@ export default function MessageBubble({ message }: { message: Message }) {
                 // 링크 스타일링
                 a: ({ node, ...props }) => {
                   const href = props.href || ''
+                  // 동영상(mp4·webm) 링크는 링크와 함께 바로 재생할 수 있게 플레이어를 붙인다
+                  if (/^https?:\/\/.+\.(mp4|webm)(\?.*)?$/i.test(href)) {
+                    return (
+                      <span className="block my-2">
+                        <video src={href} controls preload="metadata" className="max-w-full max-h-[420px] rounded-lg border border-border bg-black" />
+                        <a href={href} target="_blank" rel="noopener noreferrer" className="block mt-1 text-xs text-accent-primary">
+                          {props.children || '영상 열기'}
+                        </a>
+                      </span>
+                    )
+                  }
                   if (href.startsWith(SANDBOX_HREF)) {
                     const path = decodeURIComponent(href.slice(SANDBOX_HREF.length))
                     return (

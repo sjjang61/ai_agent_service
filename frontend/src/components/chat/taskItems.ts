@@ -30,6 +30,7 @@ export const TASK_LABELS: Record<string, string> = {
   cli_browser_agent: '브라우저 작업',
   manage_schedule: '예약 관리',
   generate_image: '이미지 생성',
+  generate_video: '동영상 생성',
   upload_to_minio: '이미지 업로드',
   search_documents: '문서 검색',
   search_wiki: '위키 검색',
@@ -67,6 +68,7 @@ export function summarizeInput(tool: string | undefined, input: unknown): string
     case 'web_search':
       return clip(str('query'))
     case 'generate_image':
+    case 'generate_video':
       return clip(str('prompt'))
     case 'upload_to_minio':
       return clip(str('path'))

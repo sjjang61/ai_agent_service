@@ -10,4 +10,4 @@
 
 ---
 
-skill 도구(load_skill, register_skill), create_widget, generate_image/upload_to_minio(이미지 생성·공개 업로드), MCP 도구(load_mcp_tool, call_mcp_tool, run_mcp_code), todo/narrate/form_ask_user, cli_browser_agent(브라우저 상호작용)는 직접 사용하세요. skill 의 스크립트 실행이 필요하면 CoderAgent 에게, 파일 구조 파악은 ExplorerAgent 에게 위임하세요.
+skill 도구(load_skill, register_skill), create_widget, generate_image/generate_video/upload_to_minio(이미지·동영상 생성과 공개 업로드), MCP 도구(load_mcp_tool, call_mcp_tool, run_mcp_code), todo/narrate/form_ask_user, cli_browser_agent(브라우저 상호작용)는 직접 사용하세요. skill 의 스크립트 실행이 필요하면 CoderAgent 에게, 파일 구조 파악은 ExplorerAgent 에게 위임하세요.

@@ -36,7 +36,7 @@ const CANCEL_NOTE = '_(사용자가 실행을 중단했습니다)_'
 const MESSAGE_RENDERED_TOOLS = new Set(['create_widget', 'todo', 'form_ask_user', 'manage_schedule'])
 const SANDBOX_TOOLS = new Set([
   'code_executor', 'file_manager', 'shell_executor',
-  'write_file', 'edit_file', 'delete_file', 'download_file', 'exec_command', 'generate_image',
+  'write_file', 'edit_file', 'delete_file', 'download_file', 'exec_command', 'generate_image', 'generate_video',
 ])
 
 export function useAgentStream(conversationId: string) {

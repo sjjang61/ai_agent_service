@@ -31,6 +31,7 @@ export const TOOL_LABELS: Record<string, string> = {
   cli_browser_agent: '브라우저 작업',
   manage_schedule: '예약 관리',
   generate_image: '이미지 생성',
+  generate_video: '동영상 생성',
   upload_to_minio: '이미지 업로드',
 }
 

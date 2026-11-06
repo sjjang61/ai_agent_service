@@ -114,8 +114,13 @@ BUILTIN_TOOLS: List[ToolInfo] = [
         group="share",
     ),
     ToolInfo(
+        name="generate_video",
+        description="Generate a short video clip (4-10s) from a text description (optionally with reference images), save it in the workspace and upload it to MinIO for a public URL.",
+        group="share",
+    ),
+    ToolInfo(
         name="upload_to_minio",
-        description="Upload one workspace image to the public MinIO bucket and return its public URL.",
+        description="Upload one workspace image or video to the public MinIO bucket and return its public URL.",
         group="share",
     ),
     # Visualization

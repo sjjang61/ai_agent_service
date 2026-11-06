@@ -8,7 +8,7 @@ from langchain_core.tools import BaseTool
 RISKY_TOOLS = {
     "exec_command", "shell_executor", "code_executor", "delete_file", "publish_file", "download_file",
     "call_mcp_tool", "run_mcp_code", "cli_browser_agent", "browser_action", "manage_schedule", "write_file", "edit_file",
-    "generate_image", "upload_to_minio",  # 비용·공개 업로드
+    "generate_image", "generate_video", "upload_to_minio",  # 비용·공개 업로드
 }
 
 # approver(tool_name, summary) -> True(허용) / False(거부)
