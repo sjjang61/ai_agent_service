@@ -48,7 +48,7 @@ async def resolve_references(
             conv = await db.get(Conversation, rid)
             if conv is None or conv.user_id != user_id or conv.is_test:
                 raise HTTPException(status_code=404, detail="참조한 대화를 찾을 수 없습니다")
-            msgs = [m for m in await ChatService.get_messages(rid, db) if m.role in ("user", "assistant") and m.content != "__error__"]
+            msgs = [m for m in await ChatService.get_messages(rid, db, light=True) if m.role in ("user", "assistant") and m.content != "__error__"]
             lines = [
                 f"{'사용자' if m.role == 'user' else '에이전트'}: {_clip((m.content or '').strip(), MESSAGE_CLIP)}"
                 for m in msgs[-MESSAGES_PER_CONVERSATION:]

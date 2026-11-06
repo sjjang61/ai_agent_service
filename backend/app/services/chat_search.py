@@ -45,10 +45,10 @@ async def search_conversations(user_id: str, query: str, db: AsyncSession) -> li
         )
     ).all()
 
-    msg_rows = (
+    # 정렬하는 행에 content 를 싣지 않는다 (큰 본문을 정렬하면 MySQL 정렬 버퍼가 모자라 1038 오류가 난다)
+    hit_rows = (
         await db.execute(
-            select(Message.id, Message.conversation_id, Message.role, Message.content, Message.created_at,
-                   Conversation.title, Conversation.updated_at)
+            select(Message.id, Message.conversation_id, Message.created_at, Conversation.title, Conversation.updated_at)
             .join(Conversation, Conversation.id == Message.conversation_id)
             .where(
                 Conversation.user_id == user_id,
@@ -61,6 +61,22 @@ async def search_conversations(user_id: str, query: str, db: AsyncSession) -> li
             .limit(MAX_MESSAGE_ROWS)
         )
     ).all()
+    # 대화방마다 발췌에 쓸 메시지 id 만 고른 뒤 본문을 가져온다
+    keep: dict[str, list[str]] = {}
+    for mid, cid, _, _, _ in hit_rows:
+        ids = keep.setdefault(cid, [])
+        if len(ids) < SNIPPETS_PER_CONVERSATION:
+            ids.append(mid)
+    wanted = [m for ids in keep.values() for m in ids]
+    bodies = {}
+    if wanted:
+        for mid, role, content in (await db.execute(select(Message.id, Message.role, Message.content).where(Message.id.in_(wanted)))).all():
+            bodies[mid] = (role, content)
+    msg_rows = [
+        (mid, cid, bodies[mid][0], bodies[mid][1], created, title, updated)
+        for mid, cid, created, title, updated in hit_rows
+        if mid in bodies
+    ]
 
     found: dict[str, dict] = {}
     for cid, title, updated in title_rows:

@@ -78,7 +78,7 @@ async def maybe_update_summary(conversation_id: str) -> bool:
             conv = (await db.execute(select(Conversation).where(Conversation.id == conversation_id))).scalar_one_or_none()
             if not conv:
                 return False
-            messages: List = await ChatService.get_messages(conversation_id, db)
+            messages: List = await ChatService.get_messages(conversation_id, db, light=True)
             fresh = pending_messages(messages, conv.summary_count or 0)
             if len(fresh) < SUMMARY_BATCH:
                 return False

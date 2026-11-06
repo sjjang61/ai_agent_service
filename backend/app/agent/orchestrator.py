@@ -279,7 +279,7 @@ class AgentOrchestrator:
         # 이전 대화가 컨텍스트로 포함되더라도 이전 작업을 다시 수행하지 않도록 함
         complete_all_todos(conversation_id)
 
-        messages = await ChatService.get_messages(conversation_id, db)
+        messages = await ChatService.get_messages(conversation_id, db, light=True)
         logger.info(f"[orchestrator] 대화 기록 로드: {len(messages)}개 메시지")
 
         memory = ConversationMemory.from_db_messages(messages)

@@ -2,6 +2,7 @@ from datetime import datetime, timezone
 from typing import List
 
 from sqlalchemy import delete, select
+from sqlalchemy.orm import defer
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import normalize_llm_type, settings
@@ -59,12 +60,13 @@ class ChatService:
         return conv
 
     @staticmethod
-    async def get_messages(conversation_id: str, db: AsyncSession) -> List[Message]:
-        result = await db.execute(
-            select(Message)
-            .where(Message.conversation_id == conversation_id)
-            .order_by(Message.created_at.asc())
-        )
+    async def get_messages(conversation_id: str, db: AsyncSession, light: bool = False) -> List[Message]:
+        """대화의 메시지(시간순). light=True 는 에이전트 기록(agent_steps)·도구 호출(tool_calls) 같은 큰 JSON 열을 읽지 않는다.
+        대화 기록·요약·참조처럼 내용(content)만 필요한 곳에서 쓴다 (화면 목록은 agent_steps 가 필요하므로 light 를 쓰지 않는다)."""
+        query = select(Message).where(Message.conversation_id == conversation_id)
+        if light:
+            query = query.options(defer(Message.agent_steps), defer(Message.tool_calls))
+        result = await db.execute(query.order_by(Message.created_at.asc(), Message.id.asc()))
         return list(result.scalars().all())
 
     @staticmethod

@@ -88,7 +88,7 @@ def test_page_reference_requires_ownership_and_clips(monkeypatch):
 def test_conversation_reference_skips_errors_current_and_foreign(monkeypatch):
     conv = SimpleNamespace(user_id="u1", is_test=False, title="지난 대화")
 
-    async def msgs(cid, db):
+    async def msgs(cid, db, **kw):
         return [msg("user", "질문1"), msg("assistant", "__error__"), msg("assistant", "답1"), msg("system", "무시")]
 
     monkeypatch.setattr(rs.ChatService, "get_messages", staticmethod(msgs))

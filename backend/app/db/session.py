@@ -36,6 +36,7 @@ async def init_db():
         await conn.run_sync(_ensure_wiki_columns)
         await conn.run_sync(_ensure_sandbox_scope_columns)
         await conn.run_sync(_ensure_conversation_channel)
+        await conn.run_sync(_ensure_message_order_index)
 
 
 def _ensure_memory_columns(sync_conn) -> None:
@@ -127,3 +128,12 @@ def _ensure_conversation_channel(sync_conn) -> None:
         sync_conn.execute(text("ALTER TABLE conversations ADD COLUMN channel VARCHAR(20) NULL"))
     if "notify_schedules" not in {c["name"] for c in insp.get_columns("channel_accounts")}:
         sync_conn.execute(text("ALTER TABLE channel_accounts ADD COLUMN notify_schedules BOOLEAN NOT NULL DEFAULT 1"))
+
+
+def _ensure_message_order_index(sync_conn) -> None:
+    """messages (conversation_id, created_at) 인덱스 보강 (alembic n5a1b2c3d4e5 와 같은 변경)."""
+    from sqlalchemy import inspect, text
+
+    names = {i["name"] for i in inspect(sync_conn).get_indexes("messages")}
+    if "ix_messages_conversation_created" not in names:
+        sync_conn.execute(text("CREATE INDEX ix_messages_conversation_created ON messages (conversation_id, created_at)"))
