@@ -16,7 +16,6 @@ import { useChatStore } from '../../store/chatStore'
 import { Paperclip, Folder, BookMarked, MessageSquare, Bot, User, Copy, Check, Brain } from 'lucide-react'
 import axios from 'axios'
 import { formatSize, saveBlob } from '../sandbox/ArtifactsPanel'
-import { useAuthStore } from '../../store/authStore'
 import { stripWidgetTables } from '../widgets/dedupe'
 import { formatKoreanDateTime } from '../../utils/time'
 import { cloneElement, isValidElement, useState } from 'react'
@@ -131,7 +130,6 @@ export default function MessageBubble({ message }: { message: Message }) {
   const isUser = message.role === 'user'
   const { isRunning, rightPanel } = useAgentStore()
   const { messages, currentConversationId } = useChatStore()
-  const { user } = useAuthStore()
   const { selectedText, position, clearSelection } = useTextSelection()
   const [showWikiDialog, setShowWikiDialog] = useState(false)
   const [copied, setCopied] = useState(false)
@@ -198,30 +196,18 @@ export default function MessageBubble({ message }: { message: Message }) {
 
   return (
     <div className="message">
-      {/* Header */}
-      <div className="flex items-center gap-2.5 mb-3">
-        <div
-          className={`w-7 h-7 rounded-full flex items-center justify-center text-sm flex-shrink-0 ${
-            isUser
-              ? 'bg-gradient-to-br from-accent-primary to-purple-500'
-              : 'bg-surface-tertiary border border-border'
-          }`}
-        >
-          {isUser ? (
-            <span className="text-white text-xs font-semibold">
-              {user?.display_name?.slice(0, 2).toUpperCase() || 'U'}
-            </span>
-          ) : (
+      {/* Header: 에이전트 응답에만 표시. 사용자 메시지는 아이콘·이름 없이 오른쪽 말풍선으로 보여 준다 */}
+      {!isUser && (
+        <div className="flex items-center gap-2.5 mb-3">
+          <div className="w-7 h-7 rounded-full flex items-center justify-center text-sm flex-shrink-0 bg-surface-tertiary border border-border">
             <Bot size={14} className="text-content-secondary" />
-          )}
+          </div>
+          <span className="text-sm font-semibold text-content-primary">Agent</span>
         </div>
-        <span className="text-sm font-semibold text-content-primary">
-          {isUser ? 'You' : 'Agent'}
-        </span>
-      </div>
+      )}
 
       {/* Content */}
-      <div className="pl-[38px]">
+      <div className={isUser ? 'flex flex-col items-end' : 'pl-[38px]'}>
         {/* 진행 패널이 열려 있으면 거기서 같은 계획을 보여 주므로 말풍선에서는 숨긴다 */}
         {todos && rightPanel !== 'steps' && <TodoCard todos={todos} running={planState === 'running'} />}
 
@@ -243,7 +229,7 @@ export default function MessageBubble({ message }: { message: Message }) {
 
         {/* Attachments */}
         {message.attachments && message.attachments.length > 0 && (
-          <div className="flex flex-wrap gap-1.5 mb-2">
+          <div className={`flex flex-wrap gap-1.5 mb-2 ${isUser ? 'justify-end max-w-[80%]' : ''}`}>
             {message.attachments.map((a) => (
               <span
                 key={a.path}
@@ -262,7 +248,7 @@ export default function MessageBubble({ message }: { message: Message }) {
 
         {/* References */}
         {message.references && message.references.length > 0 && (
-          <div className="flex flex-wrap gap-1.5 mb-2">
+          <div className={`flex flex-wrap gap-1.5 mb-2 ${isUser ? 'justify-end max-w-[80%]' : ''}`}>
             {message.references.map((r) => (
               <span
                 key={`${r.type}:${r.id}`}
@@ -277,7 +263,13 @@ export default function MessageBubble({ message }: { message: Message }) {
         )}
 
         {/* Message content */}
-        <div className="prose prose-sm max-w-none text-content-primary">
+        <div
+          className={`prose prose-sm text-content-primary ${
+            isUser
+              ? 'max-w-[80%] rounded-2xl rounded-tr-sm bg-surface-tertiary border border-border px-4 py-2.5 text-left break-words'
+              : 'max-w-none'
+          }`}
+        >
           {message.content === '__error__' ? (
             <span className="text-accent-red not-prose">
               An error occurred. Please try again later.
