@@ -173,7 +173,11 @@ class AgentOrchestrator:
             ))
         if self.allow_browser:
             tools.append(
-                CliBrowserAgentTool(user_id=self.user_id, sandbox_cid=sandbox_cid, llm_provider=self.llm_provider, model=self.model)
+                CliBrowserAgentTool(
+                    user_id=self.user_id, sandbox_cid=sandbox_cid, conversation_id=conversation_id,
+                    login_enabled=not (self.headless or self.channel),
+                    llm_provider=self.llm_provider, model=self.model,
+                )
             )
         if skills:
             tools.append(LoadSkillTool(skills={s.name: s.install_path for s in skills}, user_id=self.user_id, sandbox_cid=sandbox_cid))

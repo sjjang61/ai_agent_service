@@ -33,3 +33,4 @@ __all__ = [
     "DocumentChunk",
     "ChannelAccount",
 ]
+from app.models.browser_profile import BrowserProfile

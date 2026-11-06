@@ -19,15 +19,19 @@ from app.agent.prompts import sections
 from app.config import settings
 
 DAEMON_PATH = "/tmp/_browser_daemon.py"
+STATE_PATH = "/tmp/_browser_state.json"  # 저장된 로그인 상태. 데몬이 읽자마자 지운다
 DAEMON_PORT = 9333
+DAEMON_VERSION = 2
+LOGIN_TIMEOUT_SECONDS = 600
 
 DAEMON_SOURCE = r'''
-import ipaddress, json, os, socket, sys, time
+import base64, ipaddress, json, os, socket, sys, time
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from urllib.parse import urlparse
 from playwright.sync_api import sync_playwright
 
-PORT, IDLE_SECONDS = 9333, 900
+PORT, IDLE_SECONDS, VERSION = 9333, 900, 2
+STATE_PATH = "/tmp/_browser_state.json"
 SHOT_DIR = "/workspace/browser"
 
 SNAP_JS = """() => {
@@ -73,7 +77,16 @@ def route(r):
 
 pw = sync_playwright().start()
 browser = pw.chromium.launch(headless=True, args=["--no-sandbox", "--disable-dev-shm-usage"])
-ctx = browser.new_context(viewport={"width": 1280, "height": 800}, locale="ko-KR")
+_ctx_args = dict(viewport={"width": 1280, "height": 800}, locale="ko-KR")
+if os.path.exists(STATE_PATH):   # 사용자 로그인 상태(쿠키/localStorage) 복원 후 파일은 바로 지운다
+    try:
+        ctx = browser.new_context(storage_state=STATE_PATH, **_ctx_args)
+    except Exception:
+        ctx = browser.new_context(**_ctx_args)
+    try: os.remove(STATE_PATH)
+    except Exception: pass
+else:
+    ctx = browser.new_context(**_ctx_args)
 ctx.route("**/*", route)
 state = {"page": ctx.new_page(), "shots": 0}
 ctx.on("page", lambda p: state.update(page=p))          # 새 탭이 열리면 그쪽으로 전환
@@ -101,7 +114,24 @@ def snapshot(page):
 def handle(c):
     page = state["page"]
     cmd = c.get("cmd")
-    if cmd == "ping": return {"ok": True}
+    if cmd == "ping": return {"ok": True, "v": VERSION}
+    if cmd == "export_state": return {"ok": True, "state": ctx.storage_state()}
+    if cmd == "frame":
+        raw = page.screenshot(type="jpeg", quality=int(c.get("quality") or 55))
+        return {"ok": True, "img": base64.b64encode(raw).decode(), "url": page.url, "title": page.title()}
+    if cmd == "mouse":   # 사용자의 직접 조작 (로그인 화면)
+        x, y = float(c["x"]), float(c["y"])
+        page.mouse.click(x, y, button=c.get("button") or "left", click_count=int(c.get("count") or 1))
+        time.sleep(0.3); return {"ok": True}
+    if cmd == "wheel":
+        page.mouse.move(float(c.get("x") or 640), float(c.get("y") or 400))
+        page.mouse.wheel(0, float(c.get("dy") or 0)); return {"ok": True}
+    if cmd == "insert":
+        page.keyboard.insert_text(str(c.get("text", ""))[:2000]); return {"ok": True}
+    if cmd == "keypress":
+        page.keyboard.press(str(c.get("key", "Enter"))); time.sleep(0.2); return {"ok": True}
+    if cmd == "reload":
+        page.reload(wait_until="domcontentloaded", timeout=20000); return {"ok": True}
     if cmd == "goto":
         url = str(c.get("url", ""))
         if urlparse(url).scheme not in ("http", "https"): return {"ok": False, "error": "http/https URL only"}
@@ -179,8 +209,17 @@ def _truncate(s: str, limit: int) -> str:
     return s if len(s) <= limit else s[:limit] + f"...[{len(s) - limit} chars truncated]"
 
 
-async def browser_call(user_id: str, payload: dict, timeout: int = 90, sandbox_cid: str = "") -> dict:
-    """sandbox 의 브라우저 데몬에 명령을 보내고 결과(dict)를 받는다. 데몬이 없으면 시작한다."""
+async def _daemon_up(cid: str) -> bool:
+    from app.services.sandbox_service import sandbox_manager
+
+    code, _, _ = await sandbox_manager.exec_command(cid, f"curl -sf -m 2 http://127.0.0.1:{DAEMON_PORT}/ping >/dev/null", timeout=15)
+    return code == 0
+
+
+async def browser_call(user_id: str, payload: dict, timeout: int = 90, sandbox_cid: str = "", use_profile: bool = True) -> dict:
+    """sandbox 의 브라우저 데몬에 명령을 보내고 결과(dict)를 받는다. 데몬이 없으면 시작한다.
+    데몬을 새로 시작할 때 사용자의 저장된 로그인 상태(프로필)를 넣어 준다 (use_profile=False 면 깨끗한 세션)."""
+    from app.services.browser_profile_service import BrowserProfileService
     from app.services.sandbox_service import sandbox_manager
     from app.tools.workspace_tools import _container
 
@@ -188,6 +227,10 @@ async def browser_call(user_id: str, payload: dict, timeout: int = 90, sandbox_c
     url = f"http://127.0.0.1:{DAEMON_PORT}"
     if payload.get("cmd") != "close":
         await sandbox_manager.write_file(cid, DAEMON_PATH, DAEMON_SOURCE.encode("utf-8"))
+        if use_profile and not await _daemon_up(cid):
+            state = await BrowserProfileService.load_state(user_id)
+            if state:
+                await sandbox_manager.write_file(cid, STATE_PATH, state.encode("utf-8"))
     ensure = (
         f"curl -sf -m 2 {url}/ping >/dev/null || ("
         f"nohup python3 {DAEMON_PATH} >/tmp/_browser_daemon.log 2>&1 </dev/null & "
@@ -208,6 +251,35 @@ async def browser_call(user_id: str, payload: dict, timeout: int = 90, sandbox_c
         return json.loads(out)
     except ValueError:
         return {"ok": False, "error": _truncate(out.strip(), 300)}
+
+
+async def daemon_post(cid: str, payload: dict, timeout: int = 30) -> dict:
+    """이미 떠 있는 데몬에 명령만 보낸다 (시작·소스 쓰기 없음). 실시간 화면 조작처럼 잦은 호출용."""
+    from app.services.sandbox_service import sandbox_manager
+
+    cmd = f"curl -s -m {timeout} -X POST -d {shlex.quote(json.dumps(payload, ensure_ascii=False))} http://127.0.0.1:{DAEMON_PORT}/cmd"
+    _, out, _ = await sandbox_manager.exec_command(cid, cmd, timeout=timeout + 15)
+    try:
+        return json.loads(out)
+    except ValueError:
+        return {"ok": False, "error": _truncate(out.strip(), 200) or "no response"}
+
+
+async def persist_profile(user_id: str, sandbox_cid: str = "") -> Optional[list]:
+    """실행 중인 브라우저의 로그인 상태를 사용자 프로필로 저장한다. 데몬이 없으면 아무것도 하지 않는다(None)."""
+    from app.services.browser_profile_service import BrowserProfileService
+    from app.tools.workspace_tools import _container
+
+    cid = await _container(user_id, sandbox_cid)
+    if not await _daemon_up(cid):
+        return None
+    res = await daemon_post(cid, {"cmd": "export_state"}, timeout=20)
+    if not res.get("ok") or not isinstance(res.get("state"), dict):
+        return None
+    st = res["state"]
+    if not st.get("cookies") and not st.get("origins"):
+        return []  # 빈 세션(새 세션 등)이 저장된 프로필을 지우지 않게 한다
+    return await BrowserProfileService.save_state(user_id, st)
 
 
 def _format(res: dict) -> str:
@@ -248,6 +320,7 @@ class BrowserActionTool(BaseTool):
     args_schema: type[BaseModel] = BrowserActionInput
     user_id: str = ""
     sandbox_cid: str = ""  # 비어 있으면 사용자 공용 sandbox
+    use_profile: bool = True
 
     def _run(self, *args, **kwargs) -> str:
         return "This tool supports async execution only"
@@ -258,9 +331,46 @@ class BrowserActionTool(BaseTool):
         payload = {"cmd": action, "url": url, "ref": ref, "text": text, "key": key,
                    "direction": direction, "submit": submit, "seconds": seconds, "name": text}
         try:
-            return _format(await browser_call(self.user_id, {k: v for k, v in payload.items() if v is not None}, sandbox_cid=self.sandbox_cid))
+            return _format(await browser_call(self.user_id, {k: v for k, v in payload.items() if v is not None}, sandbox_cid=self.sandbox_cid, use_profile=self.use_profile))
         except Exception as e:
             return f"Error: {type(e).__name__}: {e}"
+
+
+class RequestLoginInput(BaseModel):
+    site: str = Field(description="Site name the user must sign in to, e.g. 'LinkedIn'")
+    url: Optional[str] = Field(default=None, description="Login page URL (optional)")
+    reason: Optional[str] = Field(default=None, description="One short sentence on why the login is needed")
+
+
+class RequestUserLoginTool(BaseTool):
+    """로그인이 필요한 화면을 만났을 때 사용자가 직접 로그인하도록 요청하고 완료를 기다린다."""
+    name: str = "request_user_login"
+    description: str = (
+        "Ask the USER to sign in themselves when the page needs a login (login form, authwall, 2FA, CAPTCHA). "
+        "A live browser opens for the user; execution PAUSES until they finish (or cancel, or 10 minutes pass). "
+        "Never ask for or type the user's password yourself. After it returns {\"done\": true}, take a fresh snapshot "
+        "and continue; the session is already logged in."
+    )
+    args_schema: type[BaseModel] = RequestLoginInput
+    user_id: str = ""
+    conversation_id: str = ""
+    enabled: bool = True
+
+    def _run(self, *args, **kwargs) -> str:
+        return "This tool supports async execution only"
+
+    async def _arun(self, site: str, url: Optional[str] = None, reason: Optional[str] = None) -> str:
+        if not self.enabled or not self.conversation_id:
+            return json.dumps(
+                {"unavailable": True, "message": "No interactive screen is available. Stop and tell the user in your report "
+                 f"that {site} needs a login which they can do in the web app (Customize > 브라우저 로그인), then ask again."},
+                ensure_ascii=False,
+            )
+        from app.core.login_requests import PendingLogins
+
+        info = {"site": site[:80], "url": (url or "")[:500], "reason": (reason or "")[:200]}
+        result = await PendingLogins.ask(self.conversation_id, self.user_id, info, LOGIN_TIMEOUT_SECONDS)
+        return json.dumps(result, ensure_ascii=False)
 
 
 BROWSER_INSTRUCTIONS = sections("browser_agent")  # prompts/browser_agent.md
@@ -282,6 +392,8 @@ class CliBrowserAgentTool(BaseTool):
     args_schema: type[BaseModel] = CliBrowserAgentInput
     user_id: str = ""
     sandbox_cid: str = ""  # 비어 있으면 사용자 공용 sandbox
+    conversation_id: str = ""  # 로그인 요청 카드를 띄울 대화방
+    login_enabled: bool = True  # 예약·메신저 실행처럼 사용자 화면이 없으면 False
     llm_provider: str = ""
     model: Optional[str] = None
 
@@ -300,15 +412,25 @@ class CliBrowserAgentTool(BaseTool):
                 except Exception:
                     pass
                 await asyncio.sleep(1)
+            profile = not new_session  # 새 세션은 저장된 로그인 상태 없이 시작하고, 끝나도 프로필을 덮어쓰지 않는다
+            browser_tool = BrowserActionTool(user_id=self.user_id, sandbox_cid=self.sandbox_cid, use_profile=profile)
+            login_tool = RequestUserLoginTool(user_id=self.user_id, conversation_id=self.conversation_id, enabled=self.login_enabled)
             agent = Agent(
                 name="BrowserAgent",
                 model=build_agno_model(self.llm_provider or settings.LLM_TYPE, self.model),
-                tools=[to_agno_function(BrowserActionTool(user_id=self.user_id, sandbox_cid=self.sandbox_cid))],
+                tools=[to_agno_function(browser_tool), to_agno_function(login_tool)],
                 tool_call_limit=settings.BROWSER_MAX_STEPS,
                 instructions=BROWSER_INSTRUCTIONS,
             )
             prompt = task if not start_url else f"{task}\n\n(시작 URL: {start_url})"
-            out = await asyncio.wait_for(agent.arun(prompt), timeout=settings.BROWSER_TIMEOUT_SECONDS)
+            try:
+                out = await asyncio.wait_for(agent.arun(prompt), timeout=settings.BROWSER_TIMEOUT_SECONDS)
+            finally:
+                if profile:  # 이번 작업에서 로그인된 사이트가 다음 대화·sandbox 에서도 유지되도록 저장
+                    try:
+                        await persist_profile(self.user_id, self.sandbox_cid)
+                    except Exception:
+                        pass
             text = str(getattr(out, "content", "") or "").strip()
             return text[:15000] if text else "(browser agent returned no result)"
         except asyncio.TimeoutError:

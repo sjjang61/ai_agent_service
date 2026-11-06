@@ -51,7 +51,7 @@ def test_json_braces_in_prompts_are_left_alone():
 def test_sections_and_agent_spec_split_on_separator_lines():
     role, instructions = prompts.agent_spec("subagent_coder")
     assert role.startswith("sandbox") and len(instructions) == 3
-    assert len(prompts.sections("browser_agent")) == 6
+    assert len(prompts.sections("browser_agent")) == 7
     assert len(prompts.sections("team_default")) == 4
 
 
