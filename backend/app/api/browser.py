@@ -83,6 +83,47 @@ async def finish_login_request(data: LoginDone, current_user: User = Depends(get
     return {"status": "ok"}
 
 
+class Shot(BaseModel):
+    path: str
+    url: str = ""
+    title: str = ""
+    t: int
+    run: Optional[str] = None
+
+
+@router.get("/shots", response_model=list[Shot])
+async def list_shots(
+    conversation_id: Optional[str] = None,
+    run: str = "latest",
+    limit: int = 30,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_session),
+):
+    """브라우저 작업 중 남긴 스크린샷 목록 (오래된 것부터). run='latest' 는 가장 최근 작업, 그 외는 작업 id."""
+    import json
+
+    from app.services.sandbox_service import SandboxService, sandbox_manager
+
+    sb = await SandboxService.get_sandbox(current_user.id, db, await resolve_scope(conversation_id, current_user.id, db))
+    if not sb or sb.status != "running" or not sb.container_id:
+        return []
+    try:
+        data, _ = await sandbox_manager.read_file(sb.container_id, "/workspace/browser/shots/index.jsonl", 2 * 1024 * 1024)
+    except (FileNotFoundError, IsADirectoryError):
+        return []
+    rows = []
+    for line in data.decode("utf-8", errors="replace").splitlines():
+        try:
+            r = json.loads(line)
+            rows.append(Shot(path=str(r["f"]), url=str(r.get("url", ""))[:300], title=str(r.get("title", ""))[:200], t=int(r["t"]), run=r.get("run")))
+        except (ValueError, KeyError, TypeError):
+            continue
+    if run == "latest":
+        run = next((r.run for r in reversed(rows) if r.run), "")
+    rows = [r for r in rows if r.run == run] if run else []
+    return rows[-max(1, min(limit, 60)):]
+
+
 # ── 실시간 브라우저 ───────────────────────────────────────────────────────────
 def _normalize_url(raw: str) -> Optional[str]:
     raw = (raw or "").strip()

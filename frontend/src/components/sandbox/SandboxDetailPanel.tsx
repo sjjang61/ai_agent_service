@@ -3,6 +3,7 @@ import {
 } from 'lucide-react'
 import { useAgentStore } from '../../store/agentStore'
 import ArtifactsPanel from './ArtifactsPanel'
+import BrowserShots, { parseBrowserRun, stripBrowserRun } from '../chat/BrowserShots'
 import type { SelectedStepDetail } from '../../types/agent'
 
 // ─── 스텝 상세 섹션 ────────────────────────────────────────────────────────────
@@ -38,6 +39,7 @@ function StepDetailContent({ step }: { step: SelectedStepDetail }) {
           <span>{step.tool}</span>
           <span className="text-content-muted font-normal">호출</span>
         </div>
+        {step.tool === 'cli_browser_agent' && <BrowserShots running size="md" />}
         {input && (
           <>
             {step.tool === 'code_executor' && typeof input.code === 'string' && (
@@ -76,7 +78,7 @@ function StepDetailContent({ step }: { step: SelectedStepDetail }) {
   }
 
   // tool_result
-  const output = step.output ?? ''
+  const output = stripBrowserRun(step.output ?? '')
   const savedFileMatch = output.match(/\[saved: ([^\]]+)\]/)
   const stdoutMatch = output.match(/STDOUT:\n([\s\S]*?)(?=STDERR:|Exit code:|$)/)
   const stderrMatch = output.match(/STDERR:\n([\s\S]*?)(?=Exit code:|$)/)
@@ -91,6 +93,8 @@ function StepDetailContent({ step }: { step: SelectedStepDetail }) {
         <span>{step.tool}</span>
         <span className="text-content-muted font-normal">결과</span>
       </div>
+
+      {step.tool === 'cli_browser_agent' && <BrowserShots run={parseBrowserRun(step.output)} running={false} size="md" />}
 
       {publishLinkMatch ? (
         <div className="space-y-2">

@@ -8,6 +8,7 @@
 """
 import asyncio
 import json
+import uuid
 import shlex
 from typing import Literal, Optional
 
@@ -21,7 +22,7 @@ from app.config import settings
 DAEMON_PATH = "/tmp/_browser_daemon.py"
 STATE_PATH = "/tmp/_browser_state.json"  # 저장된 로그인 상태. 데몬이 읽자마자 지운다
 DAEMON_PORT = 9333
-DAEMON_VERSION = 3
+DAEMON_VERSION = 4
 LOGIN_TIMEOUT_SECONDS = 600
 
 DAEMON_SOURCE = r'''
@@ -30,7 +31,7 @@ from http.server import BaseHTTPRequestHandler, HTTPServer
 from urllib.parse import urlparse
 from playwright.sync_api import sync_playwright
 
-PORT, IDLE_SECONDS, VERSION = 9333, 900, 3
+PORT, IDLE_SECONDS, VERSION = 9333, 900, 4
 STATE_PATH = "/tmp/_browser_state.json"
 SHOT_DIR = "/workspace/browser"
 
@@ -113,6 +114,23 @@ def fresh_page():
     except Exception: pass
     return p
 
+SHOTS_DIR = SHOT_DIR + "/shots"
+
+def shot(page, run):
+    """작업 진행 화면용 스크린샷(JPEG)을 남기고 index.jsonl 에 기록한다. 실패해도 작업에는 영향이 없다."""
+    try:
+        os.makedirs(SHOTS_DIR, exist_ok=True)
+        ts = int(time.time() * 1000)
+        path = "%s/%d.jpg" % (SHOTS_DIR, ts)
+        page.screenshot(path=path, type="jpeg", quality=55)
+        with open(SHOTS_DIR + "/index.jsonl", "a") as f:
+            f.write(json.dumps({"f": path, "url": page.url, "title": page.title(), "t": ts, "run": run}, ensure_ascii=False) + "\n")
+        files = sorted(x for x in os.listdir(SHOTS_DIR) if x.endswith(".jpg"))
+        for old in files[:-60]:
+            os.remove(SHOTS_DIR + "/" + old)
+    except Exception:
+        pass
+
 def settle(page):
     try: page.wait_for_load_state("domcontentloaded", timeout=5000)
     except Exception: pass
@@ -158,25 +176,30 @@ def handle(c):
             fresh_page()  # 실패한 이동(리다이렉트 차단 등)은 오류 페이지가 다음 이동을 방해하므로 새 탭으로 교체
             raise
         settle(page)
+        shot(state["page"], c.get("run"))
         return {"ok": True, **snapshot(state["page"])}
     if cmd == "snapshot": return {"ok": True, **snapshot(page)}
     loc = lambda: page.locator('[data-agent-ref="%s"]' % int(c["ref"])).first
     if cmd == "click":
         loc().click(timeout=8000); time.sleep(0.6); settle(state["page"])
+        shot(state["page"], c.get("run"))
         return {"ok": True, **snapshot(state["page"])}
     if cmd == "type":
         loc().fill(str(c.get("text", ""))[:2000], timeout=8000)
         if c.get("submit"):
             page.keyboard.press("Enter"); time.sleep(0.6); settle(state["page"])
+            shot(state["page"], c.get("run"))
             return {"ok": True, **snapshot(state["page"])}
         return {"ok": True, "url": page.url}
     if cmd == "select":
         loc().select_option(str(c.get("text", "")), timeout=8000); return {"ok": True}
     if cmd == "press":
         page.keyboard.press(str(c.get("key", "Enter"))); time.sleep(0.6); settle(state["page"])
+        shot(state["page"], c.get("run"))
         return {"ok": True, **snapshot(state["page"])}
     if cmd == "back":
         page.go_back(wait_until="domcontentloaded", timeout=15000); settle(page)
+        shot(state["page"], c.get("run"))
         return {"ok": True, **snapshot(state["page"])}
     if cmd == "scroll":
         d = c.get("direction", "down")
@@ -348,6 +371,7 @@ class BrowserActionTool(BaseTool):
     user_id: str = ""
     sandbox_cid: str = ""  # 비어 있으면 사용자 공용 sandbox
     use_profile: bool = True
+    run_tag: str = ""  # 한 번의 브라우저 작업(cli_browser_agent 호출) 식별자. 스크린샷을 이 작업에 묶는다
 
     def _run(self, *args, **kwargs) -> str:
         return "This tool supports async execution only"
@@ -356,7 +380,7 @@ class BrowserActionTool(BaseTool):
                     key: Optional[str] = None, direction: Optional[str] = None, submit: bool = False,
                     seconds: Optional[float] = None) -> str:
         payload = {"cmd": action, "url": url, "ref": ref, "text": text, "key": key,
-                   "direction": direction, "submit": submit, "seconds": seconds, "name": text}
+                   "direction": direction, "submit": submit, "seconds": seconds, "name": text, "run": self.run_tag or None}
         try:
             return _format(await browser_call(self.user_id, {k: v for k, v in payload.items() if v is not None}, sandbox_cid=self.sandbox_cid, use_profile=self.use_profile))
         except Exception as e:
@@ -440,7 +464,8 @@ class CliBrowserAgentTool(BaseTool):
                     pass
                 await asyncio.sleep(1)
             profile = not new_session  # 새 세션은 저장된 로그인 상태 없이 시작하고, 끝나도 프로필을 덮어쓰지 않는다
-            browser_tool = BrowserActionTool(user_id=self.user_id, sandbox_cid=self.sandbox_cid, use_profile=profile)
+            run = uuid.uuid4().hex[:8]
+            browser_tool = BrowserActionTool(user_id=self.user_id, sandbox_cid=self.sandbox_cid, use_profile=profile, run_tag=run)
             login_tool = RequestUserLoginTool(user_id=self.user_id, conversation_id=self.conversation_id, enabled=self.login_enabled)
             agent = Agent(
                 name="BrowserAgent",
@@ -459,7 +484,8 @@ class CliBrowserAgentTool(BaseTool):
                     except Exception:
                         pass
             text = str(getattr(out, "content", "") or "").strip()
-            return text[:15000] if text else "(browser agent returned no result)"
+            text = text[:15000] if text else "(browser agent returned no result)"
+            return f"{text}\n\n[browser_run:{run}]"
         except asyncio.TimeoutError:
             return f"Error: browser task timed out after {settings.BROWSER_TIMEOUT_SECONDS}s"
         except Exception as e:

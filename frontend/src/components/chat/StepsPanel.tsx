@@ -4,6 +4,17 @@ import type { AgentStep, SelectedStepDetail } from '../../types/agent'
 import { useAgentStore } from '../../store/agentStore'
 import { buildPlanBuckets, buildTaskItems, currentTask, groupUnit, type TaskItem } from './taskItems'
 import { extractLatestTodos, type TodoItem } from './TodoCard'
+import BrowserShots, { parseBrowserRun } from './BrowserShots'
+
+/** 브라우저 작업이면 방문한 화면의 미리보기 줄 */
+function ShotsStrip({ item }: { item: TaskItem }) {
+  if ((item.call?.tool ?? item.result?.tool) !== 'cli_browser_agent') return null
+  return (
+    <div className="px-2 pb-1">
+      <BrowserShots run={parseBrowserRun(item.result?.output)} running={item.status === 'running'} size="sm" />
+    </div>
+  )
+}
 
 interface Props {
   steps: AgentStep[]
@@ -44,6 +55,7 @@ function ChildRow({ item, showLabel = false }: { item: TaskItem; showLabel?: boo
           <span className={`truncate ${item.status === 'failed' ? 'text-accent-red' : 'text-content-secondary'}`} title={item.summary}>{item.summary || item.label}</span>
         )}
       </button>
+      <ShotsStrip item={item} />
     </li>
   )
 }
@@ -122,6 +134,7 @@ function TaskRow({ item }: { item: TaskItem }) {
         : 'border-border bg-surface-secondary hover:bg-surface-hover'
 
   return (
+    <div>
     <button
       onClick={() => detail && setSelectedStep(selected ? null : detail)}
       aria-current={running ? 'step' : undefined}
@@ -150,6 +163,8 @@ function TaskRow({ item }: { item: TaskItem }) {
       {failed && <span className="flex-shrink-0 text-[11px] px-2 py-0.5 rounded-full bg-accent-red/15 text-accent-red">실패</span>}
       <ChevronRight size={13} className="flex-shrink-0 text-content-muted" aria-hidden />
     </button>
+    <ShotsStrip item={item} />
+    </div>
   )
 }
 

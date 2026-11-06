@@ -13,7 +13,17 @@ export interface LoginRequest {
   reason: string
 }
 
+export interface BrowserShot {
+  path: string
+  url: string
+  title: string
+  t: number
+  run: string | null
+}
+
 export const browserApi = {
+  shots: (conversationId: string | null, run: string, limit = 30) =>
+    apiClient.get<BrowserShot[]>('/browser/shots', { params: { conversation_id: conversationId ?? undefined, run, limit } }),
   profile: () => apiClient.get<BrowserProfile>('/browser/profile'),
   deleteProfile: () => apiClient.delete('/browser/profile'),
   deleteDomain: (domain: string) => apiClient.delete(`/browser/profile/domains/${encodeURIComponent(domain)}`),
