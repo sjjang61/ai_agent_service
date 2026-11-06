@@ -47,7 +47,9 @@ export default function LiveBrowser({ conversationId, initialUrl, doneLabel, onD
     const proto = location.protocol === 'https:' ? 'wss:' : 'ws:'
     const q = new URLSearchParams({ token: token ?? '' })
     if (conversationId) q.set('conversation_id', conversationId)
-    const ws = new WebSocket(`${proto}//${location.host}/ws/browser/live?${q}`)
+    // 개발 서버(vite)의 WebSocket 프록시가 불안정해, 기존 채팅 WebSocket 처럼 개발 중에는 백엔드(8500)에 직접 연결한다
+    const host = location.port === "5173" ? `${location.hostname}:8500` : location.host
+    const ws = new WebSocket(`${proto}//${host}/ws/browser/live?${q}`)
     wsRef.current = ws
     ws.onmessage = (ev) => {
       const m = JSON.parse(ev.data)
