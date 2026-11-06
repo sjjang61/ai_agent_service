@@ -25,6 +25,7 @@ import { useChatStore } from '../../store/chatStore'
 import { chatApi } from '../../api/chat'
 import { agentsApi } from '../../api/agents'
 import type { CustomAgentSummary } from '../../types/customAgent'
+import { appsApi, type DeployedApp } from '../../api/apps'
 import { useAuthStore } from '../../store/authStore'
 import type { Conversation } from '../../types/chat'
 
@@ -53,6 +54,16 @@ export default function Sidebar() {
     retry: false,
   })
   const published = agents.filter((a) => a.published_version !== null)
+
+  // My Apps: 내가 배포한 웹앱 (누르면 My Apps 화면에서 실행)
+  const [appsOpen, setAppsOpen] = useState(false)
+  const { data: myApps = [] } = useQuery<DeployedApp[]>({
+    queryKey: ['deployed-apps'],
+    queryFn: async () => (await appsApi.list()).data,
+    refetchInterval: 15000,
+    retry: false,
+  })
+  const APP_DOT: Record<DeployedApp['status'], string> = { running: 'bg-accent-done', starting: 'bg-accent-primary animate-pulse', stopped: 'bg-content-muted', failed: 'bg-accent-red' }
 
   const startAgentChat = async (agent: CustomAgentSummary) => {
     const res = await chatApi.createConversation({ title: 'New Conversation', agent_id: agent.id })
@@ -174,6 +185,47 @@ export default function Sidebar() {
                 className="w-full pl-8 pr-3 py-1.5 rounded-[var(--radius-md)] text-left text-xs text-accent-primary hover:bg-surface-hover transition-colors"
               >
                 에이전트 만들기·관리
+              </button>
+            </div>
+          )}
+        </div>
+
+        {/* My Apps: 배포한 웹앱 */}
+        <div>
+          <button
+            onClick={() => setAppsOpen((o) => !o)}
+            className="w-full flex items-center gap-2.5 px-3 py-2.5 rounded-[var(--radius-md)]
+              text-content-primary hover:bg-surface-hover transition-colors text-left"
+            aria-expanded={appsOpen}
+          >
+            <span className="text-base">🚀</span>
+            <span className="text-sm flex-1">My Apps</span>
+            <span className="bg-accent-primary text-white text-[11px] font-semibold px-1.5 py-0.5 rounded-full min-w-[20px] text-center">
+              {myApps.length}
+            </span>
+            <ChevronDown size={14} className={`text-content-muted transition-transform ${appsOpen ? 'rotate-180' : ''}`} />
+          </button>
+          {appsOpen && (
+            <div className="mt-0.5 mb-1 space-y-0.5">
+              {myApps.map((a) => (
+                <button
+                  key={a.id}
+                  onClick={() => navigate(`/apps?open=${a.id}`)}
+                  title={`${a.name} 실행`}
+                  className="w-full flex items-center gap-2 pl-8 pr-3 py-1.5 rounded-[var(--radius-md)] text-left text-sm
+                    text-content-secondary hover:bg-surface-hover hover:text-content-primary transition-colors"
+                >
+                  <span className={`w-2 h-2 rounded-full flex-shrink-0 ${APP_DOT[a.status]}`} />
+                  <span className="truncate flex-1">{a.name}</span>
+                  <span className="text-[10px] text-content-tertiary flex-shrink-0">v{a.version}</span>
+                </button>
+              ))}
+              {myApps.length === 0 && <p className="pl-8 pr-3 py-1 text-xs text-content-muted">배포한 앱이 없습니다</p>}
+              <button
+                onClick={() => navigate('/apps')}
+                className="w-full pl-8 pr-3 py-1.5 rounded-[var(--radius-md)] text-left text-xs text-accent-primary hover:bg-surface-hover transition-colors"
+              >
+                앱 목록 보기
               </button>
             </div>
           )}

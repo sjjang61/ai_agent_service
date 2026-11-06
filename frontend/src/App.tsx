@@ -7,6 +7,7 @@ import ChannelsPage from './pages/ChannelsPage'
 import BrowserProfilePage from './pages/BrowserProfilePage'
 import GeneralSettingsPage from './pages/GeneralSettingsPage'
 import ChatPage from './pages/ChatPage'
+import MyAppsPage from './pages/MyAppsPage'
 import McpSettingsPage from './pages/McpSettingsPage'
 import MemoryPage from './pages/MemoryPage'
 import SandboxPage from './pages/SandboxPage'
@@ -31,6 +32,7 @@ export default function App() {
       <Route path="/auth" element={<AuthPage />} />
       <Route path="/" element={<PrivateRoute><ChatPage /></PrivateRoute>} />
       <Route path="/chat/:conversationId" element={<PrivateRoute><ChatPage /></PrivateRoute>} />
+      <Route path="/apps" element={<PrivateRoute><MyAppsPage /></PrivateRoute>} />
       <Route path="/mcp" element={<PrivateRoute><McpSettingsPage /></PrivateRoute>} />
       <Route path="/memory" element={<PrivateRoute><MemoryPage /></PrivateRoute>} />
       <Route path="/calendar" element={<PrivateRoute><CalendarPage /></PrivateRoute>} />
