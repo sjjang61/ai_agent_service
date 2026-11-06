@@ -1,10 +1,10 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { BarChart3, Blocks, BookOpen, Bot, Box, Brain, Globe, MessageCircle, Package, Search, Server, Settings2, Wrench } from 'lucide-react'
+import { BarChart3, CalendarDays, Blocks, BookOpen, Bot, Box, Brain, Globe, MessageCircle, Package, Search, Server, Settings2, Wrench } from 'lucide-react'
 import IconBar from '../layout/IconBar'
 import { Tile } from './common'
 
-export type CustomizeSection = 'agents' | 'tools' | 'mcp' | 'skills' | 'plugins' | 'memory' | 'wiki' | 'sandbox' | 'channels' | 'browser' | 'usage' | 'etc'
+export type CustomizeSection = 'agents' | 'tools' | 'mcp' | 'skills' | 'plugins' | 'memory' | 'wiki' | 'sandbox' | 'calendar' | 'channels' | 'browser' | 'usage' | 'etc'
 
 interface Props {
   active: CustomizeSection
@@ -21,6 +21,7 @@ const NAV: { key: CustomizeSection; label: string; icon: React.ReactNode; path: 
   { key: 'skills', label: '스킬', icon: <Package size={17} />, path: '/skills' },
   { key: 'plugins', label: '플러그인', icon: <Blocks size={17} />, path: '/plugins' },
   { key: 'memory', label: '메모리', icon: <Brain size={17} />, path: '/memory' },
+  { key: 'calendar', label: '캘린더', icon: <CalendarDays size={17} />, path: '/calendar' },
   { key: 'wiki', label: '위키', icon: <BookOpen size={17} />, path: '/wiki' },
   { key: 'sandbox', label: '샌드박스', icon: <Box size={17} />, path: '/sandbox' },
   { key: 'channels', label: '메신저', icon: <MessageCircle size={17} />, path: '/channels' },

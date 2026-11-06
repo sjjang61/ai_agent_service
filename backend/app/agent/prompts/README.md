@@ -40,6 +40,7 @@ LLM 에 보내는 모든 프롬프트는 이 폴더의 `.md` 파일입니다. �
 | 파일 | 용도 | 사용처 |
 |---|---|---|
 | `short_memory_group.md` `short_memory_merge.md` | 단기 메모리를 주제별로 묶기 / 한 그룹의 중복을 합쳐 정리하기 `{{items}}` (병합은 `{{max_items}}` 도) | `services/short_memory_merge.py` |
+| `calendar_extract.md` | 단기 메모리에서 날짜가 있는 일정을 캘린더 이벤트로 추출 `{{today}}` `{{items}}` | `services/calendar_events.py` |
 | `pricing_extract.md` | 가격 페이지 텍스트에서 모델 단가를 JSON 으로 추출 (구조화 데이터·표 파싱이 실패했을 때의 대비) `{{text}}` | `services/pricing_update.py` |
 | `followup_questions.md` | 답변 뒤에 이어서 물어볼 만한 질문 2개 `{{question}}` `{{answer}}` | `services/followup_service.py` |
 | `skill_translate.md` | 스킬 문서를 한국어로 번역 `{{text}}` | `services/skill_translate.py` |
