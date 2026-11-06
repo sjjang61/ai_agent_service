@@ -1,10 +1,11 @@
 import { useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { useQuery } from '@tanstack/react-query'
-import { ChevronLeft, ChevronRight, ChevronDown, ChevronUp, CalendarDays, Loader2, RefreshCw } from 'lucide-react'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { Plus, Pencil, ChevronLeft, ChevronRight, ChevronDown, ChevronUp, CalendarDays, Loader2, RefreshCw } from 'lucide-react'
 import SettingsPage from '../components/skills/SettingsPage'
 import { headerActionCls } from '../components/skills/typography'
-import { calendarApi, type CalendarEvent } from '../api/calendar'
+import { calendarApi, type CalendarEvent, type EventInput } from '../api/calendar'
+import CalendarEventDialog from './CalendarEventDialog'
 
 const WEEKDAYS = ['일', '월', '화', '수', '목', '금', '토']
 const BAR_H = 28
@@ -54,9 +55,9 @@ function timeLabel(ev: CalendarEvent) {
   return ev.end_time ? `${ev.start_time}~${ev.end_time}` : ev.start_time
 }
 
-function WeekRow({ week, events, lanes, all, today, month, onOpen }: {
+function WeekRow({ week, events, lanes, all, today, month, onOpen, onPickDate }: {
   week: (Date | null)[]; events: CalendarEvent[]; lanes: Map<string, number>; all: CalendarEvent[]
-  today: string; month: number; onOpen: (ev: CalendarEvent) => void
+  today: string; month: number; onOpen: (ev: CalendarEvent) => void; onPickDate: (d: string) => void
 }) {
   const [expanded, setExpanded] = useState(false)
   const first = week.find((d) => d)!
@@ -77,8 +78,10 @@ function WeekRow({ week, events, lanes, all, today, month, onOpen }: {
           return (
             <div
               key={i}
+              onClick={() => d && onPickDate(ds)}
+              title={d ? '클릭하여 일정 추가' : undefined}
               style={{ minHeight: Math.max(96, DATE_ROW_H + overlayH + 8) }}
-              className={`min-w-0 border-r border-b border-border p-1.5 ${!d || d.getMonth() !== month ? 'bg-surface-tertiary/40' : 'bg-surface-secondary'} ${isToday ? '!bg-accent-primary/10' : ''}`}
+              className={`min-w-0 border-r border-b border-border p-1.5 ${d ? 'cursor-pointer hover:bg-surface-hover' : ''} ${!d || d.getMonth() !== month ? 'bg-surface-tertiary/40' : 'bg-surface-secondary'} ${isToday ? '!bg-accent-primary/10' : ''}`}
             >
               {d && (
                 <span
@@ -101,7 +104,7 @@ function WeekRow({ week, events, lanes, all, today, month, onOpen }: {
           return (
             <button
               key={`${ev.id}-${ws}`}
-              onClick={() => onOpen(ev)}
+              onClick={(e) => { e.stopPropagation(); onOpen(ev) }}
               title={`${ev.title} (${ev.start_date}${ev.end_date !== ev.start_date ? ` ~ ${ev.end_date}` : ''}${t ? ` ${t}` : ''})${ev.note ? `\n${ev.note}` : ''}`}
               style={{ left: `calc(${sd * col}% + 3px)`, width: `calc(${(ed - sd + 1) * col}% - 6px)`, top: DATE_ROW_H + row * (BAR_H + BAR_GAP), height: BAR_H }}
               className={`absolute z-[2] flex items-center gap-1 px-2 text-xs text-left overflow-hidden border-l-[3px] cursor-pointer hover:brightness-110
@@ -130,6 +133,8 @@ export default function CalendarPage() {
   const navigate = useNavigate()
   const [month, setMonth] = useState(() => { const n = new Date(); return new Date(n.getFullYear(), n.getMonth(), 1) })
   const today = fmt(new Date())
+  const qc = useQueryClient()
+  const [dialog, setDialog] = useState<{ event?: CalendarEvent; date?: string } | null>(null)
 
   const { data: events = [], isLoading, isError, error, isFetching, refetch } = useQuery({
     queryKey: ['calendar-events'],
@@ -148,7 +153,15 @@ export default function CalendarPage() {
 
   const shift = (n: number) => setMonth((m) => new Date(m.getFullYear(), m.getMonth() + n, 1))
   const goToday = () => { const n = new Date(); setMonth(new Date(n.getFullYear(), n.getMonth(), 1)) }
-  const open = (ev: CalendarEvent) => ev.conversation_id && navigate(`/chat/${ev.conversation_id}`)
+  // 직접 추가한 일정은 수정 창을, 메모리에서 추출된 일정은 해당 대화방을 연다
+  const open = (ev: CalendarEvent) => (ev.manual ? setDialog({ event: ev }) : ev.conversation_id && navigate(`/chat/${ev.conversation_id}`))
+  const refresh = () => qc.invalidateQueries({ queryKey: ['calendar-events'] })
+  const save = async (input: EventInput) => {
+    const ev = dialog?.event
+    if (ev) await calendarApi.update(ev.id.slice(2), input); else await calendarApi.create(input)
+    if (input.save_to_memory || ev?.in_memory) qc.invalidateQueries({ queryKey: ['memories'] })
+    await refresh()
+  }
   const errMsg = (error as { response?: { data?: { detail?: string } } } | null)?.response?.data?.detail
 
   return (
@@ -157,9 +170,12 @@ export default function CalendarPage() {
       title="캘린더"
       subtitle="단기 메모리에 기억된 일정을 월별 캘린더로 확인합니다."
       actions={
+        <>
+        <button onClick={() => setDialog({ date: today })} className={headerActionCls}><Plus size={14} /> 일정 추가</button>
         <button onClick={async () => { await calendarApi.events(true).then(() => refetch()).catch(() => refetch()) }} disabled={isFetching} className={headerActionCls}>
           {isFetching ? <Loader2 size={14} className="animate-spin" /> : <RefreshCw size={14} />} 다시 추출
         </button>
+        </>
       }
     >
       <div className="grid min-w-0 grid-cols-1 items-start gap-4 xl:grid-cols-[minmax(0,1fr)_18rem]">
@@ -186,7 +202,7 @@ export default function CalendarPage() {
             </div>
           ) : (
             weeks.map((w, i) => (
-              <WeekRow key={i} week={w} events={events} lanes={lane} all={events} today={today} month={month.getMonth()} onOpen={open} />
+              <WeekRow key={i} week={w} events={events} lanes={lane} all={events} today={today} month={month.getMonth()} onOpen={open} onPickDate={(d) => setDialog({ date: d })} />
             ))
           )}
         </div>
@@ -204,7 +220,7 @@ export default function CalendarPage() {
               <button
                 key={ev.id}
                 onClick={() => open(ev)}
-                disabled={!ev.conversation_id}
+                disabled={!ev.manual && !ev.conversation_id}
                 className="text-left rounded-lg border border-border p-3 hover:border-border-light transition-colors min-w-0"
               >
                 <div className="text-[13px] font-medium text-content-primary break-words">{ev.title}</div>
@@ -213,12 +229,26 @@ export default function CalendarPage() {
                   {timeLabel(ev) && ` · ${timeLabel(ev)}`}
                 </div>
                 {ev.note && <p className="mt-1 text-xs text-content-secondary break-words">{ev.note}</p>}
+                {ev.manual && <p className="mt-1 text-[11px] text-content-tertiary flex items-center gap-1"><Pencil size={10} /> 직접 추가{ev.in_memory && ' · 메모리에 저장됨'}</p>}
                 {ev.conversation_title && <p className="mt-1 text-[11px] text-content-tertiary truncate">대화: {ev.conversation_title}</p>}
               </button>
             ))}
           </div>
         </div>
       </div>
+      {dialog && (
+        <CalendarEventDialog
+          event={dialog.event}
+          initialDate={dialog.date ?? today}
+          onClose={() => setDialog(null)}
+          onSave={save}
+          onDelete={dialog.event ? async () => {
+            await calendarApi.remove(dialog.event!.id.slice(2))
+            if (dialog.event!.in_memory) qc.invalidateQueries({ queryKey: ['memories'] })
+            await refresh()
+          } : undefined}
+        />
+      )}
     </SettingsPage>
   )
 }
