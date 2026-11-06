@@ -56,7 +56,7 @@ function ChildRow({ item, showLabel = false }: { item: TaskItem; showLabel?: boo
         ) : item.status === 'failed' ? (
           <AlertCircle size={12} className="text-accent-red flex-shrink-0" />
         ) : (
-          <CheckCircle2 size={12} className="text-accent-green flex-shrink-0" />
+          <CheckCircle2 size={12} className="text-accent-done flex-shrink-0" />
         )}
         {showLabel ? (
           <span className="min-w-0 flex-1" title={item.summary}>
@@ -88,7 +88,7 @@ function GroupRow({ item }: { item: TaskItem }) {
     <div className={`rounded-[var(--radius-lg)] border ${box}`} aria-current={running ? 'step' : undefined}>
       <button onClick={() => setToggled(!open)} aria-expanded={open} className="w-full flex items-center gap-2.5 px-3 py-2.5 text-left border-none bg-transparent cursor-pointer">
         <span className="flex-shrink-0" aria-hidden>
-          {running ? <Loader2 size={15} className="animate-spin text-accent-primary" /> : failed ? <AlertCircle size={15} className="text-accent-red" /> : <CheckCircle2 size={15} className="text-accent-green" />}
+          {running ? <Loader2 size={15} className="animate-spin text-accent-primary" /> : failed ? <AlertCircle size={15} className="text-accent-red" /> : <CheckCircle2 size={15} className="text-accent-done" />}
         </span>
         <span className="min-w-0 flex-1">
           <span className={`block text-[13px] font-medium truncate ${done ? 'line-through text-content-tertiary' : failed ? 'text-accent-red' : 'text-content-primary'}`}>
@@ -158,7 +158,7 @@ function TaskRow({ item }: { item: TaskItem }) {
         ) : failed ? (
           <AlertCircle size={15} className="text-accent-red" />
         ) : (
-          <CheckCircle2 size={15} className="text-accent-green" />
+          <CheckCircle2 size={15} className="text-accent-done" />
         )}
       </span>
       <span className="min-w-0 flex-1">
@@ -229,7 +229,7 @@ function PlanTree({ todos, running, pre, byStep }: { todos: TodoItem[]; running:
               >
                 <span className="mt-0.5 flex-shrink-0" aria-hidden>
                   {done ? (
-                    <CheckCircle2 size={14} className="text-accent-green" />
+                    <CheckCircle2 size={14} className="text-accent-done" />
                   ) : active ? (
                     running ? <Loader2 size={14} className="animate-spin text-accent-primary" /> : <Circle size={14} className="text-content-muted" />
                   ) : (
@@ -285,7 +285,7 @@ export default function StepsPanel({ steps, running, outcome = running ? 'runnin
     <div className="p-4 space-y-3">
       <div className="flex items-start gap-2 text-[13px]">
         <span className="mt-0.5 flex-shrink-0">
-          {running ? <Loader2 size={14} className="animate-spin text-accent-primary" /> : <CheckCircle2 size={14} className="text-accent-green" />}
+          {running ? <Loader2 size={14} className="animate-spin text-accent-primary" /> : <CheckCircle2 size={14} className="text-accent-done" />}
         </span>
         <div className="min-w-0 flex-1">
           {running ? (
