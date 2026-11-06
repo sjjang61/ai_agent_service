@@ -13,6 +13,8 @@ export const skillsApi = {
   create: (input: SkillCreateInput) => apiClient.post('/skills/custom', input),
   detail: (id: string) => apiClient.get('/skills/' + id + '/detail'),
   file: (id: string, path: string) => apiClient.get('/skills/' + id + '/file', { params: { path } }),
+  translate: (id: string, path: string) =>
+    apiClient.post('/skills/' + id + '/translate', { path }, { timeout: 300000 }),
   setActive: (id: string, is_active: boolean) => apiClient.post(`/skills/${id}/active`, { is_active }),
   sync: () => apiClient.post('/skills/sync'),
   remove: (id: string) => apiClient.delete(`/skills/${id}`),

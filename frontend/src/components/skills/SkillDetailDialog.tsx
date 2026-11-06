@@ -14,12 +14,19 @@ function splitFrontmatter(text: string): { meta: string; body: string } {
   return m ? { meta: m[1], body: text.slice(m[0].length) } : { meta: '', body: text }
 }
 
+/** 한글이 거의 없는 문서인지 (번역 버튼을 보여 줄지 판단) */
+function needsTranslation(text: string): boolean {
+  const hangul = (text.match(/[가-힣]/g) ?? []).length
+  const latin = (text.match(/[A-Za-z]/g) ?? []).length
+  return latin > 80 && hangul / (hangul + latin) < 0.2
+}
+
 const kb = (n: number) => (n < 1024 ? `${n}B` : `${(n / 1024).toFixed(n < 10240 ? 1 : 0)}KB`)
 
 /** 스킬 상세: 메타 정보, 파일 목록, 선택한 파일의 내용(SKILL.md 는 마크다운으로 렌더링) */
 export default function SkillDetailDialog({ skill, onClose }: { skill: Skill; onClose: () => void }) {
   const [path, setPath] = useState('SKILL.md')
-  const [raw, setRaw] = useState(false)
+  const [mode, setMode] = useState<'preview' | 'raw' | 'ko'>('preview')
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => e.key === 'Escape' && onClose()
@@ -43,7 +50,17 @@ export default function SkillDetailDialog({ skill, onClose }: { skill: Skill; on
   })
 
   const isMd = /\.(md|markdown)$/i.test(path)
-  const parsed = file && isMd && !raw ? splitFrontmatter(file.content) : null
+  const canTranslate = !!file && !file.binary && /\.(md|markdown|txt)$/i.test(path) && needsTranslation(file.content)
+  const ko = useQuery<{ content: string; truncated: boolean }>({
+    queryKey: ['skill-translate', skill.id, path],
+    queryFn: async () => (await skillsApi.translate(skill.id, path)).data,
+    enabled: mode === 'ko' && canTranslate,
+    staleTime: Infinity,
+    retry: false,
+  })
+  const translating = mode === 'ko' && canTranslate
+  const shown = translating ? ko.data?.content : file?.content
+  const parsed = shown != null && (isMd || translating) && mode !== 'raw' ? splitFrontmatter(shown) : null
   const source = skill.source_url.startsWith('upload:')
     ? `ZIP 업로드 (${skill.source_url.slice(7)})`
     : skill.source_url.startsWith('manual:')
@@ -87,7 +104,7 @@ export default function SkillDetailDialog({ skill, onClose }: { skill: Skill; on
                 {files.map((f) => (
                   <button
                     key={f.path}
-                    onClick={() => { setPath(f.path); setRaw(false) }}
+                    onClick={() => { setPath(f.path); setMode('preview') }}
                     title={f.path}
                     className={`w-full flex items-center gap-2 px-4 py-1.5 text-left text-xs border-none cursor-pointer ${f.path === path ? 'bg-surface-active text-content-primary' : 'bg-transparent text-content-secondary hover:bg-surface-hover'}`}
                   >
@@ -103,10 +120,21 @@ export default function SkillDetailDialog({ skill, onClose }: { skill: Skill; on
           <div className="flex-1 min-w-0 flex flex-col">
             <div className="flex items-center gap-2 px-5 py-2 border-b border-border text-xs text-content-muted">
               <span className="font-mono truncate flex-1">{path}</span>
-              {isMd && (
-                <button onClick={() => setRaw((r) => !r)} className="px-2 py-1 rounded-md border border-border bg-transparent text-content-secondary hover:text-content-primary cursor-pointer">
-                  {raw ? '미리보기' : '원문'}
-                </button>
+              {(isMd || canTranslate) && (
+                <div className="flex rounded-md border border-border overflow-hidden">
+                  {([
+                    ...(isMd ? [['preview', '미리보기'], ['raw', '원문']] : [['preview', '원문']]),
+                    ...(canTranslate ? [['ko', '한글 번역']] : []),
+                  ] as [typeof mode, string][]).map(([m, label]) => (
+                    <button
+                      key={m}
+                      onClick={() => setMode(m)}
+                      className={`px-2.5 py-1 border-none cursor-pointer text-xs ${mode === m ? 'bg-surface-active text-content-primary' : 'bg-transparent text-content-secondary hover:text-content-primary'}`}
+                    >
+                      {label}
+                    </button>
+                  ))}
+                </div>
               )}
             </div>
             <div className="flex-1 overflow-auto px-5 py-4">
@@ -116,8 +144,16 @@ export default function SkillDetailDialog({ skill, onClose }: { skill: Skill; on
                 <div className="text-xs text-accent-red">파일을 불러오지 못했습니다.</div>
               ) : file?.binary ? (
                 <div className="text-xs text-content-muted">바이너리 파일이라 내용을 표시하지 않습니다 ({kb(file.size)}).</div>
+              ) : translating && ko.isFetching ? (
+                <div className="text-xs text-content-muted flex items-center gap-2"><Loader2 size={13} className="animate-spin" />한국어로 번역하는 중... (문서가 길면 30초 이상 걸릴 수 있습니다)</div>
+              ) : translating && ko.isError ? (
+                <div className="text-xs text-accent-red">
+                  번역하지 못했습니다.{' '}
+                  <button onClick={() => ko.refetch()} className="text-accent-primary border-none bg-transparent cursor-pointer underline">다시 시도</button>
+                </div>
               ) : file ? (
                 <>
+                  {translating && <div className="mb-3 text-xs text-content-muted">AI 가 번역한 내용입니다. 정확한 내용은 원문을 확인하세요.{ko.data?.truncated ? ' 문서가 길어 앞부분만 번역했습니다.' : ''}</div>}
                   {file.truncated && <div className="mb-3 text-xs text-accent-amber">파일이 커서 앞부분(200KB)만 표시합니다. 전체 {kb(file.size)}</div>}
                   {parsed ? (
                     <>
@@ -129,7 +165,7 @@ export default function SkillDetailDialog({ skill, onClose }: { skill: Skill; on
                       </div>
                     </>
                   ) : (
-                    <pre className="text-xs font-mono text-content-secondary whitespace-pre-wrap break-words">{file.content}</pre>
+                    <pre className="text-xs font-mono text-content-secondary whitespace-pre-wrap break-words">{shown ?? file.content}</pre>
                   )}
                 </>
               ) : null}

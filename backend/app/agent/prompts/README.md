@@ -39,6 +39,7 @@ LLM 에 보내는 모든 프롬프트는 이 폴더의 `.md` 파일입니다. �
 ### 별도 LLM 호출
 | 파일 | 용도 | 사용처 |
 |---|---|---|
+| `skill_translate.md` | 스킬 문서를 한국어로 번역 `{{text}}` | `services/skill_translate.py` |
 | `request_router.md` | 요청을 서술/단순/복잡으로 분류하고, 복잡하면 전체 작업 계획 생성 | `agent/router.py` |
 | `plan_context.md` | 복잡한 요청에서 시스템이 만든 계획을 따르라는 안내 (시스템 프롬프트에 붙음) | `agent/orchestrator.py` |
 | `route_simple.md` | 단순 요청이므로 todo 계획을 만들지 말라는 안내 | `agent/orchestrator.py` |

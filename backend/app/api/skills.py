@@ -187,6 +187,40 @@ async def get_skill_file(
     return SkillService.read_file(skill, path)
 
 
+class TranslateRequest(BaseModel):
+    path: str
+
+
+class TranslateResponse(BaseModel):
+    path: str
+    content: str
+    truncated: bool = False
+
+
+@router.post("/{skill_id}/translate", response_model=TranslateResponse)
+async def translate_skill_file(
+    skill_id: str,
+    data: TranslateRequest,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_session),
+):
+    """skill 의 텍스트 파일(SKILL.md 등)을 한국어로 번역한다 (결과는 서버 메모리에 캐시)."""
+    from pathlib import Path
+
+    from app.services.skill_translate import translate_to_korean
+
+    skill = await SkillService.get_skill(skill_id, current_user.id, db)
+    f = SkillService.read_file(skill, data.path)
+    if f["binary"]:
+        raise HTTPException(400, "바이너리 파일은 번역할 수 없습니다")
+    st = (Path(skill.install_path) / data.path).stat()
+    try:
+        r = await translate_to_korean(f["content"], (skill.id, data.path, int(st.st_mtime), st.st_size))
+    except Exception as e:  # LLM 호출 실패·시간 초과
+        raise HTTPException(502, f"번역하지 못했습니다: {type(e).__name__}") from e
+    return TranslateResponse(path=data.path, content=r["content"], truncated=r["truncated"] or f["truncated"])
+
+
 @router.post("/{skill_id}/active", response_model=SkillResponse)
 async def set_skill_active(
     skill_id: str,
