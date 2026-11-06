@@ -54,7 +54,12 @@ export default function LiveBrowser({ conversationId, initialUrl, doneLabel, onD
     const host = location.port === "5173" ? `${location.hostname}:8500` : location.host
     const ws = new WebSocket(`${proto}//${host}/ws/browser/live?${q}`)
     wsRef.current = ws
+    // 개발 모드(StrictMode)에서는 첫 연결이 곧바로 닫히므로, 이미 정리한 연결의 이벤트는 무시한다
+    let disposed = false
+    let opened = false
+    ws.onopen = () => { opened = true }
     ws.onmessage = (ev) => {
+      if (disposed) return
       const m = JSON.parse(ev.data)
       if (m.t === 'ready') {
         setStatus('ready')
@@ -73,9 +78,16 @@ export default function LiveBrowser({ conversationId, initialUrl, doneLabel, onD
         setMessage(m.message)
       }
     }
-    ws.onclose = (e) => setStatus((s) => (s === 'ready' || s === 'connecting' ? (e.code === 1000 ? s : 'error') : s))
-    ws.onerror = () => setMessage('연결에 실패했습니다')
+    ws.onclose = (e) => {
+      if (disposed || e.code === 1000) return
+      // 4001: 로그인 만료, 4004: 대화를 찾을 수 없음, 그 밖은 서버 종료·네트워크 끊김
+      setMessage(e.code === 4001 ? '로그인이 만료되었습니다. 다시 로그인한 뒤 열어 주세요.' : e.code === 4004 ? '대화를 찾을 수 없습니다.' : opened ? '브라우저와의 연결이 끊어졌습니다. 창을 닫았다가 다시 열어 주세요.' : '서버에 연결하지 못했습니다. 잠시 후 다시 열어 주세요.')
+      setStatus('error')
+    }
+    // 연결 실패는 직후 onclose 가 원인을 알려 주므로 여기서는 아무것도 보이지 않는다
+    ws.onerror = () => {}
     return () => {
+      disposed = true
       window.clearTimeout(flushTimer.current)
       ws.close()
     }
@@ -177,7 +189,7 @@ export default function LiveBrowser({ conversationId, initialUrl, doneLabel, onD
             </div>
           ) : (
             <div className="h-[400px] flex flex-col items-center justify-center gap-2 text-sm text-content-muted">
-              {status === 'error' ? <span className="text-accent-red">{message || '브라우저에 연결하지 못했습니다'}</span> : (<><Loader2 size={18} className="animate-spin" />브라우저를 여는 중...</>)}
+              {status === 'error' ? <span className="text-accent-red">{message || '브라우저를 열지 못했습니다. 잠시 후 다시 열어 주세요.'}</span> : (<><Loader2 size={18} className="animate-spin" />브라우저를 여는 중...</>)}
             </div>
           )}
         </div>
