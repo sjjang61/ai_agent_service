@@ -93,6 +93,28 @@ def _spawn_sandbox_restore(user_id: str, sandbox_cid: str = "") -> None:
     task.add_done_callback(_restore_tasks.discard)
 
 
+async def with_plan_finish(conversation_id: str, events):
+    """에이전트 이벤트를 그대로 전달하고, 응답이 오류·중단 없이 최종 답변까지 끝났을 때 남은 계획 단계를 완료로 마무리한다.
+    리더가 계획을 갱신하지 않아도(예: 한 번의 위임으로 전체를 처리) 화면의 계획이 중간 단계에 멈춰 있지 않게 한다."""
+    from app.core.runs import RunRegistry
+    from app.tools.interaction_tools import finish_plan
+
+    failed = False
+    answered = False
+    async for ev in events:
+        if ev.get("type") == "error":
+            failed = True
+        elif ev.get("type") == "token" and ev.get("content"):
+            answered = True
+        yield ev
+    if failed or not answered or RunRegistry.cancel_requested(conversation_id):
+        return
+    output = finish_plan(conversation_id)
+    if output:
+        yield {"type": "tool_call", "tool": "todo", "input": {"action": "finish"}}
+        yield {"type": "tool_result", "tool": "todo", "output": output}
+
+
 class AgentOrchestrator:
     def __init__(
         self,
@@ -344,8 +366,8 @@ class AgentOrchestrator:
             except Exception as e:
                 yield {"type": "error", "message": str(e)}
                 return
-            async for event in runner.stream(
-                user_input, memory.get_messages(), conversation_id, self.user_id, db=db
+            async for event in with_plan_finish(
+                conversation_id, runner.stream(user_input, memory.get_messages(), conversation_id, self.user_id, db=db)
             ):
                 yield event
             return
@@ -357,5 +379,5 @@ class AgentOrchestrator:
             system_prompt=system_prompt,
         )
 
-        async for event in handler.stream(user_input, memory):
+        async for event in with_plan_finish(conversation_id, handler.stream(user_input, memory)):
             yield event

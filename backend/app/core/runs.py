@@ -32,6 +32,11 @@ class RunRegistry:
         return bool(run and not run.task.done())
 
     @classmethod
+    def cancel_requested(cls, conversation_id: str) -> bool:
+        run = cls._runs.get(conversation_id)
+        return bool(run and run.cancel_requested)
+
+    @classmethod
     def cancel(cls, conversation_id: str, user_id: str) -> bool:
         """실행 중인 에이전트를 취소한다. 실행 중인 것이 없거나 다른 사용자의 것이면 False."""
         run = cls._runs.get(conversation_id)

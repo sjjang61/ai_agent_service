@@ -80,6 +80,19 @@ def seed_todos(conversation_id: str, steps: list) -> tuple:
     return items, _todo_result(items)
 
 
+def finish_plan(conversation_id: str) -> Optional[str]:
+    """응답이 정상적으로 끝났는데 계획에 끝나지 않은 단계가 남아 있으면 모두 completed 로 바꾸고 todo 결과 JSON 을 돌려준다.
+    (리더가 위임 뒤 계획을 갱신하지 않은 채 최종 답변을 낸 경우 화면의 계획이 1단계에 머무는 것을 막는다.) 남은 단계가 없으면 None."""
+    key = conversation_id or "_"
+    current = _todo_store.get(key)
+    if not current or all(x["status"] == "completed" for x in current):
+        return None
+    for x in current:
+        x["status"] = "completed"
+    _todo_store.move_to_end(key)
+    return _todo_result(current)
+
+
 class _Base(BaseTool):
     def _run(self, *args, **kwargs) -> str:
         return "This tool supports async execution only"
