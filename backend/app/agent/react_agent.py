@@ -39,7 +39,11 @@ class AgentRunner:
                 api_key=settings.PET_API_KEY,
                 streaming=False,
                 timeout=settings.PET_TIMEOUT,
-                reasoning_effort=settings.PET_REASONING_EFFORT or None,
+                # PET 게이트웨이는 reasoning_effort="none" 을 enum 오류(choices=null)로 거부한다.
+                # 단순 LLM 호출(LangChain 경로)에서는 'none' 이면 파라미터를 보내지 않는다.
+                reasoning_effort=(
+                    None if settings.PET_REASONING_EFFORT in ("", "none") else settings.PET_REASONING_EFFORT
+                ),
             )
         if t == "openai":
             from langchain_openai import ChatOpenAI

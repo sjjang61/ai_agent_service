@@ -154,7 +154,7 @@ async def group_short_term_memories(
     try:
         groups = await sm.group_items(items)
     except Exception as e:  # noqa: BLE001
-        raise HTTPException(status_code=502, detail=f"AI 가 묶지 못했습니다: {type(e).__name__}")
+        raise HTTPException(status_code=502, detail=f"AI 가 묶지 못했습니다: {type(e).__name__}: {str(e)[:150]} (LLM 서버 설정/응답을 확인하세요)")
     shown = items[: sm.MAX_GROUP_ITEMS]
     return ShortGroupResult(groups=[
         ShortGroup(title=g["title"], items=[ShortRef(conversation_id=shown[i]["conversation_id"], key=shown[i]["key"]) for i in g["indices"]])
