@@ -7,7 +7,7 @@ import { oneDark, oneLight } from 'react-syntax-highlighter/dist/esm/styles/pris
 import type { Message } from '../../types/chat'
 import ThinkingIndicator from './ThinkingIndicator'
 import WidgetRenderer, { extractWidgets } from '../widgets/WidgetRenderer'
-import TodoCard, { extractLatestTodos } from './TodoCard'
+import TodoCard, { extractLatestTodos, planOutcome, settleTodos } from './TodoCard'
 import FormCard, { extractLatestForm } from './FormCard'
 import LoginRequestCard from './LoginRequestCard'
 import ScheduleCard, { extractScheduleResults } from './ScheduleCard'
@@ -140,9 +140,11 @@ export default function MessageBubble({ message }: { message: Message }) {
   const msgs = currentConversationId ? messages[currentConversationId] || [] : []
   const isLastAssistant = !isUser && msgs[msgs.length - 1]?.id === message.id
   const widgets = isUser ? [] : extractWidgets(message.agent_steps)
-  const todos = isUser ? null : extractLatestTodos(message.agent_steps)
+  const rawTodos = isUser ? null : extractLatestTodos(message.agent_steps)
   const form = isUser ? null : extractLatestForm(message.agent_steps)
   const scheduleResults = isUser ? [] : extractScheduleResults(message.agent_steps)
+  const planState = planOutcome(message.content, isLastAssistant && isRunning)
+  const todos = rawTodos ? settleTodos(rawTodos, planState) : null
   const showThinking = isLastAssistant && isRunning && message.content !== '__error__'
   // 답변이 끝난 뒤(실행 중이 아닐 때)에만 복사 버튼을 보여 준다
   const canCopy = !isUser && !(isLastAssistant && isRunning) && !!message.content && message.content !== '__error__'
@@ -221,7 +223,7 @@ export default function MessageBubble({ message }: { message: Message }) {
       {/* Content */}
       <div className="pl-[38px]">
         {/* 진행 패널이 열려 있으면 거기서 같은 계획을 보여 주므로 말풍선에서는 숨긴다 */}
-        {todos && rightPanel !== 'steps' && <TodoCard todos={todos} />}
+        {todos && rightPanel !== 'steps' && <TodoCard todos={todos} running={planState === 'running'} />}
 
         {form && (
           <FormCard

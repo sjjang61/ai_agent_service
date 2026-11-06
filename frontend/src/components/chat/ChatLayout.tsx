@@ -4,6 +4,7 @@ import MessageList from './MessageList'
 import InputBar from './InputBar'
 import StepsPanel from './StepsPanel'
 import { buildTaskItems } from './taskItems'
+import { planOutcome } from './TodoCard'
 import SandboxDetailPanel from '../sandbox/SandboxDetailPanel'
 import ArtifactsPanel from '../sandbox/ArtifactsPanel'
 import WelcomeScreen from './WelcomeScreen'
@@ -143,7 +144,7 @@ export default function ChatLayout() {
       {/* Right Panels (단계 상세가 열려 있으면 그쪽이 우선) */}
       {!selectedStep && rightPanel === 'steps' && currentConversationId && (
         <RightPanel title="작업 진행" subtitle={running ? '에이전트가 작업하고 있습니다' : '마지막 작업의 진행 내역'} icon={<ListChecks size={15} />} onClose={closePanel}>
-          <StepsPanel steps={panelSteps} running={running} />
+          <StepsPanel steps={panelSteps} running={running} outcome={planOutcome(lastAssistant?.content, running)} />
         </RightPanel>
       )}
       {!selectedStep && rightPanel === 'artifacts' && (

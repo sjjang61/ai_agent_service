@@ -3,7 +3,7 @@ import { AlertCircle, CheckCircle2, ChevronRight, Circle, Loader2 } from 'lucide
 import type { AgentStep, SelectedStepDetail } from '../../types/agent'
 import { useAgentStore } from '../../store/agentStore'
 import { buildPlanBuckets, buildTaskItems, currentTask, groupUnit, type TaskItem } from './taskItems'
-import { extractLatestTodos, type TodoItem } from './TodoCard'
+import { extractLatestTodos, settleTodos, type PlanOutcome, type TodoItem } from './TodoCard'
 import BrowserShots, { parseBrowserRun } from './BrowserShots'
 
 /** 이 작업에 쓴 도구 이름 (예: exec_command) */
@@ -29,6 +29,8 @@ function ShotsStrip({ item }: { item: TaskItem }) {
 interface Props {
   steps: AgentStep[]
   running: boolean
+  /** 응답의 끝난 상태. 정상 완료면 남은 계획 단계도 완료로 보여 준다 */
+  outcome?: PlanOutcome
 }
 
 /** 행을 눌렀을 때 상세 패널에 넘길 단계: 결과가 있으면 결과, 없으면 호출 */
@@ -229,7 +231,7 @@ function PlanTree({ todos, running, pre, byStep }: { todos: TodoItem[]; running:
                   {done ? (
                     <CheckCircle2 size={14} className="text-accent-green" />
                   ) : active ? (
-                    running ? <Loader2 size={14} className="animate-spin text-accent-primary" /> : <Circle size={14} className="text-accent-primary" />
+                    running ? <Loader2 size={14} className="animate-spin text-accent-primary" /> : <Circle size={14} className="text-content-muted" />
                   ) : (
                     <Circle size={14} className="text-content-muted" />
                   )}
@@ -260,9 +262,12 @@ function PlanTree({ todos, running, pre, byStep }: { todos: TodoItem[]; running:
  * 도구 호출과 그 결과는 한 줄로 합치고, 끝난 작업은 취소선으로, 지금 하는 작업은 강조해서 보여 준다.
  * 실행 중에는 새 작업을 따라 아래로 스크롤한다.
  */
-export default function StepsPanel({ steps, running }: Props) {
+export default function StepsPanel({ steps, running, outcome = running ? 'running' : 'stopped' }: Props) {
   const bottomRef = useRef<HTMLDivElement>(null)
-  const todos = useMemo(() => extractLatestTodos(steps), [steps])
+  const todos = useMemo(() => {
+    const t = extractLatestTodos(steps)
+    return t ? settleTodos(t, outcome) : null
+  }, [steps, outcome])
   // 작업 계획이 있으면 todo 호출 행은 계획 목록과 겹치므로 숨긴다
   const items = useMemo(() => buildTaskItems(steps).filter((i) => !(todos && i.tool === 'todo')), [steps, todos])
   // 계획이 있으면 작업을 계획 단계 아래로 나눠 보여 준다

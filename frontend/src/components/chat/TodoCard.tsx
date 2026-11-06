@@ -22,7 +22,27 @@ export function extractLatestTodos(steps: AgentStepData[] | undefined): TodoItem
   return latest
 }
 
-export default function TodoCard({ todos }: { todos: TodoItem[] }) {
+export type PlanOutcome = 'running' | 'completed' | 'stopped'
+
+const CANCEL_MARK = '사용자가 실행을 중단했습니다'
+
+/** 응답의 끝난 상태: 실행 중 / 최종 답변까지 정상 완료 / 오류·중단·답변 없음으로 멈춤 */
+export function planOutcome(content: string | undefined, running: boolean): PlanOutcome {
+  if (running) return 'running'
+  const text = (content ?? '').trim()
+  return text && text !== '__error__' && !text.includes(CANCEL_MARK) ? 'completed' : 'stopped'
+}
+
+/**
+ * 화면에 보여 줄 계획. 응답이 정상 완료됐으면 남은 단계도 완료로 본다 (서버가 같은 규칙으로 마무리하지만,
+ * 그 전에 저장된 이력이나 갱신이 빠진 경우에도 계획이 중간 단계에 멈춰 보이지 않게 한다).
+ */
+export function settleTodos(todos: TodoItem[], outcome: PlanOutcome): TodoItem[] {
+  if (outcome !== 'completed') return todos
+  return todos.map((t) => (t.status === 'completed' ? t : { ...t, status: 'completed' as const }))
+}
+
+export default function TodoCard({ todos, running = true }: { todos: TodoItem[]; running?: boolean }) {
   const done = todos.filter((t) => t.status === 'completed').length
   const progress = (done / Math.max(todos.length, 1)) * 100
 
@@ -55,7 +75,7 @@ export default function TodoCard({ todos }: { todos: TodoItem[] }) {
             className={`flex items-start gap-2.5 text-sm p-2 rounded-md transition-all duration-200 ${
               t.status === 'completed'
                 ? 'bg-accent-green/5 hover:bg-accent-green/10'
-                : t.status === 'in_progress'
+                : t.status === 'in_progress' && running
                 ? 'bg-accent-primary/5 hover:bg-accent-primary/10'
                 : 'hover:bg-surface-tertiary/50'
             }`}
@@ -66,7 +86,7 @@ export default function TodoCard({ todos }: { todos: TodoItem[] }) {
                 className="text-accent-green mt-0.5 flex-shrink-0 animate-check"
                 strokeWidth={2.5}
               />
-            ) : t.status === 'in_progress' ? (
+            ) : t.status === 'in_progress' && running ? (
               <Loader2 size={16} className="text-accent-primary mt-0.5 flex-shrink-0 animate-spin" />
             ) : (
               <Circle size={16} className="text-content-muted mt-0.5 flex-shrink-0" strokeWidth={2} />
@@ -75,7 +95,7 @@ export default function TodoCard({ todos }: { todos: TodoItem[] }) {
               className={
                 t.status === 'completed'
                   ? 'text-content-secondary line-through decoration-accent-green/40 decoration-2'
-                  : t.status === 'in_progress'
+                  : t.status === 'in_progress' && running
                   ? 'text-content-primary font-medium'
                   : 'text-content-secondary'
               }
