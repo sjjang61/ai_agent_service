@@ -161,6 +161,7 @@
 
 - **정적 앱:** 빌드 결과 디렉터리(`index.html` 포함)를 지정. 루트에서 서비스되므로 Vite `base` 기본값(`/`)으로 충분하다.
 - **서버형 앱:** 디렉터리에 `.scripts/start.sh` 필요. 서버는 `0.0.0.0:$PORT` 에서 들어야 하고, 영구 데이터는 `$DATA_DIR` 에 저장한다. 아카이브는 의존성을 포함한 **자체 완결형**이어야 한다 (시작 시 네트워크 설치는 `start.sh` 가 직접 하는 경우에만).
+- **실행 환경:** 앱 컨테이너는 sandbox 이미지(`ai-agent-sandbox`, 또는 `APP_IMAGE`)를 쓴다. Node.js 22(node/npm/npx), **Bun**(bun/bunx), Python 3.12 가 들어 있고, 그 밖의 런타임은 아카이브에 포함해야 한다. 이미지를 바꾼 뒤에는 `docker build -t ai-agent-sandbox:latest sandbox-image` 로 다시 만들어야 새로 만들어지는 앱 컨테이너에 반영된다 (이미 실행 중인 컨테이너는 그대로).
 - 같은 이름으로 다시 배포하면 같은 URL 에 새 버전이 올라간다.
 
 ### 5.6 보안 설계

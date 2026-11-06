@@ -23,7 +23,7 @@ class DeployWebAppTool(_AsyncTool):
         "STATIC app: pass the build output directory (must contain index.html; single-page-app routing works; the app is served at the URL root, so the default Vite base '/' is fine). "
         "SERVER app (API server, Node/Python backend, full-stack): the directory must contain a bash script .scripts/start.sh that starts the server "
         "listening on 0.0.0.0:$PORT (the PORT env var is always set); persistent data (SQLite etc.) must be written under $DATA_DIR, which survives restarts. "
-        "The archive must be self-contained (include node_modules/ or build output; there is no network install at wake time unless start.sh does it). "
+        "The app container has Node.js 22 (node/npm/npx), Bun (bun/bunx) and Python 3.12 preinstalled; any other runtime must be bundled in the archive. The archive must be self-contained (include node_modules/ or build output; there is no network install at wake time unless start.sh does it). "
         "Max size and file count are limited. Re-run this tool with the same name after rebuilding to publish a new version. "
         "The app opens in the preview panel automatically; tell the user the first request after idle may take a few seconds."
     )

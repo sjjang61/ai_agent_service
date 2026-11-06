@@ -33,6 +33,10 @@ RUN ln -s ../lib/node_modules/npm/bin/npm-cli.js /usr/local/bin/npm \
 ENV NPM_CONFIG_PREFIX=/home/sandbox-npm/global
 ENV PATH=/home/sandbox-npm/global/bin:$PATH
 
+# Bun: Bun 으로 만든 앱(`bun run`, `bunx`)을 개발·배포(deploy_web_app) 컨테이너에서 그대로 실행할 수 있게 한다
+COPY --from=oven/bun:1-slim /usr/local/bin/bun /usr/local/bin/bun
+RUN ln -s bun /usr/local/bin/bunx
+
 # Workspace directory
 WORKDIR /workspace
 RUN chmod 777 /workspace
