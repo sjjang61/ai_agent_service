@@ -1,4 +1,5 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
+import SearchDialog from './SearchDialog'
 import { dayKey, parseServerDate } from '../../utils/time'
 import { useNavigate } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
@@ -59,6 +60,19 @@ export default function Sidebar() {
     navigate(`/chat/${res.data.id}`)
   }
 
+  // 대화 검색: 사이드바의 검색 버튼 또는 Ctrl/⌘+K
+  const [searchOpen, setSearchOpen] = useState(false)
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') {
+        e.preventDefault()
+        setSearchOpen(true)
+      }
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [])
+
   const handleDelete = async (e: React.MouseEvent, id: string) => {
     e.stopPropagation()
     if (!confirm('이 대화를 삭제할까요? 삭제한 대화는 복구할 수 없습니다.')) return
@@ -99,7 +113,9 @@ export default function Sidebar() {
             <RefreshCw size={16} />
           </button>
           <button
-            title="Search"
+            title="대화 검색 (Ctrl/⌘+K)"
+            aria-label="대화 검색"
+            onClick={() => setSearchOpen(true)}
             className="w-7 h-7 rounded-[var(--radius-sm)] flex items-center justify-center
               text-content-secondary hover:text-content-primary hover:bg-surface-hover transition-colors"
           >
@@ -274,6 +290,16 @@ export default function Sidebar() {
           </button>
         </div>
       </div>
+      {searchOpen && (
+        <SearchDialog
+          onClose={() => setSearchOpen(false)}
+          onSelect={(id) => {
+            setSearchOpen(false)
+            setCurrentConversation(id)
+            navigate(`/chat/${id}`)
+          }}
+        />
+      )}
     </aside>
   )
 }

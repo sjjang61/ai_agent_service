@@ -1,3 +1,4 @@
+import type { SearchResult } from '../types/chat'
 import apiClient from './client'
 
 export const chatApi = {
@@ -14,6 +15,7 @@ export const chatApi = {
   answerForm: (id: string, data: { answers?: Record<string, string | string[]>; cancelled?: boolean }) =>
     apiClient.post(`/chat/conversations/${id}/form-answer`, data),
   /** 이 대화에서 실행 중인 에이전트를 취소한다 (실행 중이 아니면 404) */
+  search: (q: string) => apiClient.get<SearchResult[]>('/chat/search', { params: { q } }),
   runStatus: (id: string) => apiClient.get<{ running: boolean }>(`/chat/conversations/${id}/run-status`),
   cancelRun: (id: string) => apiClient.post(`/chat/conversations/${id}/cancel`),
   getMessages: (id: string) => apiClient.get(`/chat/conversations/${id}/messages`),

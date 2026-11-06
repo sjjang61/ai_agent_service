@@ -64,3 +64,19 @@ export interface MessageUsage {
   /** 응답이 끝난 시각 (UTC ISO) */
   finished_at: string
 }
+
+export interface SearchSnippet {
+  message_id: string
+  role: string
+  text: string
+  created_at: string
+}
+
+export interface SearchResult {
+  conversation_id: string
+  title: string
+  updated_at: string | null
+  /** 제목에서 일치했는지 */
+  title_match: boolean
+  snippets: SearchSnippet[]
+}

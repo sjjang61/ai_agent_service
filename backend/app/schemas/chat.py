@@ -67,3 +67,18 @@ class SendMessageRequest(BaseModel):
     llm_provider: Optional[str] = None
     model: Optional[str] = None
     timezone: Optional[str] = None  # 브라우저 시간대(IANA). 예약 도구의 기본값과 '현재 시각' 안내에 쓴다
+
+
+class SearchSnippet(BaseModel):
+    message_id: str
+    role: str
+    text: str
+    created_at: datetime
+
+
+class SearchResult(BaseModel):
+    conversation_id: str
+    title: str
+    updated_at: Optional[datetime] = None
+    title_match: bool = False  # 제목에서 일치했는지
+    snippets: List[SearchSnippet] = []  # 메시지 내용에서 일치한 부분 (최대 2개)

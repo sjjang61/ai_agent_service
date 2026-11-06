@@ -29,6 +29,7 @@ from app.schemas.chat import (
     ConversationCreate,
     ConversationResponse,
     MessageResponse,
+    SearchResult,
     SendMessageRequest,
 )
 from app.services.chat_service import ChatService
@@ -65,6 +66,18 @@ async def list_conversations(
     db: AsyncSession = Depends(get_session),
 ):
     return await _conversation_responses(await ChatService.get_conversations(current_user.id, db), db)
+
+
+@router.get("/search", response_model=List[SearchResult])
+async def search_conversations_api(
+    q: str,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_session),
+):
+    """내 대화방 검색: 제목과 메시지 내용에서 찾아 대화방별로 돌려준다 (최근 순, 최대 30개)."""
+    from app.services.chat_search import search_conversations
+
+    return await search_conversations(current_user.id, q, db)
 
 
 @router.post("/conversations", response_model=ConversationResponse)
