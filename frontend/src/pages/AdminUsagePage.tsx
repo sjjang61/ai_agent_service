@@ -5,6 +5,7 @@ import { T } from '../components/skills/typography'
 import { adminApi } from '../api/admin'
 import type { UsageSummary, DailyUsage, UserUsage, ModelUsage } from '../types/admin'
 import { formatUsd } from '../utils/time'
+import PricingPanel from '../components/usage/PricingPanel'
 
 type TimeRange = 'daily' | 'weekly' | 'monthly'
 
@@ -265,8 +266,9 @@ export default function AdminUsagePage() {
                 )}
               </div>
             </div>
+            <PricingPanel onUpdated={loadData} />
             <p className="mt-6 text-xs text-content-muted">
-              예상 비용은 OpenAI 가격 페이지의 Standard 단가(2026-11-06 확인, USD/1M 토큰) × 토큰으로 계산한 추정치입니다. 입력·출력 토큰만 기록하므로 프롬프트 캐시 할인은 반영하지 않아 실제 청구액보다 높을 수 있고, 목록에 없는 모델(* 표시)은 제외됩니다. 이미지 모델은 텍스트 입력과 이미지 출력 단가로 계산합니다. 동영상 생성 비용은 포함하지 않습니다.
+              예상 비용은 가격 정책에 설정한 페이지(기본: OpenAI 가격 페이지)의 Standard 단가 × 토큰으로 계산한 추정치입니다. 입력·출력 토큰만 기록하므로 프롬프트 캐시 할인은 반영하지 않아 실제 청구액보다 높을 수 있고, 목록에 없는 모델(* 표시)은 제외됩니다. 이미지 모델은 텍스트 입력과 이미지 출력 단가로 계산합니다. 동영상 생성 비용은 포함하지 않습니다.
             </p>
           </>
         )}

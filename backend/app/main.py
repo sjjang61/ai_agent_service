@@ -61,6 +61,12 @@ def _setup_mcp_log_filter() -> None:
 async def lifespan(app: FastAPI):
     _setup_mcp_log_filter()
     await init_db()
+    try:  # 가격 페이지에서 갱신해 둔 모델 단가 (예상 비용 계산)
+        from app.services.pricing import load_db_prices
+
+        await load_db_prices()
+    except Exception:
+        logging.getLogger(__name__).exception("[pricing] 갱신 단가 로드 실패 (기본 단가표를 사용합니다)")
 
     # Chroma 벡터 스토어 초기화
     from app.core.vector_store import VectorStoreManager

@@ -6,7 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.token_usage import TokenUsage
 from app.models.user import User
-from app.services.pricing import estimate_cost_usd
+from app.services.pricing import estimate_cost_usd, refresh_if_stale
 
 
 class TokenUsageService:
@@ -92,6 +92,7 @@ class TokenUsageService:
     async def get_summary(
         db: AsyncSession, user_id: Optional[str] = None
     ) -> Dict[str, Any]:
+        await refresh_if_stale(db)
         query = select(*TokenUsageService._sums()).group_by(TokenUsage.model_name)
         if user_id:
             query = query.where(TokenUsage.user_id == user_id)
@@ -112,6 +113,7 @@ class TokenUsageService:
         days: int = 30,
         user_id: Optional[str] = None,
     ) -> List[Dict[str, Any]]:
+        await refresh_if_stale(db)
         start_date = datetime.now(timezone.utc) - timedelta(days=days)
         day = func.date(TokenUsage.created_at)
         query = (
@@ -131,6 +133,7 @@ class TokenUsageService:
         weeks: int = 12,
         user_id: Optional[str] = None,
     ) -> List[Dict[str, Any]]:
+        await refresh_if_stale(db)
         start_date = datetime.now(timezone.utc) - timedelta(weeks=weeks)
         year, week = extract("year", TokenUsage.created_at), extract("week", TokenUsage.created_at)
         query = (
@@ -150,6 +153,7 @@ class TokenUsageService:
         months: int = 12,
         user_id: Optional[str] = None,
     ) -> List[Dict[str, Any]]:
+        await refresh_if_stale(db)
         start_date = datetime.now(timezone.utc) - timedelta(days=months * 30)
         year, month = extract("year", TokenUsage.created_at), extract("month", TokenUsage.created_at)
         query = (
@@ -168,6 +172,7 @@ class TokenUsageService:
         db: AsyncSession,
         days: int = 30,
     ) -> List[Dict[str, Any]]:
+        await refresh_if_stale(db)
         start_date = datetime.now(timezone.utc) - timedelta(days=days)
         query = (
             select(User.id, User.email, User.display_name, *TokenUsageService._sums())
@@ -190,6 +195,7 @@ class TokenUsageService:
         days: int = 30,
         user_id: Optional[str] = None,
     ) -> List[Dict[str, Any]]:
+        await refresh_if_stale(db)
         start_date = datetime.now(timezone.utc) - timedelta(days=days)
         query = (
             select(TokenUsage.llm_provider, *TokenUsageService._sums())
@@ -211,6 +217,7 @@ class TokenUsageService:
         db: AsyncSession,
         conversation_id: str,
     ) -> Dict[str, Any]:
+        await refresh_if_stale(db)
         query = (
             select(*TokenUsageService._sums())
             .where(TokenUsage.conversation_id == conversation_id)

@@ -59,6 +59,11 @@ PRICES: dict[str, tuple[float, Optional[float], float]] = {
     "chatgpt-image-latest": (5.00, 1.25, 32.00),
 }
 
+# 가격 페이지에서 갱신해 DB 에 저장한 단가 (services/pricing_update.py). 코드의 기본 표보다 우선하고 MODEL_PRICES_JSON 보다 낮다.
+_db_prices: dict[str, tuple[float, Optional[float], float]] = {}
+_db_loaded_at = 0.0
+DB_REFRESH_SECONDS = 30
+
 _DATE_SUFFIX = re.compile(r"-(\d{4}-\d{2}-\d{2}|\d{8}|\d{4})$")
 _custom: Optional[dict] = None
 
@@ -83,7 +88,7 @@ def get_price(model: str) -> Optional[tuple[float, Optional[float], float]]:
     m = (model or "").strip().lower()
     if not m:
         return None
-    table = {**PRICES, **_overrides()}
+    table = {**PRICES, **_db_prices, **_overrides()}
     if m in table:
         return table[m]
     base = _DATE_SUFFIX.sub("", m)
@@ -99,3 +104,57 @@ def estimate_cost_usd(model: str, input_tokens: int, output_tokens: int) -> Opti
     if p is None:
         return None
     return (max(0, input_tokens) * p[0] + max(0, output_tokens) * p[2]) / 1_000_000
+
+
+def set_db_prices(prices: dict) -> None:
+    global _db_prices, _db_loaded_at
+    import time
+
+    _db_prices = dict(prices)
+    _db_loaded_at = time.monotonic()
+
+
+async def load_db_prices(db=None) -> int:
+    """DB 에 저장된 갱신 단가를 메모리로 읽는다. db 가 없으면 새 세션을 연다. 읽은 모델 수를 돌려준다."""
+    from sqlalchemy import select
+
+    from app.models.model_price import ModelPrice
+
+    async def _load(session):
+        rows = (await session.execute(select(ModelPrice))).scalars().all()
+        set_db_prices({r.model.lower(): (r.input_price, r.cached_input_price, r.output_price) for r in rows})
+        return len(rows)
+
+    if db is not None:
+        return await _load(db)
+    from app.db.session import AsyncSessionLocal
+
+    async with AsyncSessionLocal() as session:
+        return await _load(session)
+
+
+async def refresh_if_stale(db=None) -> None:
+    """갱신 단가를 DB_REFRESH_SECONDS 마다 다시 읽는다 (다른 프로세스에서 갱신한 값도 곧 반영된다). 실패해도 기존 값을 쓴다."""
+    import time
+
+    if time.monotonic() - _db_loaded_at < DB_REFRESH_SECONDS:
+        return
+    try:
+        await load_db_prices(db)
+    except Exception as e:  # noqa: BLE001
+        logger.warning("[pricing] 갱신 단가를 읽지 못했습니다: %s", e)
+
+
+def effective_prices() -> list[dict]:
+    """현재 적용되는 단가 목록과 출처 (custom: MODEL_PRICES_JSON > page: 가격 페이지에서 갱신 > default: 코드 기본 표)."""
+    custom, merged = _overrides(), {}
+    for name, v in PRICES.items():
+        merged[name] = (v, "default")
+    for name, v in _db_prices.items():
+        merged[name] = (v, "page")
+    for name, v in custom.items():
+        merged[name] = (v, "custom")
+    return [
+        {"model": n, "input": v[0], "cached_input": v[1], "output": v[2], "source": src}
+        for n, (v, src) in sorted(merged.items())
+    ]

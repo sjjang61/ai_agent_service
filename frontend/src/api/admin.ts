@@ -5,6 +5,8 @@ import type {
   UserUsage,
   ModelUsage,
   SessionUsage,
+  PricingState,
+  PricingRefreshResult,
 } from '../types/admin'
 
 export const adminApi = {
@@ -35,6 +37,12 @@ export const adminApi = {
     apiClient.get<ModelUsage[]>('/admin/usage/models', {
       params: { days, ...(userId ? { user_id: userId } : {}) },
     }),
+
+  getPricing: () => apiClient.get<PricingState>('/admin/pricing'),
+
+  setPricingUrl: (url: string) => apiClient.put<PricingState>('/admin/pricing/url', { url }),
+
+  refreshPricing: () => apiClient.post<PricingRefreshResult>('/admin/pricing/refresh', {}, { timeout: 90000 }),
 
   getSessionUsage: (conversationId: string) =>
     apiClient.get<SessionUsage>(`/admin/usage/sessions/${conversationId}`),

@@ -361,8 +361,9 @@ async def stream_team(
             _background_tasks.add(task)
             task.add_done_callback(_background_tasks.discard)
         # 화면의 '이번 요청 사용량' 표시용 (소요 시간·응답 시각은 API 계층이 덧붙인다)
-        from app.services.pricing import estimate_cost_usd
+        from app.services.pricing import estimate_cost_usd, refresh_if_stale
 
+        await refresh_if_stale()
         cost = estimate_cost_usd(model, total_input_tokens, total_output_tokens)  # 단가를 모르는 모델이면 None
         yield {"type": "usage", "input_tokens": total_input_tokens, "output_tokens": total_output_tokens, "requests": model_requests,
                "cost_usd": round(cost, 6) if cost is not None else None}

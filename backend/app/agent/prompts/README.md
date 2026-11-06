@@ -39,6 +39,7 @@ LLM 에 보내는 모든 프롬프트는 이 폴더의 `.md` 파일입니다. �
 ### 별도 LLM 호출
 | 파일 | 용도 | 사용처 |
 |---|---|---|
+| `pricing_extract.md` | 가격 페이지 텍스트에서 모델 단가를 JSON 으로 추출 (구조화 데이터·표 파싱이 실패했을 때의 대비) `{{text}}` | `services/pricing_update.py` |
 | `followup_questions.md` | 답변 뒤에 이어서 물어볼 만한 질문 2개 `{{question}}` `{{answer}}` | `services/followup_service.py` |
 | `skill_translate.md` | 스킬 문서를 한국어로 번역 `{{text}}` | `services/skill_translate.py` |
 | `request_router.md` | 요청을 서술/단순/복잡으로 분류하고, 복잡하면 전체 작업 계획 생성 | `agent/router.py` |
