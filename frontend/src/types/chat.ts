@@ -48,5 +48,19 @@ export interface Message {
   attachments?: Attachment[]
   references?: Reference[]
   memory_saved?: MemorySavedItem[]
+  /** 이번 요청의 사용량 */
+  usage?: MessageUsage | null
+  /** 이어서 물어볼 만한 추천 질문 */
+  suggestions?: string[]
   created_at: string
+}
+
+export interface MessageUsage {
+  input_tokens: number
+  output_tokens: number
+  /** LLM 호출 횟수 */
+  requests: number
+  elapsed_seconds: number
+  /** 응답이 끝난 시각 (UTC ISO) */
+  finished_at: string
 }

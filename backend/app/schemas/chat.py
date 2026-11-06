@@ -53,6 +53,8 @@ class MessageResponse(BaseModel):
     attachments: List[Attachment] = []
     references: List[Reference] = []
     memory_saved: List[Any] = []  # 이 응답에서 자동 저장된 메모리 [{key, value, scope, action}]
+    usage: Optional[dict] = None  # 이번 요청의 {input_tokens, output_tokens, requests, elapsed_seconds, finished_at}
+    suggestions: List[str] = []  # 이어서 물어볼 만한 추천 질문
     created_at: datetime
 
 

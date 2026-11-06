@@ -151,6 +151,7 @@ class Settings(BaseSettings):
     SKILL_MAX_EXTRACT_MB: int = 20
 
     # Memory (장기/단기 메모리)
+    ENABLE_FOLLOWUP_SUGGESTIONS: bool = True  # 답변 뒤에 이어서 물어볼 만한 질문 2개를 추천
     ENABLE_MEMORY_EXTRACTION: bool = True  # 대화에서 자동 메모리 추출
     ENABLE_CONVERSATION_SUMMARY: bool = True  # 컨텍스트 창에서 밀려난 오래된 메시지의 롤링 요약
     MEMORY_CONTEXT_LIMIT: int = 15  # Agent 프롬프트에 주입할 최대 메모리 개수

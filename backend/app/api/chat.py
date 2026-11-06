@@ -1,6 +1,8 @@
 import asyncio
 import json
 import logging
+import time
+from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -15,6 +17,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.agent.orchestrator import AgentOrchestrator
+from app.config import settings
 from app.db.session import get_session
 from app.core.forms import PendingForms
 from app.core.runs import RunRegistry, cancellable_events
@@ -109,6 +112,8 @@ async def list_messages(
             attachments=(m.metadata_ or {}).get("attachments", []),
             references=public_refs((m.metadata_ or {}).get("references")),
             memory_saved=(m.metadata_ or {}).get("memory_saved", []),
+            usage=(m.metadata_ or {}).get("usage"),
+            suggestions=(m.metadata_ or {}).get("suggestions", []),
             created_at=m.created_at,
         )
         for m in messages
@@ -168,9 +173,21 @@ async def send_message(
         agent_steps = []
         has_error = False
         cancelled = False
+        usage = None
+        started = time.monotonic()
         try:
             source = orchestrator.run(user_input, conversation_id, db)
             async for event in cancellable_events(conversation_id, current_user.id, source):
+                if event["type"] == "usage":
+                    # 소요 시간과 응답 시각은 여기서 덧붙인다 (사용자를 기다린 시간도 포함한 실제 경과 시간)
+                    usage = {
+                        "input_tokens": event.get("input_tokens", 0),
+                        "output_tokens": event.get("output_tokens", 0),
+                        "requests": event.get("requests", 0),
+                        "elapsed_seconds": round(time.monotonic() - started, 1),
+                        "finished_at": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
+                    }
+                    event = {"type": "usage", **usage}
                 if event["type"] == "token":
                     full_response += event.get("content", "")
                 elif event["type"] in ("thought", "tool_call", "tool_result"):
@@ -198,7 +215,17 @@ async def send_message(
             msg = await ChatService.save_message(
                 conversation_id, "assistant", save_content, db, agent_steps=agent_steps
             )
+            if usage and not has_error:
+                msg.metadata_ = {**(msg.metadata_ or {}), "usage": usage}
+                await db.commit()
             yield f"data: {json.dumps({'type': 'done', 'message_id': msg.id})}\n\n"
+
+            # 추천 질문: 메모리 추출과 동시에 만든다 (응답은 이미 전달했으므로 사용자는 기다리지 않는다)
+            suggest_task = None
+            if full_response and not has_error and settings.ENABLE_FOLLOWUP_SUGGESTIONS:
+                from app.services.followup_service import suggest_followups
+
+                suggest_task = asyncio.create_task(suggest_followups(text_input, full_response))
 
             # 컨텍스트 창에서 밀려난 오래된 메시지를 백그라운드에서 요약 (응답과 무관하게 실행)
             from app.services.conversation_summary import maybe_update_summary
@@ -223,6 +250,13 @@ async def send_message(
                     msg.metadata_ = {**(msg.metadata_ or {}), "memory_saved": saved}
                     await db.commit()
                     yield f"data: {json.dumps({'type': 'memory_saved', 'items': saved, 'message_id': msg.id})}\n\n"
+
+            if suggest_task:
+                suggestions = await suggest_task
+                if suggestions:
+                    msg.metadata_ = {**(msg.metadata_ or {}), "suggestions": suggestions}
+                    await db.commit()
+                    yield f"data: {json.dumps({'type': 'suggestions', 'items': suggestions, 'message_id': msg.id})}\n\n"
 
     return StreamingResponse(event_stream(), media_type="text/event-stream")
 

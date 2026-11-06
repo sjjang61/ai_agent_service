@@ -1,4 +1,4 @@
-export type AgentEventType = 'thought' | 'tool_call' | 'tool_result' | 'token' | 'done' | 'error' | 'cancelled' | 'memory_saved'
+export type AgentEventType = 'thought' | 'tool_call' | 'tool_result' | 'token' | 'done' | 'error' | 'cancelled' | 'memory_saved' | 'usage' | 'suggestions'
 
 /** 대화에서 자동으로 저장된 메모리 항목 */
 export interface MemorySavedItem {
@@ -19,7 +19,12 @@ export interface AgentStreamEvent {
   success?: boolean
   message_id?: string
   message?: string
-  items?: MemorySavedItem[]
+  items?: MemorySavedItem[] | string[]
+  input_tokens?: number
+  output_tokens?: number
+  requests?: number
+  elapsed_seconds?: number
+  finished_at?: string
   /** 호출 식별자 (같은 도구가 동시에 여러 번 돌 때 호출과 결과를 정확히 짝짓는다) */
   call_id?: string
   /** 팀원이 한 호출이면 그 팀원 이름 (위임 작업 아래에 묶는다) */

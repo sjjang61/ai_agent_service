@@ -3,7 +3,7 @@ import { chatApi } from '../api/chat'
 import { useAuthStore } from '../store/authStore'
 import { useAgentStore } from '../store/agentStore'
 import { useChatStore } from '../store/chatStore'
-import type { AgentStreamEvent } from '../types/agent'
+import type { AgentStreamEvent, MemorySavedItem } from '../types/agent'
 import type { Attachment, Message, Reference } from '../types/chat'
 import { currentTimezone } from '../utils/time'
 
@@ -42,7 +42,7 @@ const SANDBOX_TOOLS = new Set([
 export function useAgentStream(conversationId: string) {
   const { token } = useAuthStore()
   const { setRunning, addStep, appendToken, clearSteps, triggerWorkspaceRefresh } = useAgentStore()
-  const { addMessage, updateLastAssistantMessage, appendStepToLastAssistantMessage, setLastAssistantMemorySaved } = useChatStore()
+  const { addMessage, updateLastAssistantMessage, appendStepToLastAssistantMessage, setLastAssistantMemorySaved, setLastAssistantUsage, setLastAssistantSuggestions } = useChatStore()
 
   const sendMessage = useCallback(
     async (content: string, attachments: Attachment[] = [], references: Reference[] = []) => {
@@ -165,8 +165,20 @@ export function useAgentStream(conversationId: string) {
               } else if (event.type === 'done') {
                 // 응답은 끝났다. 서버가 메모리 추출을 이어서 하는 동안에도 입력을 막지 않는다
                 setRunning(false)
+              } else if (event.type === 'usage') {
+                setLastAssistantUsage(conversationId, {
+                  input_tokens: event.input_tokens ?? 0,
+                  output_tokens: event.output_tokens ?? 0,
+                  requests: event.requests ?? 0,
+                  elapsed_seconds: event.elapsed_seconds ?? 0,
+                  finished_at: event.finished_at ?? new Date().toISOString(),
+                })
+              } else if (event.type === 'suggestions' && event.items?.length) {
+                // 추천이 도착하기 전에 사용자가 다음 질문을 보냈다면 새 응답에 붙지 않게 한다
+                const list = useChatStore.getState().messages[conversationId] ?? []
+                if (list[list.length - 1]?.id === assistantMsg.id) setLastAssistantSuggestions(conversationId, event.items as string[])
               } else if (event.type === 'memory_saved' && event.items?.length) {
-                setLastAssistantMemorySaved(conversationId, event.items)
+                setLastAssistantMemorySaved(conversationId, event.items as MemorySavedItem[])
               } else if (event.type === 'error') {
                 const friendlyMsg = '비정상적인 에러 발생으로 잠시후에 다시 시도해주세요.'
                 updateLastAssistantMessage(conversationId, friendlyMsg)
@@ -187,7 +199,7 @@ export function useAgentStream(conversationId: string) {
         setRunning(false)
       }
     },
-    [conversationId, token, clearSteps, setRunning, addStep, appendToken, addMessage, updateLastAssistantMessage, appendStepToLastAssistantMessage, setLastAssistantMemorySaved, triggerWorkspaceRefresh]
+    [conversationId, token, clearSteps, setRunning, addStep, appendToken, addMessage, updateLastAssistantMessage, appendStepToLastAssistantMessage, setLastAssistantMemorySaved, setLastAssistantUsage, setLastAssistantSuggestions, triggerWorkspaceRefresh]
   )
 
   /** 실행 중인 에이전트를 중단한다. 서버가 `cancelled` 이벤트로 스트림을 끝내고, 응답이 없으면 연결을 직접 끊는다. */

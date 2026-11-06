@@ -41,6 +41,15 @@ export function formatKoreanDateTime(iso: string): string {
   return `${p.month}월 ${p.day}일 ${h < 12 ? '오전' : '오후'} ${h === 0 ? 12 : h > 12 ? h - 12 : h}:${p.minute}`
 }
 
+/** 예: 오후 2:35 */
+export function formatKoreanClock(iso: string): string {
+  const d = parseServerDate(iso)
+  if (isNaN(d.getTime())) return ''
+  const p = parts(d, { hour: 'numeric', minute: '2-digit' })
+  const h = Number(p.hour)
+  return `${h < 12 ? '오전' : '오후'} ${h === 0 ? 12 : h > 12 ? h - 12 : h}:${p.minute}`
+}
+
 /** 예: 11월 5일 */
 export function formatMonthDay(iso: string): string {
   const d = parseServerDate(iso)

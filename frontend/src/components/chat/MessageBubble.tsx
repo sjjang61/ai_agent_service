@@ -13,11 +13,12 @@ import LoginRequestCard from './LoginRequestCard'
 import ScheduleCard, { extractScheduleResults } from './ScheduleCard'
 import { useAgentStore } from '../../store/agentStore'
 import { useChatStore } from '../../store/chatStore'
-import { Paperclip, Folder, BookMarked, MessageSquare, Bot, User, Copy, Check, Brain } from 'lucide-react'
+import { Paperclip, Folder, BookMarked, MessageSquare, Bot, User, Copy, Check, Brain, CornerDownRight } from 'lucide-react'
 import axios from 'axios'
 import { formatSize, saveBlob } from '../sandbox/ArtifactsPanel'
 import { stripWidgetTables } from '../widgets/dedupe'
-import { formatKoreanDateTime } from '../../utils/time'
+import { formatKoreanClock, formatKoreanDateTime } from '../../utils/time'
+import { useAgentStream } from '../../hooks/useAgentStream'
 import { cloneElement, isValidElement, useState } from 'react'
 import { useTypingAnimation } from '../../hooks/useTypingAnimation'
 import { getTypingSpeed } from '../../config/animation'
@@ -129,6 +130,7 @@ const MEMORY_TYPE_LABEL: Record<string, string> = {
 export default function MessageBubble({ message }: { message: Message }) {
   const isUser = message.role === 'user'
   const { isRunning, rightPanel } = useAgentStore()
+  const { sendMessage } = useAgentStream(message.conversation_id)
   const { messages, currentConversationId } = useChatStore()
   const { selectedText, position, clearSelection } = useTextSelection()
   const [showWikiDialog, setShowWikiDialog] = useState(false)
@@ -409,9 +411,37 @@ export default function MessageBubble({ message }: { message: Message }) {
             <Brain size={11} /> 메모리에 추가되었습니다
           </div>
         )}
-        {!isUser && message.created_at && (
-          <div className="mt-2 text-xs text-slate-500 text-right">
-            {formatKoreanDateTime(message.created_at)}
+        {!isUser && message.usage ? (
+          <div
+            className="mt-2 text-xs text-slate-500 text-right"
+            title="입력·출력 토큰과 LLM 호출 횟수는 이 답변을 만드는 데 쓴 에이전트(팀원 포함) 호출의 합계입니다. 소요 시간은 요청부터 응답 완료까지입니다."
+          >
+            입력 {message.usage.input_tokens.toLocaleString('ko-KR')} · 출력 {message.usage.output_tokens.toLocaleString('ko-KR')} 토큰
+            {message.usage.requests > 0 && ` · 요청 ${message.usage.requests}회`}
+            {` · ${message.usage.elapsed_seconds.toFixed(1)}초 · ${formatKoreanClock(message.usage.finished_at)}`}
+          </div>
+        ) : (
+          !isUser && message.created_at && (
+            <div className="mt-2 text-xs text-slate-500 text-right">
+              {formatKoreanDateTime(message.created_at)}
+            </div>
+          )
+        )}
+        {/* 이어서 물어볼 만한 질문: 누르면 그 문장으로 다시 질의한다 (마지막 응답이고 실행 중이 아닐 때만) */}
+        {!isUser && isLastAssistant && !isRunning && message.suggestions && message.suggestions.length > 0 && (
+          <div className="mt-3 flex flex-col gap-1.5 items-start">
+            {message.suggestions.map((q) => (
+              <button
+                key={q}
+                onClick={() => sendMessage(q)}
+                title="이 질문으로 다시 질의하기"
+                className="flex items-start gap-1.5 max-w-full px-3 py-1.5 rounded-full text-left text-[13px] border border-border bg-surface-secondary
+                  text-content-secondary hover:text-content-primary hover:bg-surface-hover hover:border-accent-primary/50 transition-colors cursor-pointer"
+              >
+                <CornerDownRight size={13} className="mt-0.5 flex-shrink-0 text-accent-primary" />
+                <span>{q}</span>
+              </button>
+            ))}
           </div>
         )}
       </div>

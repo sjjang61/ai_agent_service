@@ -297,6 +297,7 @@ async def stream_team(
 
     total_input_tokens = 0
     total_output_tokens = 0
+    model_requests = 0  # LLM 호출 횟수 (리더와 팀원의 호출을 모두 센다)
 
     if not streaming:
         # 스트리밍 미지원 LLM: 완료 후 결과(RunOutput)에서 이벤트를 재구성한다
@@ -324,12 +325,18 @@ async def stream_team(
             elif name in ("RunError", "TeamRunError"):
                 yield {"type": "error", "message": getattr(ev, "content", None) or "Agent run failed"}
                 return
+            elif name in ("TeamModelRequestCompleted", "ModelRequestCompleted"):
+                model_requests += 1
             elif name in ("TeamRunCompleted", "RunCompleted"):
                 inp, outp = _extract_metrics(ev)
                 total_input_tokens += inp
                 total_output_tokens += outp
         if not got_token:
             logger.warning("[agno] 응답 토큰이 없습니다")
+
+    if total_input_tokens > 0 or total_output_tokens > 0:
+        # 화면의 '이번 요청 사용량' 표시용 (소요 시간·응답 시각은 API 계층이 덧붙인다)
+        yield {"type": "usage", "input_tokens": total_input_tokens, "output_tokens": total_output_tokens, "requests": model_requests}
 
     # 토큰 사용량 기록
     if db and (total_input_tokens > 0 or total_output_tokens > 0):

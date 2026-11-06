@@ -1,5 +1,5 @@
 import { create } from 'zustand'
-import type { AgentStepData, Conversation, Message } from '../types/chat'
+import type { AgentStepData, Conversation, Message, MessageUsage } from '../types/chat'
 import type { MemorySavedItem } from '../types/agent'
 
 interface ChatState {
@@ -15,6 +15,8 @@ interface ChatState {
   updateLastAssistantMessage: (convId: string, content: string) => void
   appendStepToLastAssistantMessage: (convId: string, step: AgentStepData) => void
   setLastAssistantMemorySaved: (convId: string, items: MemorySavedItem[]) => void
+  setLastAssistantUsage: (convId: string, usage: MessageUsage) => void
+  setLastAssistantSuggestions: (convId: string, items: string[]) => void
 }
 
 export const useChatStore = create<ChatState>((set) => ({
@@ -48,6 +50,20 @@ export const useChatStore = create<ChatState>((set) => ({
       if (last && last.role === 'assistant') {
         msgs[msgs.length - 1] = { ...last, memory_saved: items }
       }
+      return { messages: { ...s.messages, [convId]: msgs } }
+    }),
+  setLastAssistantUsage: (convId, usage) =>
+    set((s) => {
+      const msgs = [...(s.messages[convId] || [])]
+      const last = msgs[msgs.length - 1]
+      if (last && last.role === 'assistant') msgs[msgs.length - 1] = { ...last, usage }
+      return { messages: { ...s.messages, [convId]: msgs } }
+    }),
+  setLastAssistantSuggestions: (convId, items) =>
+    set((s) => {
+      const msgs = [...(s.messages[convId] || [])]
+      const last = msgs[msgs.length - 1]
+      if (last && last.role === 'assistant') msgs[msgs.length - 1] = { ...last, suggestions: items }
       return { messages: { ...s.messages, [convId]: msgs } }
     }),
   appendStepToLastAssistantMessage: (convId, step) =>
