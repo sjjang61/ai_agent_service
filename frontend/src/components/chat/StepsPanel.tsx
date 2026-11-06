@@ -6,6 +6,16 @@ import { buildPlanBuckets, buildTaskItems, currentTask, groupUnit, type TaskItem
 import { extractLatestTodos, type TodoItem } from './TodoCard'
 import BrowserShots, { parseBrowserRun } from './BrowserShots'
 
+/** 이 작업에 쓴 도구 이름 (예: exec_command) */
+function ToolChip({ tool }: { tool?: string }) {
+  if (!tool) return null
+  return (
+    <span className="ml-1.5 align-middle px-1.5 py-px rounded bg-surface-tertiary border border-border text-[10px] font-mono font-normal text-content-muted no-underline" title="사용한 도구">
+      {tool}
+    </span>
+  )
+}
+
 /** 브라우저 작업이면 방문한 화면의 미리보기 줄 */
 function ShotsStrip({ item }: { item: TaskItem }) {
   if ((item.call?.tool ?? item.result?.tool) !== 'cli_browser_agent') return null
@@ -48,7 +58,7 @@ function ChildRow({ item, showLabel = false }: { item: TaskItem; showLabel?: boo
         )}
         {showLabel ? (
           <span className="min-w-0 flex-1" title={item.summary}>
-            <span className={`block truncate ${item.status === 'failed' ? 'text-accent-red' : item.status === 'done' ? 'text-content-tertiary line-through' : 'text-content-primary'}`}>{item.label}</span>
+            <span className={`block truncate ${item.status === 'failed' ? 'text-accent-red' : item.status === 'done' ? 'text-content-tertiary line-through' : 'text-content-primary'}`}>{item.label}<ToolChip tool={item.tool} /></span>
             {item.summary && <span className="block truncate text-content-muted">{item.summary}</span>}
           </span>
         ) : (
@@ -80,7 +90,7 @@ function GroupRow({ item }: { item: TaskItem }) {
         </span>
         <span className="min-w-0 flex-1">
           <span className={`block text-[13px] font-medium truncate ${done ? 'line-through text-content-tertiary' : failed ? 'text-accent-red' : 'text-content-primary'}`}>
-            {item.label}{' '}
+            {item.label}<ToolChip tool={item.tool} />{' '}
             <span className="font-normal text-content-tertiary no-underline">
               · {delegate ? '하위 작업' : groupUnit(item.tool)} {kids.length}개{running ? ` 중 ${finished}개 완료` : ''}
             </span>
@@ -151,7 +161,7 @@ function TaskRow({ item }: { item: TaskItem }) {
       </span>
       <span className="min-w-0 flex-1">
         <span className={`block text-[13px] font-medium truncate ${done ? 'line-through text-content-tertiary' : failed ? 'text-accent-red' : 'text-content-primary'}`}>
-          {item.label}
+          {item.label}<ToolChip tool={item.tool} />
         </span>
         {item.summary && (
           <span className={`block text-xs truncate ${done ? 'line-through text-content-muted' : 'text-content-secondary'}`} title={item.summary}>
