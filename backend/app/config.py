@@ -143,7 +143,7 @@ class Settings(BaseSettings):
     SANDBOX_MAX_RUNNING_PER_USER: int = 5  # 한 사용자가 동시에 실행할 수 있는 sandbox 수 (넘으면 가장 오래 쓰지 않은 것을 백업 후 종료)
     SANDBOX_IDLE_MINUTES: int = 5  # last_used_at 기준 미사용 시간이 지나면 백업 후 종료
     SANDBOX_REAPER_INTERVAL_SECONDS: int = 60
-    SANDBOX_BACKUP_MAX_MB: int = 500  # 초과하면 백업 실패 처리 (sandbox 는 종료하지 않음)
+    SANDBOX_BACKUP_MAX_MB: int = 1024  # 초과하면 백업 실패 처리 (sandbox 는 종료하지 않음)
 
     # 웹앱 배포(deploy_web_app): 불변 아카이브 + 앱 전용 경량 컨테이너 + 20000번대 프록시 포트 (요청 시 깨우기)
     APP_HOST_ENABLED: bool = True
