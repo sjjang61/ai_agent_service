@@ -240,6 +240,10 @@ class AgentOrchestrator:
 
         # 커스텀 에이전트의 도구 허용 목록 적용
         tools = filter_tools(tools, self.runtime)
+        # 사용자가 도구 목록에서 꺼 둔 도구는 쓰지 않는다 (커스텀 에이전트의 허용 목록과 별개로 항상 적용)
+        from app.services.tool_settings_service import ToolSettingsService, drop_disabled
+
+        tools = drop_disabled(tools, await ToolSettingsService.disabled_names(self.user_id, db))
         if self.approver:  # 서브에이전트가 받는 목록에도 같은 인스턴스가 들어가므로 위임해도 승인을 우회하지 못한다
             from app.channels.approval import gate_tools
 

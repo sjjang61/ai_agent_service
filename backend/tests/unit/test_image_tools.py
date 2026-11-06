@@ -102,3 +102,11 @@ def test_object_key_and_url_helpers():
     assert object_storage.safe_slug("") == "file"
     k = object_storage.make_key("abcdef123456", "my pic.png", "images")
     assert k.startswith("images/abcdef12/") and k.endswith("-my_pic.png")
+
+
+def test_drop_disabled_removes_only_disabled_tools():
+    from app.services.tool_settings_service import drop_disabled
+
+    tools = [SimpleNamespace(name=n) for n in ("a", "b", "c")]
+    assert [t.name for t in drop_disabled(tools, {"b"})] == ["a", "c"]
+    assert drop_disabled(tools, set()) is tools

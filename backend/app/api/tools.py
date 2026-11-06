@@ -1,11 +1,14 @@
 """도구 목록 조회 API"""
 from typing import List, Literal, Optional
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
+from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.db.session import get_session
 from app.dependencies import get_current_user
 from app.models.user import User
+from app.services.tool_settings_service import ToolSettingsService
 
 router = APIRouter()
 
@@ -14,6 +17,7 @@ class ToolInfo(BaseModel):
     name: str
     description: str
     group: str
+    enabled: bool = True  # 사용자가 이 도구를 켜 두었는지 (끄면 에이전트가 쓰지 못한다)
 
 
 class ToolGroup(BaseModel):
@@ -78,6 +82,21 @@ BUILTIN_TOOLS: List[ToolInfo] = [
         description="Run a shell command inside the sandbox to build, check, test or convert files.",
         group="code",
     ),
+    ToolInfo(
+        name="cli_browser_agent",
+        description="Operate a real browser (login, clicks, forms, JavaScript pages). A browser sub-agent does the whole task and reports back.",
+        group="search",
+    ),
+    ToolInfo(
+        name="search_documents",
+        description="Search the documents you uploaded to this conversation (RAG).",
+        group="search",
+    ),
+    ToolInfo(
+        name="search_wiki",
+        description="Search your saved personal wiki pages for relevant content.",
+        group="search",
+    ),
     # Share & Download
     ToolInfo(
         name="download_file",
@@ -104,6 +123,16 @@ BUILTIN_TOOLS: List[ToolInfo] = [
         name="create_widget",
         description="Turn part of the answer into a visual widget: comparison table, bar/line/pie chart, flowchart/diagram (Mermaid), or map with markers.",
         group="visualization",
+    ),
+    ToolInfo(
+        name="register_skill",
+        description="Register a skill created in the sandbox so it can be reused.",
+        group="code",
+    ),
+    ToolInfo(
+        name="manage_schedule",
+        description="Create and manage scheduled tasks from the chat.",
+        group="interaction",
     ),
     # Memory
     ToolInfo(
@@ -141,22 +170,60 @@ TOOL_GROUPS = {
 
 
 @router.get("", response_model=List[ToolGroup])
-async def list_tools(current_user: User = Depends(get_current_user)):
-    """사용 가능한 도구 목록을 그룹별로 반환합니다."""
+async def list_tools(
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_session),
+):
+    """사용 가능한 도구 목록을 그룹별로 반환합니다 (각 도구의 켜짐 여부 포함)."""
+    disabled = await ToolSettingsService.disabled_names(current_user.id, db)
     grouped: dict[str, List[ToolInfo]] = {}
     for tool in BUILTIN_TOOLS:
-        grouped.setdefault(tool.group, []).append(tool)
+        grouped.setdefault(tool.group, []).append(tool.model_copy(update={"enabled": tool.name not in disabled}))
 
     result: List[ToolGroup] = []
     for group_key in ["search", "file", "code", "share", "visualization", "memory", "interaction"]:
         if group_key in grouped:
             meta = TOOL_GROUPS[group_key]
-            result.append(
-                ToolGroup(
-                    group=group_key,
-                    label=meta["label"],
-                    icon=meta["icon"],
-                    tools=grouped[group_key],
-                )
-            )
+            result.append(ToolGroup(group=group_key, label=meta["label"], icon=meta["icon"], tools=grouped[group_key]))
     return result
+
+
+class ToolEnabledRequest(BaseModel):
+    enabled: bool
+
+
+class ToolsEnabledRequest(BaseModel):
+    names: List[str]
+    enabled: bool
+
+
+def _known(names: List[str]) -> None:
+    known = {t.name for t in BUILTIN_TOOLS}
+    unknown = [n for n in names if n not in known]
+    if unknown:
+        raise HTTPException(status_code=404, detail=f"알 수 없는 도구입니다: {', '.join(unknown)}")
+
+
+@router.put("/{tool_name}")
+async def set_tool_enabled(
+    tool_name: str,
+    data: ToolEnabledRequest,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_session),
+):
+    """도구 하나를 켜거나 끕니다. 끈 도구는 이 사용자의 에이전트(채팅·예약·메신저)가 쓰지 못합니다."""
+    _known([tool_name])
+    await ToolSettingsService.set_enabled(current_user.id, [tool_name], data.enabled, db)
+    return {"name": tool_name, "enabled": data.enabled}
+
+
+@router.put("")
+async def set_tools_enabled(
+    data: ToolsEnabledRequest,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_session),
+):
+    """여러 도구(예: 한 그룹 전체)를 한 번에 켜거나 끕니다."""
+    _known(data.names)
+    await ToolSettingsService.set_enabled(current_user.id, data.names, data.enabled, db)
+    return {"names": data.names, "enabled": data.enabled}
