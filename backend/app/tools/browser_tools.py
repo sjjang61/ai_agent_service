@@ -8,9 +8,10 @@
 """
 import asyncio
 import json
+import re
 import uuid
 import shlex
-from typing import Literal, Optional
+from typing import Any, Literal, Optional
 
 from pydantic import BaseModel, Field
 
@@ -22,7 +23,7 @@ from app.config import settings
 DAEMON_PATH = "/tmp/_browser_daemon.py"
 STATE_PATH = "/tmp/_browser_state.json"  # 저장된 로그인 상태. 데몬이 읽자마자 지운다
 DAEMON_PORT = 9333
-DAEMON_VERSION = 5
+DAEMON_VERSION = 6
 LOGIN_TIMEOUT_SECONDS = 600
 
 DAEMON_SOURCE = r'''
@@ -31,7 +32,7 @@ from http.server import BaseHTTPRequestHandler, HTTPServer
 from urllib.parse import urlparse
 from playwright.sync_api import sync_playwright
 
-PORT, IDLE_SECONDS, VERSION = 9333, 900, 5
+PORT, IDLE_SECONDS, VERSION = 9333, 900, 6
 STATE_PATH = "/tmp/_browser_state.json"
 SHOT_DIR = "/workspace/browser"
 
@@ -230,7 +231,7 @@ class H(BaseHTTPRequestHandler):
         b = json.dumps(obj, ensure_ascii=False).encode()
         self.send_response(200); self.send_header("Content-Type", "application/json"); self.send_header("Content-Length", str(len(b)))
         self.end_headers(); self.wfile.write(b)
-    def do_GET(self): self._send({"ok": True})
+    def do_GET(self): self._send({"ok": True, "v": VERSION})
     def do_POST(self):
         last[0] = time.time()
         try:
@@ -371,6 +372,61 @@ def _format(res: dict) -> str:
     return "\n".join(parts) if parts else "OK"
 
 
+class WaitClock:
+    """사용자의 응답(로그인·CAPTCHA 해결)을 기다린 시간. 브라우저 작업의 제한 시간에서 뺀다."""
+
+    def __init__(self) -> None:
+        self.waited = 0.0
+        self._since: Optional[float] = None  # 지금 기다리는 중이면 시작 시각
+
+    def total(self) -> float:
+        """끝난 대기 + 지금 기다리는 중인 시간"""
+        now = asyncio.get_running_loop().time()
+        return self.waited + (now - self._since if self._since is not None else 0.0)
+
+    async def ask(self, conversation_id: str, user_id: str, info: dict, timeout: float) -> dict:
+        from app.core.login_requests import PendingLogins
+
+        self._since = asyncio.get_running_loop().time()
+        try:
+            return await PendingLogins.ask(conversation_id, user_id, info, timeout)
+        finally:
+            self.waited = self.total()
+            self._since = None
+
+
+async def run_with_budget(coro, budget: float, clock: WaitClock):
+    """사용자를 기다린 시간(clock.waited)을 뺀 실제 작업 시간이 budget 을 넘으면 TimeoutError."""
+    task = asyncio.ensure_future(coro)
+    start = asyncio.get_running_loop().time()
+    try:
+        while not task.done():
+            await asyncio.wait({task}, timeout=1)
+            if asyncio.get_running_loop().time() - start - clock.total() > budget:
+                raise asyncio.TimeoutError
+        return task.result()
+    finally:
+        if not task.done():
+            task.cancel()
+
+
+_CAPTCHA_URL = re.compile(r"captcha|/px/|recaptcha|hcaptcha|challenge-platform|/cdn-cgi/challenge", re.I)
+_CAPTCHA_TEXT = re.compile(
+    r"are you a (person|human) or a robot|press (&|and) hold|press and hold|verify (that )?you('re| are) (a )?human|"
+    r"i'?m not a robot|prove you('re| are) (a )?human|로봇이 아닙니다|사람인지 확인|보안 문자|캡차|자동 입력 방지|버튼을 (길게|꾹) ?누",
+    re.I,
+)
+
+
+def looks_like_captcha(res: dict) -> bool:
+    """페이지 이동 결과가 CAPTCHA·봇 확인 화면으로 보이는지 (주소 또는 화면 앞부분의 문구)."""
+    if not res.get("ok"):
+        return False
+    if _CAPTCHA_URL.search(str(res.get("url", ""))):
+        return True
+    return bool(_CAPTCHA_TEXT.search(str(res.get("text", ""))[:1500] + " " + str(res.get("title", ""))))
+
+
 class BrowserActionInput(BaseModel):
     action: Literal["goto", "snapshot", "click", "type", "select", "press", "scroll", "back", "screenshot", "wait"] = Field(
         description="goto(url) | snapshot | click(ref) | type(ref,text,submit) | select(ref,text=option) | press(key) | scroll(direction) | back | screenshot(text=name) | wait(seconds)"
@@ -395,6 +451,9 @@ class BrowserActionTool(BaseTool):
     user_id: str = ""
     sandbox_cid: str = ""  # 비어 있으면 사용자 공용 sandbox
     use_profile: bool = True
+    conversation_id: str = ""  # 보안 확인(CAPTCHA) 때 사용자에게 브라우저를 열어 줄 대화방
+    login_enabled: bool = False
+    clock: Any = None
     run_tag: str = ""  # 한 번의 브라우저 작업(cli_browser_agent 호출) 식별자. 스크린샷을 이 작업에 묶는다
 
     def _run(self, *args, **kwargs) -> str:
@@ -406,9 +465,31 @@ class BrowserActionTool(BaseTool):
         payload = {"cmd": action, "url": url, "ref": ref, "text": text, "key": key,
                    "direction": direction, "submit": submit, "seconds": seconds, "name": text, "run": self.run_tag or None}
         try:
-            return _format(await browser_call(self.user_id, {k: v for k, v in payload.items() if v is not None}, sandbox_cid=self.sandbox_cid, use_profile=self.use_profile))
+            res = await browser_call(self.user_id, {k: v for k, v in payload.items() if v is not None}, sandbox_cid=self.sandbox_cid, use_profile=self.use_profile)
+            note = ""
+            if self.login_enabled and self.conversation_id and looks_like_captcha(res):
+                res, note = await self._let_user_solve(res)
+            return note + _format(res)
         except Exception as e:
             return f"Error: {type(e).__name__}: {e}"
+
+    async def _let_user_solve(self, res: dict) -> tuple[dict, str]:
+        """CAPTCHA·봇 확인 화면이면 에이전트가 우회하지 않고, 채팅에 브라우저 열기 카드를 띄워 사용자가 직접 해결할 때까지 기다린다."""
+        from urllib.parse import urlparse
+
+        url = str(res.get("url", ""))
+        host = (urlparse(url).hostname or "사이트").removeprefix("www.")
+        for attempt in range(2):
+            info = {"site": host[:80], "url": url[:500], "reason": "CAPTCHA(로봇 확인) 화면이 나타났습니다. 열린 브라우저에서 직접 해결해 주세요."}
+            result = await (self.clock or WaitClock()).ask(self.conversation_id, self.user_id, info, LOGIN_TIMEOUT_SECONDS)
+            if not result.get("done"):
+                why = "취소했습니다" if result.get("cancelled") else "시간이 초과되었습니다"
+                return res, f"[사용자가 CAPTCHA 해결을 {why}. 우회하지 말고 이 사실을 보고하고 멈추세요.]\n"
+            res = await browser_call(self.user_id, {"cmd": "snapshot"}, sandbox_cid=self.sandbox_cid, use_profile=self.use_profile)
+            if not looks_like_captcha(res):
+                return res, "[사용자가 CAPTCHA 를 해결했습니다. 아래는 해결 후 화면입니다. 이어서 작업하세요.]\n"
+            url = str(res.get("url", url))
+        return res, "[CAPTCHA 가 아직 남아 있습니다. 해결되지 않았다고 보고하고 멈추세요.]\n"
 
 
 class RequestLoginInput(BaseModel):
@@ -430,6 +511,7 @@ class RequestUserLoginTool(BaseTool):
     user_id: str = ""
     conversation_id: str = ""
     enabled: bool = True
+    clock: Any = None
 
     def _run(self, *args, **kwargs) -> str:
         return "This tool supports async execution only"
@@ -441,10 +523,8 @@ class RequestUserLoginTool(BaseTool):
                  f"that {site} needs a login which they can do in the web app (Customize > 브라우저 로그인), then ask again."},
                 ensure_ascii=False,
             )
-        from app.core.login_requests import PendingLogins
-
         info = {"site": site[:80], "url": (url or "")[:500], "reason": (reason or "")[:200]}
-        result = await PendingLogins.ask(self.conversation_id, self.user_id, info, LOGIN_TIMEOUT_SECONDS)
+        result = await (self.clock or WaitClock()).ask(self.conversation_id, self.user_id, info, LOGIN_TIMEOUT_SECONDS)
         return json.dumps(result, ensure_ascii=False)
 
 
@@ -489,8 +569,12 @@ class CliBrowserAgentTool(BaseTool):
                 await asyncio.sleep(1)
             profile = not new_session  # 새 세션은 저장된 로그인 상태 없이 시작하고, 끝나도 프로필을 덮어쓰지 않는다
             run = uuid.uuid4().hex[:8]
-            browser_tool = BrowserActionTool(user_id=self.user_id, sandbox_cid=self.sandbox_cid, use_profile=profile, run_tag=run)
-            login_tool = RequestUserLoginTool(user_id=self.user_id, conversation_id=self.conversation_id, enabled=self.login_enabled)
+            clock = WaitClock()
+            browser_tool = BrowserActionTool(
+                user_id=self.user_id, sandbox_cid=self.sandbox_cid, use_profile=profile, run_tag=run,
+                conversation_id=self.conversation_id, login_enabled=self.login_enabled, clock=clock,
+            )
+            login_tool = RequestUserLoginTool(user_id=self.user_id, conversation_id=self.conversation_id, enabled=self.login_enabled, clock=clock)
             agent = Agent(
                 name="BrowserAgent",
                 model=build_agno_model(self.llm_provider or settings.LLM_TYPE, self.model),
@@ -500,7 +584,7 @@ class CliBrowserAgentTool(BaseTool):
             )
             prompt = task if not start_url else f"{task}\n\n(시작 URL: {start_url})"
             try:
-                out = await asyncio.wait_for(agent.arun(prompt), timeout=settings.BROWSER_TIMEOUT_SECONDS)
+                out = await run_with_budget(agent.arun(prompt), settings.BROWSER_TIMEOUT_SECONDS, clock)
             finally:
                 if profile:  # 이번 작업에서 로그인된 사이트가 다음 대화·sandbox 에서도 유지되도록 저장
                     try:
