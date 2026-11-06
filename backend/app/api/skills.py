@@ -1,4 +1,5 @@
-from typing import List
+from datetime import datetime
+from typing import List, Optional
 
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
 from pydantic import BaseModel
@@ -189,12 +190,15 @@ async def get_skill_file(
 
 class TranslateRequest(BaseModel):
     path: str
+    refresh: bool = False  # True 면 저장된 번역을 무시하고 다시 번역
 
 
 class TranslateResponse(BaseModel):
     path: str
     content: str
     truncated: bool = False
+    cached: bool = False  # 저장된 번역 기록을 그대로 불러왔는지 (AI 호출 없음)
+    translated_at: Optional[datetime] = None
 
 
 @router.post("/{skill_id}/translate", response_model=TranslateResponse)
@@ -204,21 +208,27 @@ async def translate_skill_file(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_session),
 ):
-    """skill 의 텍스트 파일(SKILL.md 등)을 한국어로 번역한다 (결과는 서버 메모리에 캐시)."""
-    from pathlib import Path
-
-    from app.services.skill_translate import translate_to_korean
+    """skill 의 텍스트 파일(SKILL.md 등)을 한국어로 번역한다.
+    원문이 같은 번역 기록이 있으면 AI 를 부르지 않고 그대로 돌려주고, 내용이 바뀌었거나 refresh 면 새로 번역해 저장한다."""
+    from app.services.skill_translate import get_saved, save_translation, translate_to_korean
 
     skill = await SkillService.get_skill(skill_id, current_user.id, db)
     f = SkillService.read_file(skill, data.path)
     if f["binary"]:
         raise HTTPException(400, "바이너리 파일은 번역할 수 없습니다")
-    st = (Path(skill.install_path) / data.path).stat()
+    saved = None if data.refresh else await get_saved(db, current_user.id, f["content"])
+    if saved:
+        return TranslateResponse(
+            path=data.path, content=saved.translated, truncated=saved.truncated or f["truncated"], cached=True, translated_at=saved.created_at
+        )
     try:
-        r = await translate_to_korean(f["content"], (skill.id, data.path, int(st.st_mtime), st.st_size))
+        r = await translate_to_korean(f["content"])
     except Exception as e:  # LLM 호출 실패·시간 초과
         raise HTTPException(502, f"번역하지 못했습니다: {type(e).__name__}") from e
-    return TranslateResponse(path=data.path, content=r["content"], truncated=r["truncated"] or f["truncated"])
+    row = await save_translation(db, current_user.id, f["content"], r["content"], r["truncated"])
+    return TranslateResponse(
+        path=data.path, content=r["content"], truncated=r["truncated"] or f["truncated"], cached=False, translated_at=row.created_at
+    )
 
 
 @router.post("/{skill_id}/active", response_model=SkillResponse)

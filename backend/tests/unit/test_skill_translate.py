@@ -19,7 +19,7 @@ def test_clean_output_strips_wrapping_fence():
     assert st.clean_output("```python\nprint(1)\n```\n설명") == "```python\nprint(1)\n```\n설명"
 
 
-def test_translate_uses_cache_and_truncates():
+def test_translate_truncates_and_calls_llm():
     calls = []
 
     class FakeLLM:
@@ -31,12 +31,12 @@ def test_translate_uses_cache_and_truncates():
         def __init__(self, tools):
             self.llm = FakeLLM()
 
-    st._cache.clear()
     with patch("app.agent.react_agent.AgentRunner", FakeRunner):
-        r = asyncio.run(st.translate_to_korean("hello\n\nworld\n", ("s", "SKILL.md", 1, 5)))
-        n = len(calls)
-        r2 = asyncio.run(st.translate_to_korean("hello\n\nworld\n", ("s", "SKILL.md", 1, 5)))
-        assert r == r2 == {"content": "번역됨", "truncated": False} and len(calls) == n
-        big = asyncio.run(st.translate_to_korean(("가나다 abc\n\n" * 6000), ("s", "big.md", 1, 9)))
+        r = asyncio.run(st.translate_to_korean("hello\n\nworld\n"))
+        assert r == {"content": "번역됨", "truncated": False} and "hello" in calls[0]
+        big = asyncio.run(st.translate_to_korean("가나다 abc\n\n" * 6000))
         assert big["truncated"] is True
-    assert "hello" in calls[0]
+
+
+def test_content_hash_changes_with_content():
+    assert st.content_hash("a") == st.content_hash("a") != st.content_hash("b")

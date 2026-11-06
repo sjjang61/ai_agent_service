@@ -43,3 +43,12 @@ export interface SkillFileContent {
   truncated: boolean
   content: string
 }
+
+export interface SkillTranslation {
+  path: string
+  content: string
+  truncated: boolean
+  /** 저장된 번역 기록을 불러온 것인지 (AI 호출 없음) */
+  cached: boolean
+  translated_at: string | null
+}

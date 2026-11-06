@@ -1,12 +1,12 @@
 import { useEffect, useState } from 'react'
-import { useQuery } from '@tanstack/react-query'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import rehypeSanitize from 'rehype-sanitize'
 import { File, FileText, Loader2, X } from 'lucide-react'
 import { skillsApi } from '../../api/skills'
 import { formatFullDateTime } from '../../utils/time'
-import type { Skill, SkillDetail, SkillFileContent } from '../../types/skill'
+import type { Skill, SkillDetail, SkillFileContent, SkillTranslation } from '../../types/skill'
 
 /** SKILL.md 맨 앞의 --- frontmatter 를 본문과 분리한다 */
 function splitFrontmatter(text: string): { meta: string; body: string } {
@@ -51,13 +51,25 @@ export default function SkillDetailDialog({ skill, onClose }: { skill: Skill; on
 
   const isMd = /\.(md|markdown)$/i.test(path)
   const canTranslate = !!file && !file.binary && /\.(md|markdown|txt)$/i.test(path) && needsTranslation(file.content)
-  const ko = useQuery<{ content: string; truncated: boolean }>({
-    queryKey: ['skill-translate', skill.id, path],
+  const qc = useQueryClient()
+  const koKey = ['skill-translate', skill.id, path, file?.content.length ?? 0]
+  const ko = useQuery<SkillTranslation>({
+    queryKey: koKey,
     queryFn: async () => (await skillsApi.translate(skill.id, path)).data,
     enabled: mode === 'ko' && canTranslate,
     staleTime: Infinity,
     retry: false,
   })
+  const retranslate = async () => {
+    // 저장된 기록을 무시하고 AI 로 다시 번역해 새 기록으로 바꾼다
+    qc.setQueryData(koKey, undefined)
+    try {
+      const res = await qc.fetchQuery({ queryKey: koKey, queryFn: async () => (await skillsApi.translate(skill.id, path, true)).data, staleTime: 0 })
+      qc.setQueryData(koKey, res)
+    } catch {
+      // 실패 상태는 쿼리에 남아 '다시 시도' 로 표시된다
+    }
+  }
   const translating = mode === 'ko' && canTranslate
   const shown = translating ? ko.data?.content : file?.content
   const parsed = shown != null && (isMd || translating) && mode !== 'raw' ? splitFrontmatter(shown) : null
@@ -153,7 +165,15 @@ export default function SkillDetailDialog({ skill, onClose }: { skill: Skill; on
                 </div>
               ) : file ? (
                 <>
-                  {translating && <div className="mb-3 text-xs text-content-muted">AI 가 번역한 내용입니다. 정확한 내용은 원문을 확인하세요.{ko.data?.truncated ? ' 문서가 길어 앞부분만 번역했습니다.' : ''}</div>}
+                  {translating && (
+                    <div className="mb-3 text-xs text-content-muted flex items-center gap-2 flex-wrap">
+                      <span>
+                        {ko.data?.cached ? `저장된 번역입니다${ko.data.translated_at ? ` (${formatFullDateTime(ko.data.translated_at)})` : ''}.` : 'AI 가 번역한 내용입니다.'} 정확한 내용은 원문을 확인하세요.
+                        {ko.data?.truncated ? ' 문서가 길어 앞부분만 번역했습니다.' : ''}
+                      </span>
+                      <button onClick={retranslate} className="text-accent-primary border-none bg-transparent cursor-pointer underline text-xs">다시 번역</button>
+                    </div>
+                  )}
                   {file.truncated && <div className="mb-3 text-xs text-accent-amber">파일이 커서 앞부분(200KB)만 표시합니다. 전체 {kb(file.size)}</div>}
                   {parsed ? (
                     <>

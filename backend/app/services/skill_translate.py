@@ -2,7 +2,7 @@
 import asyncio
 import logging
 import re
-from collections import OrderedDict
+import hashlib
 
 from app.agent.prompts import render
 
@@ -12,9 +12,6 @@ CHUNK_CHARS = 5000
 MAX_CHARS = 30000
 CHUNK_TIMEOUT_SECONDS = 120
 PARALLEL = 3
-_CACHE_MAX = 64
-# (skill_id, path, 수정 시각, 크기) -> 번역 결과
-_cache: "OrderedDict[tuple, dict]" = OrderedDict()
 
 
 def split_chunks(text: str, limit: int = CHUNK_CHARS) -> list[str]:
@@ -43,11 +40,54 @@ def clean_output(text: str) -> str:
     return m.group(1).strip() if m else t
 
 
-async def translate_to_korean(text: str, cache_key: tuple) -> dict:
-    """{"content": 번역문, "truncated": 일부만 번역했는지}. 실패하면 예외."""
-    if cache_key in _cache:
-        _cache.move_to_end(cache_key)
-        return _cache[cache_key]
+MAX_SAVED_PER_USER = 300
+
+
+def content_hash(text: str) -> str:
+    return hashlib.sha256(text.encode("utf-8")).hexdigest()
+
+
+async def get_saved(db, user_id: str, text: str):
+    """저장된 번역 기록(같은 원문)을 찾는다. 없으면 None."""
+    from sqlalchemy import select
+
+    from app.models.skill_translation import SkillTranslation
+
+    r = await db.execute(
+        select(SkillTranslation).where(SkillTranslation.user_id == user_id, SkillTranslation.content_hash == content_hash(text))
+    )
+    return r.scalar_one_or_none()
+
+
+async def save_translation(db, user_id: str, text: str, translated: str, truncated: bool):
+    """번역 기록을 저장(같은 원문이 있으면 덮어씀)하고 오래된 기록은 정리한다."""
+    from datetime import datetime, timezone
+
+    from sqlalchemy import delete, select
+
+    from app.models.skill_translation import SkillTranslation
+
+    row = await get_saved(db, user_id, text)
+    if row is None:
+        row = SkillTranslation(user_id=user_id, content_hash=content_hash(text), translated=translated, truncated=truncated)
+        db.add(row)
+    else:
+        row.translated, row.truncated, row.created_at = translated, truncated, datetime.now(timezone.utc)
+    await db.commit()
+    keep = (
+        await db.execute(
+            select(SkillTranslation.id).where(SkillTranslation.user_id == user_id)
+            .order_by(SkillTranslation.created_at.desc()).limit(MAX_SAVED_PER_USER)
+        )
+    ).scalars().all()
+    await db.execute(delete(SkillTranslation).where(SkillTranslation.user_id == user_id, SkillTranslation.id.notin_(keep)))
+    await db.commit()
+    await db.refresh(row)
+    return row
+
+
+async def translate_to_korean(text: str) -> dict:
+    """LLM 으로 번역한다. {"content": 번역문, "truncated": 일부만 번역했는지}. 실패하면 예외."""
     from app.agent.react_agent import AgentRunner
     from app.services.memory_extractor import _content_text
 
@@ -62,8 +102,7 @@ async def translate_to_korean(text: str, cache_key: tuple) -> dict:
             return clean_output(_content_text(resp.content))
 
     parts = await asyncio.gather(*(one(c) for c in chunks))
-    result = {"content": "\n\n".join(p for p in parts if p), "truncated": truncated}
-    _cache[cache_key] = result
-    while len(_cache) > _CACHE_MAX:
-        _cache.popitem(last=False)
-    return result
+    content = "\n\n".join(p for p in parts if p)
+    if not content:
+        raise RuntimeError("empty translation")
+    return {"content": content, "truncated": truncated}

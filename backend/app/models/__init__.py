@@ -34,3 +34,4 @@ __all__ = [
     "ChannelAccount",
 ]
 from app.models.browser_profile import BrowserProfile
+from app.models.skill_translation import SkillTranslation
