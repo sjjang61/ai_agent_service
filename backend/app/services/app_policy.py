@@ -8,7 +8,7 @@ from typing import Optional
 
 from app.config import settings
 
-CATEGORIES = ["productivity", "dev-tools", "data", "design", "education", "entertainment", "business", "other"]
+CATEGORIES = ["productivity", "dev-tools", "data", "design", "education", "entertainment", "game", "business", "other"]
 MAX_SCAN_FILE = 1_000_000
 MAX_SCAN_TOTAL = 30_000_000
 

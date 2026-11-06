@@ -5,6 +5,7 @@ export const CATEGORY_LABEL: Record<string, string> = {
   design: '디자인',
   education: '교육',
   entertainment: '엔터테인먼트',
+  game: '게임',
   business: '비즈니스',
   other: '기타',
 }
