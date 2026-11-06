@@ -16,7 +16,7 @@ SELECTABLE_TOOLS = [
     "web_search", "web_crawler", "read_file", "write_file", "edit_file", "grep_file", "delete_file",
     "read_image", "code_executor", "exec_command", "download_file", "publish_file", "create_widget",
     "memory_tool", "search_documents", "search_wiki", "todo", "narrate", "form_ask_user", "cli_browser_agent",
-    "manage_schedule", "register_skill",
+    "manage_schedule", "register_skill", "generate_image", "upload_to_minio",
 ]
 
 

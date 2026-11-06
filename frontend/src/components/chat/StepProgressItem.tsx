@@ -30,6 +30,8 @@ export const TOOL_LABELS: Record<string, string> = {
   form_ask_user: '사용자 질문',
   cli_browser_agent: '브라우저 작업',
   manage_schedule: '예약 관리',
+  generate_image: '이미지 생성',
+  upload_to_minio: '이미지 업로드',
 }
 
 function StepIcon({ type, tool, isActive }: { type: string; tool?: string; isActive?: boolean }) {

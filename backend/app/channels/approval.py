@@ -8,6 +8,7 @@ from langchain_core.tools import BaseTool
 RISKY_TOOLS = {
     "exec_command", "shell_executor", "code_executor", "delete_file", "publish_file", "download_file",
     "call_mcp_tool", "run_mcp_code", "cli_browser_agent", "browser_action", "manage_schedule", "write_file", "edit_file",
+    "generate_image", "upload_to_minio",  # 비용·공개 업로드
 }
 
 # approver(tool_name, summary) -> True(허용) / False(거부)
@@ -19,7 +20,7 @@ DENIED = "[Denied] 사용자가 이 작업을 거부했거나 응답하지 않�
 def summarize_call(name: str, kwargs: dict) -> str:
     """승인 요청에 보여줄 한 덩어리 요약 (길이 제한)."""
     purpose = str(kwargs.get("purpose") or "").strip()
-    main = next((str(kwargs[k]) for k in ("command", "code", "path", "url", "tool_name", "action", "task") if kwargs.get(k)), "")
+    main = next((str(kwargs[k]) for k in ("command", "code", "path", "url", "prompt", "tool_name", "action", "task") if kwargs.get(k)), "")
     if not main:
         main = json.dumps(kwargs, ensure_ascii=False, default=str)
     main = main if len(main) <= 500 else main[:500] + "…"

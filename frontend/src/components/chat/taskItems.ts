@@ -29,6 +29,8 @@ export const TASK_LABELS: Record<string, string> = {
   form_ask_user: '사용자 질문',
   cli_browser_agent: '브라우저 작업',
   manage_schedule: '예약 관리',
+  generate_image: '이미지 생성',
+  upload_to_minio: '이미지 업로드',
   search_documents: '문서 검색',
   search_wiki: '위키 검색',
   memory_tool: '메모리',
@@ -64,6 +66,10 @@ export function summarizeInput(tool: string | undefined, input: unknown): string
   switch (tool) {
     case 'web_search':
       return clip(str('query'))
+    case 'generate_image':
+      return clip(str('prompt'))
+    case 'upload_to_minio':
+      return clip(str('path'))
     case 'web_crawler':
     case 'download_file':
       return clip(str('url'))

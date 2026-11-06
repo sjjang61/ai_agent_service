@@ -24,7 +24,17 @@ async def get_builtin_tools(
         PublishFileTool, ReadFileTool, ReadImageTool, WriteFileTool,
     )
 
-    return [
+    from app.config import settings
+    from app.services import object_storage
+    from app.tools.image_tools import GenerateImageTool, UploadToMinioTool
+
+    image_tools: List[BaseTool] = []
+    if settings.IMAGE_GENERATION_ENABLED and settings.OPENAI_API_KEY:
+        image_tools.append(GenerateImageTool(user_id=user_id, sandbox_cid=sandbox_cid, conversation_id=conversation_id))
+    if object_storage.enabled():
+        image_tools.append(UploadToMinioTool(user_id=user_id, sandbox_cid=sandbox_cid))
+
+    return image_tools + [
         WebSearchTool(),
         WebCrawlerTool(),
         CodeExecutorTool(user_id=user_id, sandbox_cid=sandbox_cid),

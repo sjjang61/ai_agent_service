@@ -284,6 +284,12 @@ export default function MessageBubble({ message }: { message: Message }) {
                 code: CodeBlock,
                 // 펜스 코드 블록의 <pre> 는 껍데기를 없애고 안의 code 에 block 표시를 넘긴다
                 pre: ({ children }: any) => (isValidElement(children) ? cloneElement(children as any, { block: true }) : <>{children}</>),
+                // 이미지(생성한 이미지의 공개 URL 등): 폭을 넘지 않게 줄이고, 누르면 원본을 새 탭으로 연다
+                img: ({ node, ...props }) => (
+                  <a href={props.src} target="_blank" rel="noopener noreferrer" className="inline-block">
+                    <img {...props} loading="lazy" className="max-w-full max-h-[480px] rounded-lg border border-border my-2" />
+                  </a>
+                ),
                 // 링크 스타일링
                 a: ({ node, ...props }) => {
                   const href = props.href || ''

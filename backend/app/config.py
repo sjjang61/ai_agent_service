@@ -118,6 +118,15 @@ class Settings(BaseSettings):
     MINIO_SECRET_KEY: str = ""
     MINIO_SECURE: bool = False
     MINIO_BUCKET: str = "sandbox-sessions"
+    # 이미지 생성(generate_image)과 공개 업로드(upload_to_minio): 결과를 공개 읽기 버킷에 올리고 공개 URL 로 접근한다
+    IMAGE_GENERATION_ENABLED: bool = True
+    OPENAI_IMAGE_MODEL: str = "gpt-image-2"  # OpenAI 가 이미지 모델을 바꾸므로 코드에 박지 않고 설정으로 고른다
+    IMAGE_DEFAULT_SIZE: str = "1024x1024"
+    IMAGE_DAILY_LIMIT: int = 30  # 사용자당 하루 생성 한도 (0 이면 제한 없음, 서버 재시작 시 초기화)
+    IMAGE_TIMEOUT_SECONDS: int = 180
+    MINIO_PUBLIC_BUCKET: str = "agent-public"  # 익명 읽기(GetObject)가 열리는 버킷. 비밀 파일을 올리지 말 것
+    MINIO_PUBLIC_URL: str = ""  # 브라우저가 접근하는 MinIO 주소. 비워 두면 MINIO_ENDPOINT 로 만든다 (예: http://localhost:29000)
+    PUBLIC_UPLOAD_MAX_MB: int = 10
     SANDBOX_MAX_RUNNING_PER_USER: int = 5  # 한 사용자가 동시에 실행할 수 있는 sandbox 수 (넘으면 가장 오래 쓰지 않은 것을 백업 후 종료)
     SANDBOX_IDLE_MINUTES: int = 5  # last_used_at 기준 미사용 시간이 지나면 백업 후 종료
     SANDBOX_REAPER_INTERVAL_SECONDS: int = 60
