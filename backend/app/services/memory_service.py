@@ -311,7 +311,9 @@ class ShortTermMemoryService:
 
             await redis.set(full_key, value, ex=ttl_seconds)
             await redis.sadd(index_key, key)
-            await redis.expire(index_key, ttl_seconds)
+            # 인덱스는 더 오래 남는 쪽을 따른다 (다른 키의 TTL 을 줄이지 않도록)
+            if ttl_seconds > (await redis.ttl(index_key) or 0):
+                await redis.expire(index_key, ttl_seconds)
         finally:
             await redis.close()
 

@@ -93,12 +93,16 @@ def parse_items(text: str, today: Optional[date] = None) -> list:
             importance = 5
         item = {"key": key, "value": value, "type": mtype, "category": category, "importance": importance}
         # 유효기간: 사실(semantic)에만 적용한다. 이미 끝난 일정은 저장하지 않는다.
-        if mtype == "semantic" and it.get("valid_until"):
+        if mtype in ("semantic", "short") and it.get("valid_until"):
             exp = expiry_from(it["valid_until"], today)
             if exp == "past":
                 continue
             if exp:
-                item["expires_at"] = exp
+                if mtype == "short":
+                    # 단기 메모리도 종료 일정이 명시되면 기본 TTL 대신 그 일정이 끝나는 시점까지 유지한다
+                    item["ttl_seconds"] = max(60, int((exp - datetime.utcnow()).total_seconds()))
+                else:
+                    item["expires_at"] = exp
         if mtype == "episodic":
             detail = {k: str(it.get(k) or "").strip()[:500] for k in ("situation", "resolution", "outcome")}
             if not detail["situation"] or not detail["resolution"] or _SECRET_RE.search(" ".join(detail.values())):
@@ -159,7 +163,9 @@ class MemoryExtractor:
             prev = await ShortTermMemoryService.retrieve(user_id, conversation_id, it["key"])
             if prev == it["value"]:
                 return None
-            await ShortTermMemoryService.store(user_id, conversation_id, it["key"], it["value"])
+            await ShortTermMemoryService.store(
+                user_id, conversation_id, it["key"], it["value"], ttl_seconds=it.get("ttl_seconds")
+            )
             return "updated" if prev else "added"
 
         key = it["key"]

@@ -74,3 +74,12 @@ def test_short_term_list_route_resolves_to_its_handler():
             assert getattr(route, "name", "") == "list_all_short_term_memories"      # get_memory(/{memory_id}) 가 아니어야 한다
             return
     raise AssertionError("라우트를 찾지 못했습니다")
+
+
+def test_short_with_valid_until_gets_ttl():
+    from datetime import date, timedelta
+    from app.services.memory_extractor import parse_items
+    d = (date.today() + timedelta(days=3)).isoformat()
+    items = parse_items('[{"key":"trip","value":"x","type":"short","valid_until":"%s"}]' % d)
+    assert 2 * 86400 < items[0]["ttl_seconds"] < 5 * 86400
+    assert "expires_at" not in items[0]
