@@ -209,6 +209,13 @@ def _truncate(s: str, limit: int) -> str:
     return s if len(s) <= limit else s[:limit] + f"...[{len(s) - limit} chars truncated]"
 
 
+_start_locks: dict[str, asyncio.Lock] = {}
+
+
+def _start_lock(cid: str) -> asyncio.Lock:
+    return _start_locks.setdefault(cid, asyncio.Lock())
+
+
 async def _daemon_up(cid: str) -> bool:
     from app.services.sandbox_service import sandbox_manager
 
@@ -226,27 +233,33 @@ async def browser_call(user_id: str, payload: dict, timeout: int = 90, sandbox_c
     cid = await _container(user_id, sandbox_cid)
     url = f"http://127.0.0.1:{DAEMON_PORT}"
     if payload.get("cmd") != "close":
-        await sandbox_manager.write_file(cid, DAEMON_PATH, DAEMON_SOURCE.encode("utf-8"))
-        if use_profile and not await _daemon_up(cid):
-            state = await BrowserProfileService.load_state(user_id)
-            if state:
-                await sandbox_manager.write_file(cid, STATE_PATH, state.encode("utf-8"))
-    ensure = (
-        f"curl -sf -m 2 {url}/ping >/dev/null || ("
-        f"nohup python3 {DAEMON_PATH} >/tmp/_browser_daemon.log 2>&1 </dev/null & "
-        f"for i in $(seq 1 60); do curl -sf -m 1 {url}/ping >/dev/null && break; sleep 0.5; done)"
-    )
-    cmd = f"{ensure}; curl -s -m {timeout} -X POST -d {shlex.quote(json.dumps(payload, ensure_ascii=False))} {url}/cmd"
-    code, out, err = await sandbox_manager.exec_command(cid, cmd, timeout=timeout + 40)
+        # 같은 컨테이너에서 데몬이 동시에 두 번 시작되면(포트 충돌) 하나가 죽고 로그인 상태 복원도 어긋나므로 시작 구간을 직렬화한다
+        async with _start_lock(cid):
+            await sandbox_manager.write_file(cid, DAEMON_PATH, DAEMON_SOURCE.encode("utf-8"))
+            if not await _daemon_up(cid):
+                if use_profile:
+                    state = await BrowserProfileService.load_state(user_id)
+                    if state:
+                        await sandbox_manager.write_file(cid, STATE_PATH, state.encode("utf-8"))
+                start = (
+                    f"nohup python3 {DAEMON_PATH} >/tmp/_browser_daemon.log 2>&1 </dev/null & "
+                    f"for i in $(seq 1 60); do curl -sf -m 1 {url}/ping >/dev/null && break; sleep 0.5; done"
+                )
+                await sandbox_manager.exec_command(cid, start, timeout=60)
+            up = await _daemon_up(cid)
+        if not up:
+            _, log, _ = await sandbox_manager.exec_command(cid, "tail -c 600 /tmp/_browser_daemon.log 2>/dev/null", timeout=10)
+            detail = log.strip()
+            hint = ""
+            if "Executable doesn't exist" in detail or "playwright install" in detail:
+                hint = " (sandbox 이미지에 non-root 사용자가 실행할 수 있는 Chromium 이 필요합니다. sandbox-image 를 다시 빌드하세요)"
+            elif "ENOSPC" in detail:
+                hint = " (디스크 공간이 부족합니다)"
+            return {"ok": False, "error": "브라우저를 시작하지 못했습니다: " + _truncate(detail[-400:], 400) + hint}
+    cmd = f"curl -s -m {timeout} -X POST -d {shlex.quote(json.dumps(payload, ensure_ascii=False))} {url}/cmd"
+    _, out, err = await sandbox_manager.exec_command(cid, cmd, timeout=timeout + 40)
     if not out.strip():
-        _, log, _ = await sandbox_manager.exec_command(cid, "tail -c 600 /tmp/_browser_daemon.log 2>/dev/null", timeout=10)
-        detail = (log or err).strip()
-        hint = ""
-        if "Executable doesn't exist" in detail or "playwright install" in detail:
-            hint = " (sandbox 이미지에 non-root 사용자가 실행할 수 있는 Chromium 이 필요합니다. sandbox-image 를 다시 빌드하세요)"
-        elif "ENOSPC" in detail:
-            hint = " (디스크 공간이 부족합니다)"
-        return {"ok": False, "error": "브라우저를 시작하지 못했습니다: " + _truncate(detail[-400:], 400) + hint}
+        return {"ok": False, "error": "브라우저 응답이 없습니다: " + _truncate(err.strip(), 300)} if payload.get("cmd") != "close" else {"ok": True}
     try:
         return json.loads(out)
     except ValueError:

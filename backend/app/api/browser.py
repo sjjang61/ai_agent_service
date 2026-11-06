@@ -134,12 +134,22 @@ async def browser_live(websocket: WebSocket):
         await websocket.close()
         return
 
+    async def touch():
+        """실시간 브라우저를 쓰는 동안 sandbox 가 유휴로 간주돼 종료되지 않게 사용 시각을 갱신한다."""
+        from app.services.sandbox_service import SandboxService
+
+        async with AsyncSessionLocal() as db:
+            sb = await SandboxService.get_sandbox(user.id, db, scope or None)
+            if sb:
+                await SandboxService.touch(sb, db)
+
     lock = asyncio.Lock()
     wake = asyncio.Event()
     deadline = asyncio.get_running_loop().time() + LIVE_MAX_SECONDS
 
     async def frames():
         last = None
+        last_touch = 0.0
         while True:
             try:
                 await asyncio.wait_for(wake.wait(), FRAME_INTERVAL)
@@ -150,14 +160,26 @@ async def browser_live(websocket: WebSocket):
                 await send({"t": "error", "message": "실시간 브라우저 사용 시간(30분)이 지났습니다. 다시 열어 주세요"})
                 await websocket.close()
                 return
-            async with lock:
-                f = await daemon_post(cid, {"cmd": "frame"}, timeout=20)
-            if not f.get("ok"):
-                continue
-            digest = hashlib.md5(f["img"].encode()).hexdigest()
-            if digest != last:
-                last = digest
-                await send({"t": "frame", "img": f["img"], "url": f.get("url", ""), "title": f.get("title", "")})
+            now = asyncio.get_running_loop().time()
+            if now - last_touch > 60:
+                last_touch = now
+                try:
+                    await touch()
+                except Exception:
+                    logger.exception("[browser] sandbox touch 실패")
+            try:
+                async with lock:
+                    f = await daemon_post(cid, {"cmd": "frame"}, timeout=20)
+                if not f.get("ok"):
+                    continue
+                digest = hashlib.md5(f["img"].encode()).hexdigest()
+                if digest != last:
+                    last = digest
+                    await send({"t": "frame", "img": f["img"], "url": f.get("url", ""), "title": f.get("title", "")})
+            except (WebSocketDisconnect, RuntimeError):
+                return
+            except Exception:
+                logger.exception("[browser] 프레임 전달 실패")
 
     async def do(msg: dict):
         t = msg.get("t")
