@@ -5,7 +5,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.api import admin, auth, browser, calendar, channels, chat, documents, files, mcp, memory, sandbox, agents, schedules, skills, spaces, tools, wiki, ws
+from app.api import admin, apps, auth, browser, calendar, channels, chat, documents, files, mcp, memory, sandbox, agents, schedules, skills, spaces, tools, wiki, ws
 from app.db.session import init_db
 from app.config import settings
 
@@ -77,6 +77,15 @@ async def lifespan(app: FastAPI):
     from app.core.scheduler import run_scheduler
 
     reaper = asyncio.create_task(run_idle_reaper())
+    app_reaper = None
+    if settings.APP_HOST_ENABLED:
+        from app.services.app_host import host as app_host, run_app_reaper
+
+        try:
+            await app_host.load()
+        except Exception:
+            logging.getLogger(__name__).exception("[apps] 배포된 앱 로드 실패")
+        app_reaper = asyncio.create_task(run_app_reaper())
     scheduler = asyncio.create_task(run_scheduler())
     channels = None
     if settings.CHANNELS_ENABLED:
@@ -85,6 +94,9 @@ async def lifespan(app: FastAPI):
         channels = asyncio.create_task(run_channels())
     yield
     reaper.cancel()
+    if app_reaper:
+        app_reaper.cancel()
+        await app_host.shutdown()
     scheduler.cancel()
     if channels:
         channels.cancel()
@@ -107,6 +119,7 @@ app.include_router(chat.router, prefix="/api/chat", tags=["chat"])
 app.include_router(documents.router, prefix="/api", tags=["documents"])
 app.include_router(mcp.router, prefix="/api/mcp", tags=["mcp"])
 app.include_router(calendar.router, prefix="/api/calendar", tags=["calendar"])
+app.include_router(apps.router, prefix="/api/apps", tags=["apps"])
 app.include_router(memory.router, prefix="/api/memory", tags=["memory"])
 app.include_router(sandbox.router, prefix="/api/sandbox", tags=["sandbox"])
 app.include_router(wiki.router, prefix="/api/wiki", tags=["wiki"])

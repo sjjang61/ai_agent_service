@@ -123,6 +123,16 @@ BUILTIN_TOOLS: List[ToolInfo] = [
         description="Upload one workspace image or video to the public MinIO bucket and return its public URL.",
         group="share",
     ),
+    ToolInfo(
+        name="deploy_web_app",
+        description="Deploy a web app built in the workspace (static build output or a server app with .scripts/start.sh) and get a browser URL on its own port; sleeps when idle and wakes on request.",
+        group="share",
+    ),
+    ToolInfo(
+        name="manage_web_app",
+        description="List, start, stop, delete deployed web apps and read their logs.",
+        group="share",
+    ),
     # Visualization
     ToolInfo(
         name="create_widget",

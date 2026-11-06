@@ -30,6 +30,11 @@ async def get_builtin_tools(
     from app.tools.video_tools import GenerateVideoTool
 
     image_tools: List[BaseTool] = []
+    if settings.APP_HOST_ENABLED:
+        from app.tools.app_tools import DeployWebAppTool, ManageWebAppTool
+
+        image_tools.append(DeployWebAppTool(user_id=user_id, sandbox_cid=sandbox_cid))
+        image_tools.append(ManageWebAppTool(user_id=user_id, sandbox_cid=sandbox_cid))
     if settings.IMAGE_GENERATION_ENABLED and settings.OPENAI_API_KEY:
         image_tools.append(GenerateImageTool(user_id=user_id, sandbox_cid=sandbox_cid, conversation_id=conversation_id))
     if settings.VIDEO_GENERATION_ENABLED and (settings.VIDEO_API_KEY or settings.GOOGLE_API_KEY):

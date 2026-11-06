@@ -360,6 +360,95 @@ class SandboxManager:
     async def remove_path(self, container_id: str, path: str):
         await self.exec_command(container_id, f"rm -rf {shlex.quote(path)}")
 
+    # ── 웹앱 배포용 컨테이너 ──────────────────────────────────────────────────
+    async def create_app_container(
+        self, app_id: str, user_id: str, container_port: int, data_dir: str,
+        image: str, mem_limit: str, cpu: float, bind_host: str = "127.0.0.1",
+    ) -> tuple[str, int]:
+        """앱 전용 컨테이너를 만든다. 앱 포트는 호스트 loopback 의 임시 포트로 게시된다. 반환: (container_id, 호스트 포트)."""
+        loop = asyncio.get_event_loop()
+        client = self._get_client()
+
+        def _create():
+            import uuid as _uuid
+
+            os.makedirs(data_dir, exist_ok=True)
+            os.chmod(data_dir, 0o777)  # sandbox 유저(uid 1000)가 쓸 수 있게
+            network = self._ensure_network()
+            c = client.containers.run(
+                image=image or settings.SANDBOX_IMAGE,
+                name=f"app-{app_id[:8]}-{_uuid.uuid4().hex[:6]}",
+                labels={"agent-app": app_id, "agent-app-user": user_id},
+                **({"network": network} if network else {}),
+                detach=True,
+                remove=False,
+                mem_limit=mem_limit,
+                cpu_quota=int(100000 * cpu),
+                ports={f"{container_port}/tcp": (bind_host, None)},
+                volumes={data_dir: {"bind": "/workspace/data", "mode": "rw"}},
+                environment={"USER_ID": user_id, "HOME": "/workspace", "PORT": str(container_port), "DATA_DIR": "/workspace/data"},
+                working_dir="/workspace",
+                security_opt=["no-new-privileges"],
+                cap_drop=["ALL"],
+            )
+            host_port = None
+            for _ in range(20):  # 게시 포트는 시작 직후 잠깐 비어 있을 수 있다
+                c.reload()
+                binds = (c.attrs.get("NetworkSettings", {}).get("Ports") or {}).get(f"{container_port}/tcp")
+                if binds:
+                    host_port = int(binds[0]["HostPort"])
+                    break
+                time.sleep(0.1)
+            if host_port is None:
+                c.remove(force=True)
+                raise RuntimeError("앱 포트를 게시하지 못했습니다")
+            return c.id, host_port
+
+        return await loop.run_in_executor(None, _create)
+
+    async def published_port(self, container_id: str, container_port: int) -> int | None:
+        """실행 중인 컨테이너의 게시 포트(호스트). 컨테이너가 없거나 꺼져 있으면 None."""
+        loop = asyncio.get_event_loop()
+        client = self._get_client()
+
+        def _get():
+            try:
+                c = client.containers.get(container_id)
+                if c.status != "running":
+                    return None
+                binds = (c.attrs.get("NetworkSettings", {}).get("Ports") or {}).get(f"{container_port}/tcp")
+                return int(binds[0]["HostPort"]) if binds else None
+            except Exception:
+                return None
+
+        return await loop.run_in_executor(None, _get)
+
+    async def put_archive_file(self, container_id: str, archive_path: str, dest: str):
+        """tar(.gz) 아카이브를 컨테이너의 dest 디렉터리에 푼다 (dest 는 비우고 새로 만든다)."""
+        loop = asyncio.get_event_loop()
+        client = self._get_client()
+
+        def _put():
+            container = client.containers.get(container_id)
+            res = container.exec_run(["bash", "-c", f"rm -rf {shlex.quote(dest)} && mkdir -p {shlex.quote(dest)}"])
+            if res.exit_code != 0:
+                raise RuntimeError("배포 디렉터리를 만들지 못했습니다")
+            with open(archive_path, "rb") as f:
+                if not container.put_archive(dest, f):
+                    raise RuntimeError("아카이브를 컨테이너에 풀지 못했습니다")
+
+        await loop.run_in_executor(None, _put)
+
+    async def exec_detached(self, container_id: str, command: str, env: dict | None = None):
+        """백그라운드로 명령을 실행한다 (결과를 기다리지 않는다)."""
+        loop = asyncio.get_event_loop()
+        client = self._get_client()
+
+        def _run():
+            client.containers.get(container_id).exec_run(["bash", "-c", command], detach=True, environment=env or {})
+
+        await loop.run_in_executor(None, _run)
+
     async def destroy_sandbox(self, container_id: str):
         loop = asyncio.get_event_loop()
         client = self._get_client()

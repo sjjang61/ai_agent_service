@@ -145,6 +145,27 @@ class Settings(BaseSettings):
     SANDBOX_REAPER_INTERVAL_SECONDS: int = 60
     SANDBOX_BACKUP_MAX_MB: int = 500  # 초과하면 백업 실패 처리 (sandbox 는 종료하지 않음)
 
+    # 웹앱 배포(deploy_web_app): 불변 아카이브 + 앱 전용 경량 컨테이너 + 20000번대 프록시 포트 (요청 시 깨우기)
+    APP_HOST_ENABLED: bool = True
+    APP_PORT_START: int = 20000
+    APP_PORT_END: int = 20100  # 포함
+    APP_BIND_HOST: str = "127.0.0.1"  # 프록시 리스너 바인드 주소. 원격 서버에서 외부에 열려면 0.0.0.0 (+ 방화벽, APP_REQUIRE_TOKEN)
+    APP_PUBLIC_HOST: str = "localhost"  # 앱 URL 에 쓰는 호스트명
+    APP_REQUIRE_TOKEN: bool = False  # true 면 새 앱은 접근 토큰이 필수 (배포 때 private 로 앱별 지정도 가능)
+    APP_CONTAINER_PORT: int = 5173  # 앱이 컨테이너 안에서 듣는 포트 (환경변수 PORT 로 전달)
+    APP_MAX_PER_USER: int = 5
+    APP_ARTIFACT_MAX_MB: int = 100
+    APP_ARTIFACT_MAX_FILES: int = 50000
+    APP_DATA_DIR: str = str(Path(__file__).parent.parent.parent / "data" / "apps")  # 아카이브·앱별 데이터(/workspace/data)
+    APP_IDLE_MINUTES: int = 10  # 이 시간 동안 요청이 없으면 컨테이너를 내린다 (다음 요청에 다시 깨움)
+    APP_STARTUP_TIMEOUT: int = 60
+    APP_WAKE_WAIT_SECONDS: int = 25  # HTML 이 아닌 요청이 깨우는 동안 기다리는 시간
+    APP_IMAGE: str = ""  # 비우면 SANDBOX_IMAGE
+    APP_MEMORY_LIMIT: str = "512m"
+    APP_CPU_LIMIT: float = 0.5
+    APP_FAILURE_COOLDOWN: int = 30
+    APP_MAX_RETRIES: int = 3
+
     # 파일 도구: 공개 다운로드 링크(publish_file/write_file) · URL 다운로드(download_file)
     PUBLIC_BASE_URL: str = "http://localhost:8500"  # 공개 링크에 붙는 백엔드 외부 접근 주소
     PUBLISH_DIR: str = str(Path(__file__).parent.parent.parent / "data" / "published")
