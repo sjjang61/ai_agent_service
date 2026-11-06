@@ -36,6 +36,8 @@ class CalendarEvent(BaseModel):
     conversation_id: Optional[str] = None
     conversation_title: Optional[str] = None
     key: Optional[str] = None
+    memory_id: Optional[str] = None
+    source_kind: str = "short"  # short(단기 메모리) | memory(장기 메모리) | manual
     manual: bool = False        # 사용자가 직접 추가한 일정(수정·삭제 가능)
     in_memory: bool = False     # 메모리(사실)에도 저장돼 있음
 
@@ -82,7 +84,7 @@ def _row_to_event(r: CalendarEventRow) -> dict:
     return {
         "id": f"m-{r.id}", "title": r.title, "start_date": r.start_date, "end_date": r.end_date,
         "start_time": r.start_time or "", "end_time": r.end_time or "", "note": r.note or "",
-        "manual": True, "in_memory": bool(r.memory_id),
+        "manual": True, "in_memory": bool(r.memory_id), "source_kind": "manual",
     }
 
 
@@ -168,6 +170,13 @@ async def list_events(
     rows = (await db.execute(select(CalendarEventRow).where(CalendarEventRow.user_id == current_user.id))).scalars().all()
     manual = [_row_to_event(r) for r in rows]
     items = await _short_items(current_user.id, db)
+    from app.models.memory import Memory
+    from app.services.memory_service import not_expired
+
+    mems = (await db.execute(select(Memory).where(
+        Memory.user_id == current_user.id, Memory.is_active.is_(True), Memory.memory_type.in_(("semantic", "episodic")), not_expired()
+    ).order_by(Memory.updated_at.desc()).limit(200))).scalars().all()
+    items = items + calendar_events.memory_items(list(mems))
     try:
         extracted = await calendar_events.extract_events(current_user.id, items, refresh=refresh)
     except Exception as e:  # noqa: BLE001

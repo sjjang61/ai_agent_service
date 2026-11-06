@@ -154,7 +154,7 @@ export default function CalendarPage() {
   const shift = (n: number) => setMonth((m) => new Date(m.getFullYear(), m.getMonth() + n, 1))
   const goToday = () => { const n = new Date(); setMonth(new Date(n.getFullYear(), n.getMonth(), 1)) }
   // 직접 추가한 일정은 수정 창을, 메모리에서 추출된 일정은 해당 대화방을 연다
-  const open = (ev: CalendarEvent) => (ev.manual ? setDialog({ event: ev }) : ev.conversation_id && navigate(`/chat/${ev.conversation_id}`))
+  const open = (ev: CalendarEvent) => (ev.manual ? setDialog({ event: ev }) : ev.source_kind === 'memory' ? navigate('/memory') : ev.conversation_id && navigate(`/chat/${ev.conversation_id}`))
   const refresh = () => qc.invalidateQueries({ queryKey: ['calendar-events'] })
   const save = async (input: EventInput) => {
     const ev = dialog?.event
@@ -168,7 +168,7 @@ export default function CalendarPage() {
     <SettingsPage
       active="calendar"
       title="캘린더"
-      subtitle="단기 메모리에 기억된 일정을 월별 캘린더로 확인합니다."
+      subtitle="단기·장기 메모리에 기억된 일정과 직접 추가한 일정을 월별 캘린더로 확인합니다."
       actions={
         <>
         <button onClick={() => setDialog({ date: today })} className={headerActionCls}><Plus size={14} /> 일정 추가</button>
@@ -220,7 +220,7 @@ export default function CalendarPage() {
               <button
                 key={ev.id}
                 onClick={() => open(ev)}
-                disabled={!ev.manual && !ev.conversation_id}
+                disabled={!ev.manual && ev.source_kind !== 'memory' && !ev.conversation_id}
                 className="text-left rounded-lg border border-border p-3 hover:border-border-light transition-colors min-w-0"
               >
                 <div className="text-[13px] font-medium text-content-primary break-words">{ev.title}</div>
@@ -230,7 +230,8 @@ export default function CalendarPage() {
                 </div>
                 {ev.note && <p className="mt-1 text-xs text-content-secondary break-words">{ev.note}</p>}
                 {ev.manual && <p className="mt-1 text-[11px] text-content-tertiary flex items-center gap-1"><Pencil size={10} /> 직접 추가{ev.in_memory && ' · 메모리에 저장됨'}</p>}
-                {ev.conversation_title && <p className="mt-1 text-[11px] text-content-tertiary truncate">대화: {ev.conversation_title}</p>}
+                {ev.source_kind === 'memory' && <p className="mt-1 text-[11px] text-content-tertiary">장기 메모리{ev.key ? `: ${ev.key}` : ''}</p>}
+                {ev.source_kind !== 'memory' && ev.conversation_title && <p className="mt-1 text-[11px] text-content-tertiary truncate">대화: {ev.conversation_title}</p>}
               </button>
             ))}
           </div>

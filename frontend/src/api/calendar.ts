@@ -11,6 +11,8 @@ export interface CalendarEvent {
   conversation_id: string | null
   conversation_title: string | null
   key: string | null
+  memory_id: string | null
+  source_kind: 'short' | 'memory' | 'manual'
   manual: boolean
   in_memory: boolean
 }
