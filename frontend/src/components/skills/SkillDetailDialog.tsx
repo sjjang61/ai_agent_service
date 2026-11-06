@@ -23,16 +23,10 @@ function needsTranslation(text: string): boolean {
 
 const kb = (n: number) => (n < 1024 ? `${n}B` : `${(n / 1024).toFixed(n < 10240 ? 1 : 0)}KB`)
 
-/** 스킬 상세: 메타 정보, 파일 목록, 선택한 파일의 내용(SKILL.md 는 마크다운으로 렌더링) */
-export default function SkillDetailDialog({ skill, onClose }: { skill: Skill; onClose: () => void }) {
+/** 스킬 하나의 파일 목록과 내용(SKILL.md 는 마크다운 렌더링, 외국어 문서는 한글 번역). 스킬·플러그인 상세 창이 같이 쓴다. */
+export function SkillBrowser({ skill }: { skill: Skill }) {
   const [path, setPath] = useState('SKILL.md')
   const [mode, setMode] = useState<'preview' | 'raw' | 'ko'>('preview')
-
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => e.key === 'Escape' && onClose()
-    window.addEventListener('keydown', onKey)
-    return () => window.removeEventListener('keydown', onKey)
-  }, [onClose])
 
   const { data: detail } = useQuery<SkillDetail>({
     queryKey: ['skill-detail', skill.id],
@@ -73,6 +67,106 @@ export default function SkillDetailDialog({ skill, onClose }: { skill: Skill; on
   const translating = mode === 'ko' && canTranslate
   const shown = translating ? ko.data?.content : file?.content
   const parsed = shown != null && (isMd || translating) && mode !== 'raw' ? splitFrontmatter(shown) : null
+  return (
+    <div className="flex flex-1 min-h-0">
+      <div className="w-[240px] flex-shrink-0 border-r border-border overflow-y-auto py-2">
+        {!detail ? (
+          <div className="px-4 py-3 text-xs text-content-muted flex items-center gap-2"><Loader2 size={13} className="animate-spin" />불러오는 중...</div>
+        ) : files.length === 0 ? (
+          <div className="px-4 py-3 text-xs text-content-muted">파일을 찾을 수 없습니다. 스킬을 다시 설치해 보세요.</div>
+        ) : (
+          <>
+            <div className="px-4 pb-1 text-[11px] text-content-muted">파일 {files.length}개{detail.truncated ? '+' : ''}</div>
+            {files.map((f) => (
+              <button
+                key={f.path}
+                onClick={() => { setPath(f.path); setMode('preview') }}
+                title={f.path}
+                className={`w-full flex items-center gap-2 px-4 py-1.5 text-left text-xs border-none cursor-pointer ${f.path === path ? 'bg-surface-active text-content-primary' : 'bg-transparent text-content-secondary hover:bg-surface-hover'}`}
+              >
+                {f.path === 'SKILL.md' ? <FileText size={13} className="flex-shrink-0 text-accent-primary" /> : <File size={13} className="flex-shrink-0 text-content-muted" />}
+                <span className="truncate flex-1">{f.path}</span>
+                <span className="text-[10px] text-content-muted flex-shrink-0">{kb(f.size)}</span>
+              </button>
+            ))}
+          </>
+        )}
+      </div>
+
+      <div className="flex-1 min-w-0 flex flex-col">
+        <div className="flex items-center gap-2 px-5 py-2 border-b border-border text-xs text-content-muted">
+          <span className="font-mono truncate flex-1">{path}</span>
+          {(isMd || canTranslate) && (
+            <div className="flex rounded-md border border-border overflow-hidden">
+              {([
+                ...(isMd ? [['preview', '미리보기'], ['raw', '원문']] : [['preview', '원문']]),
+                ...(canTranslate ? [['ko', '한글 번역']] : []),
+              ] as [typeof mode, string][]).map(([m, label]) => (
+                <button
+                  key={m}
+                  onClick={() => setMode(m)}
+                  className={`px-2.5 py-1 border-none cursor-pointer text-xs ${mode === m ? 'bg-surface-active text-content-primary' : 'bg-transparent text-content-secondary hover:text-content-primary'}`}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+        <div className="flex-1 overflow-auto px-5 py-4">
+          {isLoading ? (
+            <div className="text-xs text-content-muted flex items-center gap-2"><Loader2 size={13} className="animate-spin" />불러오는 중...</div>
+          ) : isError ? (
+            <div className="text-xs text-accent-red">파일을 불러오지 못했습니다.</div>
+          ) : file?.binary ? (
+            <div className="text-xs text-content-muted">바이너리 파일이라 내용을 표시하지 않습니다 ({kb(file.size)}).</div>
+          ) : translating && ko.isFetching ? (
+            <div className="text-xs text-content-muted flex items-center gap-2"><Loader2 size={13} className="animate-spin" />한국어로 번역하는 중... (문서가 길면 30초 이상 걸릴 수 있습니다)</div>
+          ) : translating && ko.isError ? (
+            <div className="text-xs text-accent-red">
+              번역하지 못했습니다.{' '}
+              <button onClick={() => ko.refetch()} className="text-accent-primary border-none bg-transparent cursor-pointer underline">다시 시도</button>
+            </div>
+          ) : file ? (
+            <>
+              {translating && (
+                <div className="mb-3 text-xs text-content-muted flex items-center gap-2 flex-wrap">
+                  <span>
+                    {ko.data?.cached ? `저장된 번역입니다${ko.data.translated_at ? ` (${formatFullDateTime(ko.data.translated_at)})` : ''}.` : 'AI 가 번역한 내용입니다.'} 정확한 내용은 원문을 확인하세요.
+                    {ko.data?.truncated ? ' 문서가 길어 앞부분만 번역했습니다.' : ''}
+                  </span>
+                  <button onClick={retranslate} className="text-accent-primary border-none bg-transparent cursor-pointer underline text-xs">다시 번역</button>
+                </div>
+              )}
+              {file.truncated && <div className="mb-3 text-xs text-accent-amber">파일이 커서 앞부분(200KB)만 표시합니다. 전체 {kb(file.size)}</div>}
+              {parsed ? (
+                <>
+                  {parsed.meta && (
+                    <pre className="mb-4 p-3 rounded-lg bg-surface-secondary border border-border text-xs font-mono text-content-secondary whitespace-pre-wrap break-words">{parsed.meta}</pre>
+                  )}
+                  <div className="skill-md text-sm text-content-primary leading-relaxed [&_h1]:text-lg [&_h1]:font-semibold [&_h1]:mt-4 [&_h2]:text-base [&_h2]:font-semibold [&_h2]:mt-4 [&_h3]:font-semibold [&_h3]:mt-3 [&_p]:my-2 [&_ul]:list-disc [&_ul]:pl-5 [&_ol]:list-decimal [&_ol]:pl-5 [&_code]:font-mono [&_code]:text-[12px] [&_code]:bg-surface-secondary [&_code]:px-1 [&_code]:rounded [&_pre]:bg-surface-secondary [&_pre]:border [&_pre]:border-border [&_pre]:rounded-lg [&_pre]:p-3 [&_pre]:overflow-auto [&_pre_code]:bg-transparent [&_pre_code]:p-0 [&_a]:text-accent-primary [&_table]:border-collapse [&_td]:border [&_td]:border-border [&_td]:px-2 [&_td]:py-1 [&_th]:border [&_th]:border-border [&_th]:px-2 [&_th]:py-1 [&_blockquote]:border-l-2 [&_blockquote]:border-border [&_blockquote]:pl-3 [&_blockquote]:text-content-secondary">
+                    <ReactMarkdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeSanitize]}>{parsed.body}</ReactMarkdown>
+                  </div>
+                </>
+              ) : (
+                <pre className="text-xs font-mono text-content-secondary whitespace-pre-wrap break-words">{shown ?? file.content}</pre>
+              )}
+            </>
+          ) : null}
+        </div>
+      </div>
+    </div>
+  )
+}
+
+/** 스킬 상세: 메타 정보와 SKILL.md 등 파일 보기 */
+export default function SkillDetailDialog({ skill, onClose }: { skill: Skill; onClose: () => void }) {
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => e.key === 'Escape' && onClose()
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [onClose])
+
   const source = skill.source_url.startsWith('upload:')
     ? `ZIP 업로드 (${skill.source_url.slice(7)})`
     : skill.source_url.startsWith('manual:')
@@ -104,94 +198,7 @@ export default function SkillDetailDialog({ skill, onClose }: { skill: Skill; on
           </button>
         </div>
 
-        <div className="flex flex-1 min-h-0">
-          <div className="w-[240px] flex-shrink-0 border-r border-border overflow-y-auto py-2">
-            {!detail ? (
-              <div className="px-4 py-3 text-xs text-content-muted flex items-center gap-2"><Loader2 size={13} className="animate-spin" />불러오는 중...</div>
-            ) : files.length === 0 ? (
-              <div className="px-4 py-3 text-xs text-content-muted">파일을 찾을 수 없습니다. 스킬을 다시 설치해 보세요.</div>
-            ) : (
-              <>
-                <div className="px-4 pb-1 text-[11px] text-content-muted">파일 {files.length}개{detail.truncated ? '+' : ''}</div>
-                {files.map((f) => (
-                  <button
-                    key={f.path}
-                    onClick={() => { setPath(f.path); setMode('preview') }}
-                    title={f.path}
-                    className={`w-full flex items-center gap-2 px-4 py-1.5 text-left text-xs border-none cursor-pointer ${f.path === path ? 'bg-surface-active text-content-primary' : 'bg-transparent text-content-secondary hover:bg-surface-hover'}`}
-                  >
-                    {f.path === 'SKILL.md' ? <FileText size={13} className="flex-shrink-0 text-accent-primary" /> : <File size={13} className="flex-shrink-0 text-content-muted" />}
-                    <span className="truncate flex-1">{f.path}</span>
-                    <span className="text-[10px] text-content-muted flex-shrink-0">{kb(f.size)}</span>
-                  </button>
-                ))}
-              </>
-            )}
-          </div>
-
-          <div className="flex-1 min-w-0 flex flex-col">
-            <div className="flex items-center gap-2 px-5 py-2 border-b border-border text-xs text-content-muted">
-              <span className="font-mono truncate flex-1">{path}</span>
-              {(isMd || canTranslate) && (
-                <div className="flex rounded-md border border-border overflow-hidden">
-                  {([
-                    ...(isMd ? [['preview', '미리보기'], ['raw', '원문']] : [['preview', '원문']]),
-                    ...(canTranslate ? [['ko', '한글 번역']] : []),
-                  ] as [typeof mode, string][]).map(([m, label]) => (
-                    <button
-                      key={m}
-                      onClick={() => setMode(m)}
-                      className={`px-2.5 py-1 border-none cursor-pointer text-xs ${mode === m ? 'bg-surface-active text-content-primary' : 'bg-transparent text-content-secondary hover:text-content-primary'}`}
-                    >
-                      {label}
-                    </button>
-                  ))}
-                </div>
-              )}
-            </div>
-            <div className="flex-1 overflow-auto px-5 py-4">
-              {isLoading ? (
-                <div className="text-xs text-content-muted flex items-center gap-2"><Loader2 size={13} className="animate-spin" />불러오는 중...</div>
-              ) : isError ? (
-                <div className="text-xs text-accent-red">파일을 불러오지 못했습니다.</div>
-              ) : file?.binary ? (
-                <div className="text-xs text-content-muted">바이너리 파일이라 내용을 표시하지 않습니다 ({kb(file.size)}).</div>
-              ) : translating && ko.isFetching ? (
-                <div className="text-xs text-content-muted flex items-center gap-2"><Loader2 size={13} className="animate-spin" />한국어로 번역하는 중... (문서가 길면 30초 이상 걸릴 수 있습니다)</div>
-              ) : translating && ko.isError ? (
-                <div className="text-xs text-accent-red">
-                  번역하지 못했습니다.{' '}
-                  <button onClick={() => ko.refetch()} className="text-accent-primary border-none bg-transparent cursor-pointer underline">다시 시도</button>
-                </div>
-              ) : file ? (
-                <>
-                  {translating && (
-                    <div className="mb-3 text-xs text-content-muted flex items-center gap-2 flex-wrap">
-                      <span>
-                        {ko.data?.cached ? `저장된 번역입니다${ko.data.translated_at ? ` (${formatFullDateTime(ko.data.translated_at)})` : ''}.` : 'AI 가 번역한 내용입니다.'} 정확한 내용은 원문을 확인하세요.
-                        {ko.data?.truncated ? ' 문서가 길어 앞부분만 번역했습니다.' : ''}
-                      </span>
-                      <button onClick={retranslate} className="text-accent-primary border-none bg-transparent cursor-pointer underline text-xs">다시 번역</button>
-                    </div>
-                  )}
-                  {file.truncated && <div className="mb-3 text-xs text-accent-amber">파일이 커서 앞부분(200KB)만 표시합니다. 전체 {kb(file.size)}</div>}
-                  {parsed ? (
-                    <>
-                      {parsed.meta && (
-                        <pre className="mb-4 p-3 rounded-lg bg-surface-secondary border border-border text-xs font-mono text-content-secondary whitespace-pre-wrap break-words">{parsed.meta}</pre>
-                      )}
-                      <div className="skill-md text-sm text-content-primary leading-relaxed [&_h1]:text-lg [&_h1]:font-semibold [&_h1]:mt-4 [&_h2]:text-base [&_h2]:font-semibold [&_h2]:mt-4 [&_h3]:font-semibold [&_h3]:mt-3 [&_p]:my-2 [&_ul]:list-disc [&_ul]:pl-5 [&_ol]:list-decimal [&_ol]:pl-5 [&_code]:font-mono [&_code]:text-[12px] [&_code]:bg-surface-secondary [&_code]:px-1 [&_code]:rounded [&_pre]:bg-surface-secondary [&_pre]:border [&_pre]:border-border [&_pre]:rounded-lg [&_pre]:p-3 [&_pre]:overflow-auto [&_pre_code]:bg-transparent [&_pre_code]:p-0 [&_a]:text-accent-primary [&_table]:border-collapse [&_td]:border [&_td]:border-border [&_td]:px-2 [&_td]:py-1 [&_th]:border [&_th]:border-border [&_th]:px-2 [&_th]:py-1 [&_blockquote]:border-l-2 [&_blockquote]:border-border [&_blockquote]:pl-3 [&_blockquote]:text-content-secondary">
-                        <ReactMarkdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeSanitize]}>{parsed.body}</ReactMarkdown>
-                      </div>
-                    </>
-                  ) : (
-                    <pre className="text-xs font-mono text-content-secondary whitespace-pre-wrap break-words">{shown ?? file.content}</pre>
-                  )}
-                </>
-              ) : null}
-            </div>
-          </div>
-        </div>
+        <SkillBrowser skill={skill} />
       </div>
     </div>
   )

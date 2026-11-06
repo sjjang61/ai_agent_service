@@ -3,6 +3,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query'
 import CustomizeLayout from '../components/skills/CustomizeLayout'
 import { T } from '../components/skills/typography'
 import PageHeader from '../components/skills/PageHeader'
+import PluginDetailDialog from '../components/skills/PluginDetailDialog'
 import { GithubDialog, ItemCard, errorText } from '../components/skills/common'
 import { skillsApi } from '../api/skills'
 import type { Plugin } from '../types/skill'
@@ -37,6 +38,7 @@ export default function PluginsPage() {
     return ''
   }
 
+  const [detail, setDetail] = useState<Plugin | null>(null)
   const zipInput = useRef<HTMLInputElement>(null)
   const uploadZip = async (file: File) => {
     setNotice({ kind: 'ok', text: `'${file.name}' 올리는 중...` })
@@ -118,6 +120,7 @@ export default function PluginsPage() {
                 active={p.is_active}
                 onToggle={() => toggle(p)}
                 onDelete={() => remove(p)}
+                onOpen={() => setDetail(p)}
               />
             ))}
           </div>
@@ -132,6 +135,7 @@ export default function PluginsPage() {
           onClose={() => setDialog(false)}
         />
       )}
+      {detail && <PluginDetailDialog plugin={detail} onClose={() => setDetail(null)} />}
     </CustomizeLayout>
   )
 }
