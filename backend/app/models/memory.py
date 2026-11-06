@@ -40,6 +40,8 @@ class Memory(Base):
     memory_type = Column(String(20), nullable=False, default="semantic", index=True)
     occurred_at = Column(DateTime, nullable=True)  # episodic: 사건이 일어난 시점 (UTC naive)
     detail = Column(JSON, nullable=True)  # episodic: {situation, resolution, outcome}
+    # 유효기간이 있는 사실(여행·예약·마감 같은 일정): 이 시각(UTC naive)이 지나면 프롬프트에서 빠지고 정리된다. NULL 이면 영구
+    expires_at = Column(DateTime, nullable=True)
     conversation_id = Column(String(36), nullable=True)
     is_active = Column(Boolean, default=True)
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))

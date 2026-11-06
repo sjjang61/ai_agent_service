@@ -54,6 +54,8 @@ def _ensure_memory_columns(sync_conn) -> None:
         sync_conn.execute(text("ALTER TABLE memories ADD COLUMN occurred_at DATETIME NULL"))
     if "detail" not in cols:
         sync_conn.execute(text("ALTER TABLE memories ADD COLUMN detail JSON NULL"))
+    if "expires_at" not in cols:
+        sync_conn.execute(text("ALTER TABLE memories ADD COLUMN expires_at DATETIME NULL"))
 
 
 def _ensure_conversation_columns(sync_conn) -> None:

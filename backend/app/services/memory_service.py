@@ -1,6 +1,6 @@
 """Memory service for long-term (MySQL) and short-term (Redis) memory operations."""
 import re
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Dict, List, Optional
 
 import redis.asyncio as aioredis
@@ -27,6 +27,11 @@ def _utc_naive(dt: Optional[datetime]) -> Optional[datetime]:
 
 def _now() -> datetime:
     return datetime.now(timezone.utc).replace(tzinfo=None)
+
+
+def not_expired():
+    """유효기간이 없거나 아직 지나지 않은 메모리만."""
+    return or_(Memory.expires_at.is_(None), Memory.expires_at > _now())
 
 
 def effective_importance(m: Memory, now: Optional[datetime] = None) -> float:
@@ -85,6 +90,7 @@ class MemoryService:
         query = select(Memory).where(
             Memory.user_id == user_id,
             Memory.is_active == True,  # noqa: E712
+            not_expired(),
         )
 
         if params.category:
@@ -149,6 +155,7 @@ class MemoryService:
             memory_type=mtype,
             occurred_at=(_utc_naive(data.occurred_at) or _now()) if mtype == "episodic" else None,
             detail=data.detail.model_dump() if data.detail and mtype == "episodic" else None,
+            expires_at=_utc_naive(data.expires_at),
             category=data.category,
             key=data.key,
             value=data.value,
@@ -174,7 +181,7 @@ class MemoryService:
         if not memory:
             return None
         for k, v in data.model_dump(exclude_none=True).items():
-            setattr(memory, k, v)
+            setattr(memory, k, _utc_naive(v) if k == "expires_at" else v)
         await db.commit()
         await db.refresh(memory)
         return memory
@@ -204,6 +211,7 @@ class MemoryService:
         query = select(Memory).where(
             Memory.user_id == user_id,
             Memory.is_active == True,  # noqa: E712
+            not_expired(),
         )
         if categories:
             query = query.where(Memory.category.in_(categories))
@@ -219,7 +227,7 @@ class MemoryService:
         semantic/procedural 은 중요도 상위, episodic 은 현재 요청과 관련된 사례만."""
         rows = (
             await db.execute(
-                select(Memory).where(Memory.user_id == user_id, Memory.is_active == True)  # noqa: E712
+                select(Memory).where(Memory.user_id == user_id, Memory.is_active == True, not_expired())  # noqa: E712
                 .order_by(Memory.importance.desc(), Memory.updated_at.desc())
             )
         ).scalars().all()
@@ -231,6 +239,18 @@ class MemoryService:
             "procedural": by_type["procedural"][:MAX_PROCEDURES_IN_PROMPT],
             "episodic": rank_episodes(by_type["episodic"], query, MAX_EPISODES_IN_PROMPT),
         }
+
+    EXPIRED_GRACE_DAYS = 1
+
+    @staticmethod
+    async def prune_expired(user_id: str, db: AsyncSession) -> int:
+        """유효기간이 지난 지 EXPIRED_GRACE_DAYS 일이 넘은 메모리를 삭제한다 (그 전에는 목록·프롬프트에서만 빠진다)."""
+        cutoff = _now() - timedelta(days=MemoryService.EXPIRED_GRACE_DAYS)
+        result = await db.execute(
+            delete(Memory).where(Memory.user_id == user_id, Memory.expires_at.is_not(None), Memory.expires_at < cutoff)
+        )
+        await db.commit()
+        return result.rowcount or 0
 
     @staticmethod
     async def prune_stale_episodes(user_id: str, db: AsyncSession) -> int:
@@ -257,7 +277,10 @@ class MemoryService:
 class ShortTermMemoryService:
     """Short-term memory (Redis) operations with TTL."""
 
-    DEFAULT_TTL = 86400  # 24 hours
+    @staticmethod
+    def default_ttl() -> int:
+        """단기 메모리 유지 시간(초). 저장·갱신할 때마다 이 시간으로 다시 시작한다 (SHORT_TERM_MEMORY_TTL)."""
+        return settings.SHORT_TERM_MEMORY_TTL
 
     @staticmethod
     async def _get_redis() -> aioredis.Redis:
@@ -277,9 +300,10 @@ class ShortTermMemoryService:
         conversation_id: str,
         key: str,
         value: str,
-        ttl_seconds: int = DEFAULT_TTL,
+        ttl_seconds: Optional[int] = None,
     ):
         """Store a short-term memory with TTL."""
+        ttl_seconds = ttl_seconds or ShortTermMemoryService.default_ttl()
         redis = await ShortTermMemoryService._get_redis()
         try:
             full_key = ShortTermMemoryService._key(user_id, conversation_id, key)
@@ -336,6 +360,29 @@ class ShortTermMemoryService:
             return result
         finally:
             await redis.close()
+
+    @staticmethod
+    async def list_all(user_id: str) -> List[dict]:
+        """사용자의 모든 대화방에 걸친 단기 메모리: [{conversation_id, key, value, ttl}] (ttl: 남은 초, 없으면 None)."""
+        prefix = f"memory:short:index:{user_id}:"
+        redis = await ShortTermMemoryService._get_redis()
+        out: List[dict] = []
+        try:
+            async for raw in redis.scan_iter(match=prefix + "*", count=200):
+                index_key = raw.decode() if isinstance(raw, bytes) else raw
+                conversation_id = index_key[len(prefix):]
+                for k in await redis.smembers(index_key):
+                    key = k.decode()
+                    full = ShortTermMemoryService._key(user_id, conversation_id, key)
+                    value = await redis.get(full)
+                    if value is None:  # 만료돼 사라진 항목은 색인에서도 정리한다
+                        await redis.srem(index_key, key)
+                        continue
+                    ttl = await redis.ttl(full)
+                    out.append({"conversation_id": conversation_id, "key": key, "value": value.decode(), "ttl": ttl if ttl and ttl > 0 else None})
+        finally:
+            await redis.close()
+        return out
 
     @staticmethod
     async def delete(user_id: str, conversation_id: str, key: str):

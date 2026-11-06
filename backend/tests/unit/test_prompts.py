@@ -44,7 +44,7 @@ def test_placeholder_named_name_does_not_clash_with_the_prompt_name_argument():
 
 
 def test_json_braces_in_prompts_are_left_alone():
-    text = prompts.render("memory_extraction", user_message="u", agent_response="a", existing="e", max_items=3)
+    text = prompts.render("memory_extraction", user_message="u", agent_response="a", existing="e", max_items=3, today="2026-11-06")
     assert '[{"key": "..."' in text and "{{" not in text
 
 

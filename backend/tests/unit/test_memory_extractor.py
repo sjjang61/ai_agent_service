@@ -50,3 +50,34 @@ def test_episodic_requires_situation_and_resolution():
     assert [i["key"] for i in items] == ["n1_fix"]
     assert items[0]["detail"] == {"situation": "목록 API 가 느림", "resolution": "selectinload 적용", "outcome": "응답 8초→0.4초"}
     assert items[0]["category"] == "general"
+
+
+def test_valid_until_becomes_expiry_for_semantic_only():
+    from datetime import date, datetime
+
+    today = date(2026, 11, 6)
+    items = parse_items(
+        '[{"key":"trip","value":"12/3~12/9 오사카·교토 여행","type":"semantic","valid_until":"2026-12-09"},'
+        '{"key":"old","value":"지난 출장","type":"semantic","valid_until":"2026-10-01"},'
+        '{"key":"far","value":"먼 미래","type":"semantic","valid_until":"2099-01-01"},'
+        '{"key":"bad","value":"형식 오류","type":"semantic","valid_until":"곧"},'
+        '{"key":"tmp","value":"임시 맥락","type":"short","valid_until":"2026-12-09"},'
+        '{"key":"plain","value":"서울 거주","type":"semantic","valid_until":""}]',
+        today,
+    )
+    by = {i["key"]: i for i in items}
+    assert "old" not in by                                              # 이미 지난 일정은 저장하지 않는다
+    # 12/9 끝(=12/10 0시 KST = 12/9 15:00 UTC)에 만료
+    assert by["trip"]["expires_at"] == datetime(2026, 12, 9, 15, 0)
+    assert "expires_at" not in by["far"] and "expires_at" not in by["bad"] and "expires_at" not in by["plain"]   # 영구
+    assert "expires_at" not in by["tmp"]                                # short 에는 적용하지 않는다
+
+
+def test_expiry_from_edges():
+    from datetime import date
+
+    from app.services.memory_extractor import expiry_from
+
+    t = date(2026, 11, 6)
+    assert expiry_from("2026-11-06", t) is not None and expiry_from("2026-11-06", t) != "past"   # 오늘까지는 유효
+    assert expiry_from("2026-11-05", t) == "past" and expiry_from("", t) is None

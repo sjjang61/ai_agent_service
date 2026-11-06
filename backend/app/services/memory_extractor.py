@@ -3,7 +3,9 @@ import asyncio
 import json
 import logging
 import re
-from typing import List
+from datetime import date, datetime, time, timedelta, timezone
+from typing import List, Optional
+from zoneinfo import ZoneInfo
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -37,7 +39,30 @@ def _content_text(content) -> str:
     return str(content)
 
 
-def parse_items(text: str) -> list:
+MAX_VALID_DAYS = 800  # 유효기간 상한 (그보다 먼 날짜는 잘못 읽은 것으로 보고 무시)
+
+
+def _today() -> date:
+    return datetime.now(ZoneInfo(settings.SCHEDULER_DEFAULT_TIMEZONE)).date()
+
+
+def expiry_from(valid_until, today: Optional[date] = None):
+    """'YYYY-MM-DD' (그날 끝까지 유효) → 만료 시각(UTC naive). 형식이 틀리거나 너무 멀면 None(영구), 이미 지난 날짜면 'past'."""
+    today = today or _today()
+    try:
+        d = date.fromisoformat(str(valid_until).strip()[:10])
+    except ValueError:
+        return None
+    if d < today:
+        return "past"
+    if (d - today).days > MAX_VALID_DAYS:
+        return None
+    tz = ZoneInfo(settings.SCHEDULER_DEFAULT_TIMEZONE)
+    end = datetime.combine(d + timedelta(days=1), time.min, tzinfo=tz)  # 그날 24시(다음 날 0시)에 만료
+    return end.astimezone(timezone.utc).replace(tzinfo=None)
+
+
+def parse_items(text: str, today: Optional[date] = None) -> list:
     """LLM 응답에서 JSON 배열을 꺼내 검증한 항목 목록으로 돌려준다."""
     m = re.search(r"\[.*\]", text, re.DOTALL)
     if not m:
@@ -67,6 +92,13 @@ def parse_items(text: str) -> list:
         except (TypeError, ValueError):
             importance = 5
         item = {"key": key, "value": value, "type": mtype, "category": category, "importance": importance}
+        # 유효기간: 사실(semantic)에만 적용한다. 이미 끝난 일정은 저장하지 않는다.
+        if mtype == "semantic" and it.get("valid_until"):
+            exp = expiry_from(it["valid_until"], today)
+            if exp == "past":
+                continue
+            if exp:
+                item["expires_at"] = exp
         if mtype == "episodic":
             detail = {k: str(it.get(k) or "").strip()[:500] for k in ("situation", "resolution", "outcome")}
             if not detail["situation"] or not detail["resolution"] or _SECRET_RE.search(" ".join(detail.values())):
@@ -113,8 +145,9 @@ class MemoryExtractor:
                 saved.append({"key": it["key"], "value": it["value"], "memory_type": it["type"], "action": action})
         try:
             await MemoryService.prune_stale_episodes(user_id, db)
+            await MemoryService.prune_expired(user_id, db)
         except Exception as e:
-            logger.warning("[memory] 오래된 사례 정리 실패: %s", e)
+            logger.warning("[memory] 오래된 사례·만료된 메모리 정리 실패: %s", e)
         if saved:
             logger.info("[memory] 사용자 %s: %d건 저장 (%s)", user_id[:8], len(saved), ", ".join(f"{s['memory_type']}:{s['key']}" for s in saved))
         return saved
@@ -141,7 +174,7 @@ class MemoryExtractor:
             await MemoryService.update_memory(
                 user_id,
                 existing.id,
-                MemoryUpdate(value=it["value"], importance=it["importance"], detail=it.get("detail")),
+                MemoryUpdate(value=it["value"], importance=it["importance"], detail=it.get("detail"), expires_at=it.get("expires_at")),
                 db,
             )
             return "updated"
@@ -154,6 +187,7 @@ class MemoryExtractor:
                 importance=it["importance"],
                 memory_type=it["type"],
                 detail=it.get("detail"),
+                expires_at=it.get("expires_at"),
             ),
             db,
             source="auto_extracted",
@@ -173,9 +207,10 @@ class MemoryExtractor:
             agent_response=agent_response[:1500],
             existing="\n".join(f"- [{m.memory_type}] {m.key}: {m.value}" for m in existing) or "(없음)",
             max_items=MAX_ITEMS_PER_TURN,
+            today=_today().isoformat(),
         )
         resp = await asyncio.wait_for(llm.ainvoke(prompt), EXTRACTION_TIMEOUT_SECONDS)
-        return parse_items(_content_text(resp.content))
+        return parse_items(_content_text(resp.content), _today())
 
 
 async def maybe_extract_memories(

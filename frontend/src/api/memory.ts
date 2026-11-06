@@ -4,6 +4,7 @@ import type {
   MemoryCreate,
   MemoryUpdate,
   MemorySearchParams,
+  ShortTermItem,
   ShortTermMemory,
 } from '../types/memory'
 
@@ -21,6 +22,11 @@ export const memoryApi = {
   delete: (id: string) => apiClient.delete(`/memory/${id}`),
 
   // Short-term memory
+  listShortTermAll: () => apiClient.get<ShortTermItem[]>('/memory/short'),
+
+  deleteShortTerm: (conversationId: string, key: string) =>
+    apiClient.delete(`/memory/short/${conversationId}/${encodeURIComponent(key)}`),
+
   getShortTerm: (conversationId: string) =>
     apiClient.get<ShortTermMemory>(`/memory/short/${conversationId}`),
 

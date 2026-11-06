@@ -3,7 +3,8 @@ import { Search, Trash2, Edit2, Brain, Star, Tag } from 'lucide-react'
 import { useMemories, useDeleteMemory } from '../../hooks/useMemories'
 import { useMemoryStore } from '../../store/memoryStore'
 import MemoryForm from './MemoryForm'
-import { formatFullDate } from '../../utils/time'
+import ShortTermMemoryList from './ShortTermMemoryList'
+import { formatFullDate, formatMonthDay, parseServerDate } from '../../utils/time'
 import type { Memory, MemoryCategory, MemoryType } from '../../types/memory'
 
 const CATEGORY_LABELS: Record<
@@ -71,6 +72,7 @@ export default function MemoryList({ addTick = 0 }: { addTick?: number }) {
   const { isLoading, refetch } = useMemories(queryParams)
   const deleteMutation = useDeleteMemory()
 
+  const [shortTab, setShortTab] = useState(false) // '단기' 탭: 한 대화방에서만 쓰이는 임시 메모리 (Redis)
   const [showForm, setShowForm] = useState(false)
   const [editMemory, setEditMemory] = useState<Memory | null>(null)
 
@@ -102,9 +104,9 @@ export default function MemoryList({ addTick = 0 }: { addTick?: number }) {
           {TYPE_TABS.map((t) => (
             <button
               key={t.key ?? 'all'}
-              onClick={() => setSelectedType(t.key)}
+              onClick={() => { setShortTab(false); setSelectedType(t.key) }}
               className={`px-4 py-2 text-sm border-b-2 -mb-px transition-colors ${
-                selectedType === t.key
+                !shortTab && selectedType === t.key
                   ? 'border-accent-primary text-content-primary'
                   : 'border-transparent text-content-muted hover:text-content-primary'
               }`}
@@ -112,14 +114,32 @@ export default function MemoryList({ addTick = 0 }: { addTick?: number }) {
               {t.label}
             </button>
           ))}
+          <button
+            onClick={() => setShortTab(true)}
+            className={`px-4 py-2 text-sm border-b-2 -mb-px transition-colors ${
+              shortTab ? 'border-accent-primary text-content-primary' : 'border-transparent text-content-muted hover:text-content-primary'
+            }`}
+          >
+            단기 메모리
+          </button>
         </div>
-        {TYPE_TABS.find((t) => t.key === selectedType)?.hint && (
+        {shortTab ? (
           <p className="text-xs text-content-tertiary mt-2">
-            {TYPE_TABS.find((t) => t.key === selectedType)?.hint}
+            한 대화방에서만 쓰이는 임시 메모리입니다 (진행 중인 작업의 목표·결정 사항 등). 저장하거나 갱신한 뒤 일정 시간(기본 7일)이 지나면 자동으로 사라지고, 다른 대화에서는 쓰이지 않습니다.
           </p>
+        ) : (
+          TYPE_TABS.find((t) => t.key === selectedType)?.hint && (
+            <p className="text-xs text-content-tertiary mt-2">
+              {TYPE_TABS.find((t) => t.key === selectedType)?.hint}
+            </p>
+          )
         )}
       </div>
 
+      {shortTab ? (
+        <ShortTermMemoryList />
+      ) : (
+      <>
       {/* Search & Filter */}
       <div className="flex gap-3 flex-wrap">
         <div className="relative flex-1 min-w-[200px]">
@@ -194,6 +214,14 @@ export default function MemoryList({ addTick = 0 }: { addTick?: number }) {
                           className={`text-[10px] px-1.5 py-0.5 rounded border ${catStyle.color}`}
                         >
                           {catStyle.label}
+                        </span>
+                      )}
+                      {memory.expires_at && (
+                        <span
+                          className="text-[10px] px-1.5 py-0.5 rounded border bg-accent-amber/15 text-accent-amber border-accent-amber/30"
+                          title="이 날짜가 지나면 자동으로 사라집니다"
+                        >
+                          ~{formatMonthDay(new Date(parseServerDate(memory.expires_at).getTime() - 1000).toISOString())}까지
                         </span>
                       )}
                       {memory.memory_type === 'episodic' && memory.occurred_at && (
@@ -276,6 +304,8 @@ export default function MemoryList({ addTick = 0 }: { addTick?: number }) {
             </div>
           )}
         </div>
+      )}
+      </>
       )}
     </div>
   )

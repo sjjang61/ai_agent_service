@@ -29,6 +29,7 @@ class MemoryCreate(BaseModel):
     memory_type: Optional[MemoryType] = None  # None 이면 category 로 유추
     occurred_at: Optional[datetime] = None  # episodic 전용 (UTC)
     detail: Optional[EpisodeDetail] = None  # episodic 전용
+    expires_at: Optional[datetime] = None  # 유효기간 끝 (UTC). 지나면 사라진다. 없으면 영구
     category: MemoryCategory = "general"
     key: str = Field(..., min_length=1, max_length=200)
     value: str = Field(..., min_length=1)
@@ -47,6 +48,7 @@ class MemoryUpdate(BaseModel):
     tags: Optional[List[str]] = None
     importance: Optional[int] = Field(default=None, ge=1, le=10)
     is_active: Optional[bool] = None
+    expires_at: Optional[datetime] = None
 
 
 class MemoryResponse(BaseModel):
@@ -57,6 +59,7 @@ class MemoryResponse(BaseModel):
     memory_type: str = "semantic"
     occurred_at: Optional[datetime] = None
     detail: Optional[EpisodeDetail] = None
+    expires_at: Optional[datetime] = None
     key: str
     value: str
     tags: List[str]
@@ -84,3 +87,13 @@ class ShortTermMemoryResponse(BaseModel):
 
     conversation_id: str
     memories: dict
+
+
+class ShortTermItem(BaseModel):
+    """전체 대화방의 단기 메모리 한 항목"""
+
+    conversation_id: str
+    conversation_title: Optional[str] = None
+    key: str
+    value: str
+    expires_in_seconds: Optional[int] = None  # 남은 유지 시간 (없으면 None)

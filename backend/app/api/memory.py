@@ -12,6 +12,7 @@ from app.schemas.memory import (
     MemoryUpdate,
     MemoryResponse,
     MemorySearchParams,
+    ShortTermItem,
     ShortTermMemoryResponse,
 )
 from app.services.memory_service import MemoryService, ShortTermMemoryService
@@ -28,6 +29,7 @@ def _to_response(memory) -> MemoryResponse:
         memory_type=memory.memory_type or "semantic",
         occurred_at=aware(memory.occurred_at),
         detail=memory.detail or None,
+        expires_at=aware(memory.expires_at),
         key=memory.key,
         value=memory.value,
         tags=memory.tags or [],
@@ -122,6 +124,43 @@ async def delete_memory(
 
 
 # Short-term memory endpoints
+
+
+@router.get("/short", response_model=List[ShortTermItem])
+async def list_all_short_term_memories(
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_session),
+):
+    """사용자의 모든 대화방의 단기 메모리 (대화 제목·남은 유지 시간 포함). 대화방 최근 사용 순."""
+    from sqlalchemy import select
+
+    from app.models.conversation import Conversation
+
+    items = await ShortTermMemoryService.list_all(current_user.id)
+    ids = {i["conversation_id"] for i in items}
+    convs = {}
+    if ids:
+        rows = (await db.execute(select(Conversation.id, Conversation.title, Conversation.updated_at).where(
+            Conversation.id.in_(ids), Conversation.user_id == current_user.id))).all()
+        convs = {r[0]: (r[1], r[2]) for r in rows}
+    items = [i for i in items if i["conversation_id"] in convs]  # 삭제됐거나 남의 대화방 항목은 보이지 않는다
+    items.sort(key=lambda i: (convs[i["conversation_id"]][1], i["key"]), reverse=True)
+    return [
+        ShortTermItem(conversation_id=i["conversation_id"], conversation_title=convs[i["conversation_id"]][0],
+                      key=i["key"], value=i["value"], expires_in_seconds=i["ttl"])
+        for i in items
+    ]
+
+
+@router.delete("/short/{conversation_id}/{key}")
+async def delete_short_term_memory(
+    conversation_id: str,
+    key: str,
+    current_user: User = Depends(get_current_user),
+):
+    """대화방의 단기 메모리 한 항목을 지운다."""
+    await ShortTermMemoryService.delete(current_user.id, conversation_id, key)
+    return {"status": "deleted"}
 
 
 @router.get("/short/{conversation_id}", response_model=ShortTermMemoryResponse)

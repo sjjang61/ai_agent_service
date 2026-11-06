@@ -16,6 +16,8 @@ export interface Memory {
   memory_type: MemoryType
   occurred_at: string | null
   detail: EpisodeDetail | null
+  /** 유효기간 끝(UTC). 지나면 사라진다. 없으면 영구 */
+  expires_at?: string | null
   key: string
   value: string
   tags: string[]
@@ -60,4 +62,14 @@ export interface MemorySearchParams {
 export interface ShortTermMemory {
   conversation_id: string
   memories: Record<string, string>
+}
+
+/** 전체 대화방의 단기 메모리 한 항목 */
+export interface ShortTermItem {
+  conversation_id: string
+  conversation_title: string | null
+  key: string
+  value: string
+  /** 남은 유지 시간(초). 없으면 null */
+  expires_in_seconds: number | null
 }
