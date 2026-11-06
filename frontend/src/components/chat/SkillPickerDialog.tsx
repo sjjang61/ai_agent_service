@@ -30,8 +30,9 @@ function Switch({ on, busy, onChange, label }: { on: boolean; busy: boolean; onC
 /**
  * 스킬 저장소: custom 스킬 목록. 켜져 있는 스킬은 현재 sandbox 에 설치(로드)된 것이다.
  * 끈 스킬을 켜면 현재 sandbox 에 동적으로 설치하고(꺼져 있으면 sandbox 를 시작·복구), 끄면 현재 sandbox 에서 제거한다.
+ * conversationId 가 없으면(스킬 메뉴에서 열 때) 사용자 공용 sandbox 가 대상이다.
  */
-export default function SkillPickerDialog({ conversationId, onClose }: { conversationId: string; onClose: () => void }) {
+export default function SkillPickerDialog({ conversationId, onClose }: { conversationId?: string | null; onClose: () => void }) {
   const qc = useQueryClient()
   const [query, setQuery] = useState('')
   const [filter, setFilter] = useState<'all' | 'loaded' | 'unloaded'>('all')
@@ -46,7 +47,7 @@ export default function SkillPickerDialog({ conversationId, onClose }: { convers
     return () => window.removeEventListener('keydown', onKey)
   }, [onClose])
 
-  const key = ['sandbox-skills', conversationId]
+  const key = ['sandbox-skills', conversationId ?? 'shared']
   const { data, isLoading, isError } = useQuery<SandboxSkillList>({
     queryKey: key,
     queryFn: async () => (await skillsApi.sandboxList(conversationId)).data,
@@ -88,7 +89,7 @@ export default function SkillPickerDialog({ conversationId, onClose }: { convers
       >
         <div className="flex items-center gap-3 px-6 pt-5 pb-3">
           <span className="w-9 h-9 rounded-lg bg-surface-tertiary flex items-center justify-center"><Puzzle size={18} className="text-content-primary" /></span>
-          <h2 className="text-[16px] font-semibold text-content-primary">스킬 저장소</h2>
+          <h2 className="text-[16px] font-semibold text-content-primary">스킬 저장소{!conversationId && <span className="ml-2 text-xs font-normal text-content-tertiary">공용 sandbox</span>}</h2>
           <Link to="/skills" title="스킬 메뉴에서 관리" onClick={onClose} className="text-content-tertiary hover:text-content-primary"><ExternalLink size={15} /></Link>
           <div className="flex-1" />
           <button onClick={onClose} aria-label="닫기" className="text-content-tertiary hover:text-content-primary border-none bg-transparent cursor-pointer"><X size={18} /></button>
@@ -123,7 +124,7 @@ export default function SkillPickerDialog({ conversationId, onClose }: { convers
         </div>
 
         <p className="px-6 pb-2 text-xs text-content-muted">
-          custom 스킬은 자동 설치되지 않습니다. 켜면 현재 sandbox 에 설치하고(꺼져 있으면 시작·복구), 끄면 제거합니다.
+          custom 스킬은 자동 설치되지 않습니다. 켜면 {conversationId ? '현재 대화의' : '사용자 공용'} sandbox 에 설치하고(꺼져 있으면 시작·복구), 끄면 제거합니다.
           {data && ` 현재 ${loadedCount}개 로드됨${data.sandbox_running ? '' : ' · sandbox 가 꺼져 있음'}`}
         </p>
         {error && <p className="px-6 pb-2 text-xs text-accent-red">{error}</p>}

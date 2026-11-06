@@ -5,6 +5,8 @@ import { T } from '../components/skills/typography'
 import PageHeader from '../components/skills/PageHeader'
 import AddSkillDialog from '../components/skills/AddSkillDialog'
 import SkillDetailDialog from '../components/skills/SkillDetailDialog'
+import SkillPickerDialog from '../components/chat/SkillPickerDialog'
+import { Puzzle } from 'lucide-react'
 import { GithubDialog, ItemCard, errorText } from '../components/skills/common'
 import { skillsApi } from '../api/skills'
 import type { Skill, SkillCreateInput, SkillType } from '../types/skill'
@@ -21,6 +23,7 @@ export default function SkillsPage() {
   const [source, setSource] = useState<'all' | 'personal' | string>('all') // string = plugin_id
   const [dialog, setDialog] = useState<'github' | 'custom' | null>(null)
   const [detail, setDetail] = useState<Skill | null>(null)
+  const [pickerOpen, setPickerOpen] = useState(false)
   const [typeFilter, setTypeFilter] = useState<'all' | SkillType>('all')
   const [newType, setNewType] = useState<SkillType>('builtin') // 새로 추가하는 스킬의 타입
   const [expanded, setExpanded] = useState(false)
@@ -156,6 +159,14 @@ export default function SkillsPage() {
             커스텀 <span className="text-[12px] text-content-tertiary">{skills.filter((s) => s.skill_type === 'custom').length}</span>
           </button>
           <div className="flex-1" />
+          <button
+            onClick={() => setPickerOpen(true)}
+            title="custom 스킬을 사용자 공용 sandbox 에 설치·제거합니다 (대화 입력창의 스킬 버튼과 같은 화면)"
+            className="flex items-center gap-1.5 px-3 py-1.5 mr-2 rounded-md border border-border bg-transparent text-[12px] text-content-secondary hover:text-content-primary hover:bg-surface-hover cursor-pointer"
+          >
+            <Puzzle size={14} />
+            custom 스킬 sandbox 설정
+          </button>
           <label className="flex items-center gap-1.5 text-[12px] text-content-tertiary" title="새로 추가하는 스킬(GitHub·ZIP·직접 추가)에 지정되는 타입. 추가한 뒤에는 스킬 상세에서 바꿀 수 있습니다.">
             새 스킬 타입
             <select
@@ -209,6 +220,7 @@ export default function SkillsPage() {
           onClose={() => setDialog(null)}
         />
       )}
+      {pickerOpen && <SkillPickerDialog onClose={() => setPickerOpen(false)} />}
       {detail && <SkillDetailDialog skill={detail} onClose={() => setDetail(null)} />}
       {dialog === 'custom' && <AddSkillDialog onCreate={create} onClose={() => setDialog(null)} />}
     </CustomizeLayout>
