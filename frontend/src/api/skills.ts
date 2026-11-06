@@ -16,6 +16,11 @@ export const skillsApi = {
   remove: (id: string) => apiClient.delete(`/skills/${id}`),
 
   listPlugins: () => apiClient.get('/skills/plugins'),
+  uploadPluginZip: (file: File) => {
+    const form = new FormData()
+    form.append('file', file)
+    return apiClient.post('/skills/plugins/upload', form, { headers: { 'Content-Type': undefined }, timeout: 120000 })
+  },
   installPlugin: (url: string) => apiClient.post('/skills/plugins/install', { url }),
   setPluginActive: (id: string, is_active: boolean) =>
     apiClient.post(`/skills/plugins/${id}/active`, { is_active }),

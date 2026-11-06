@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import CustomizeLayout from '../components/skills/CustomizeLayout'
 import { T } from '../components/skills/typography'
@@ -26,13 +26,25 @@ export default function PluginsPage() {
   const q = query.trim().toLowerCase()
   const visible = plugins.filter((p) => !q || p.name.toLowerCase().includes(q) || (p.description ?? '').toLowerCase().includes(q))
 
-  const install = async (url: string) => {
-    const res = await skillsApi.installPlugin(url)
+  const report = (data: { installed: Plugin[]; skills: unknown[]; sandbox_synced: boolean; sandbox_error?: string | null }) => {
     refresh()
-    const names = (res.data.installed as Plugin[]).map((p) => p.name).join(', ')
-    const base = `설치됨: ${names} (스킬 ${res.data.skills.length}개)`
-    setNotice(res.data.sandbox_synced ? { kind: 'ok', text: base } : { kind: 'err', text: `${base} — sandbox 복사 실패: ${res.data.sandbox_error ?? '알 수 없는 오류'}` })
+    const base = `설치됨: ${data.installed.map((p) => p.name).join(', ')} (스킬 ${data.skills.length}개)`
+    setNotice(data.sandbox_synced ? { kind: 'ok', text: base } : { kind: 'err', text: `${base} — sandbox 복사 실패: ${data.sandbox_error ?? '알 수 없는 오류'}` })
+  }
+
+  const install = async (url: string) => {
+    report((await skillsApi.installPlugin(url)).data)
     return ''
+  }
+
+  const zipInput = useRef<HTMLInputElement>(null)
+  const uploadZip = async (file: File) => {
+    setNotice({ kind: 'ok', text: `'${file.name}' 올리는 중...` })
+    try {
+      report((await skillsApi.uploadPluginZip(file)).data)
+    } catch (err) {
+      setNotice({ kind: 'err', text: errorText(err, 'zip 파일을 설치하지 못했습니다') })
+    }
   }
 
   const toggle = async (p: Plugin) => {
@@ -64,7 +76,21 @@ export default function PluginsPage() {
         placeholder="플러그인 검색"
         onRefresh={() => refetch()}
         refreshing={isFetching}
-        addItems={[{ label: 'GitHub 에서 추가', hint: 'plugin.json 또는 marketplace.json 이 있는 저장소', onClick: () => setDialog(true) }]}
+        addItems={[
+          { label: 'GitHub 에서 추가', hint: 'plugin.json 또는 marketplace.json 이 있는 저장소', onClick: () => setDialog(true) },
+          { label: 'ZIP 파일로 추가', hint: '.claude-plugin/plugin.json 이 있는 플러그인을 압축한 파일', onClick: () => zipInput.current?.click() },
+        ]}
+      />
+      <input
+        ref={zipInput}
+        type="file"
+        accept=".zip,application/zip"
+        className="hidden"
+        onChange={(e) => {
+          const f = e.target.files?.[0]
+          e.target.value = ''
+          if (f) uploadZip(f)
+        }}
       />
       <div className="flex-1 overflow-y-auto px-8 pb-10">
         {notice && (
@@ -79,7 +105,7 @@ export default function PluginsPage() {
           <div className="text-content-tertiary text-sm py-12 text-center">불러오는 중...</div>
         ) : visible.length === 0 ? (
           <div className="text-content-muted text-sm py-12 text-center">
-            {plugins.length === 0 ? '설치된 플러그인이 없습니다. 오른쪽 위 “추가” 로 GitHub 저장소에서 설치하세요.' : '조건에 맞는 플러그인이 없습니다.'}
+            {plugins.length === 0 ? '설치된 플러그인이 없습니다. 오른쪽 위 “추가” 로 GitHub 저장소나 ZIP 파일에서 설치하세요.' : '조건에 맞는 플러그인이 없습니다.'}
           </div>
         ) : (
           <div className="grid grid-cols-1 xl:grid-cols-2 gap-x-6">

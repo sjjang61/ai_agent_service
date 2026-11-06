@@ -274,7 +274,8 @@ def _normalize_upload_zip(data: bytes, stem: str) -> bytes:
     if not infos:
         raise HTTPException(404, "SKILL.md 를 찾을 수 없습니다")
     tops = {PurePosixPath(i.filename).parts[0] for i in infos}
-    root_skill = any(i.filename == "SKILL.md" for i in infos)
+    # 루트에 SKILL.md 나 .claude-plugin/ 이 바로 있으면(최상위 폴더 없이 압축한 경우) 한 폴더로 감싼다
+    root_skill = any(i.filename == "SKILL.md" or i.filename.startswith(".claude-plugin/") for i in infos)
     wrap = stem if root_skill else ("upload" if len(tops) > 1 else "")
     out = io.BytesIO()
     with zipfile.ZipFile(out, "w", zipfile.ZIP_DEFLATED) as dst:
@@ -500,6 +501,23 @@ class SkillService:
     ) -> tuple[list[Plugin], list[Skill], Optional[str]]:
         g = parse_github_url(url)
         data = await _download_zip(g)
+        return await SkillService._install_plugins_from_zip(user_id, data, g, url, db)
+
+    @staticmethod
+    async def install_plugin_zip(
+        user_id: str, filename: str, data: bytes, db: AsyncSession
+    ) -> tuple[list[Plugin], list[Skill], Optional[str]]:
+        """업로드한 zip(.claude-plugin/plugin.json 또는 marketplace.json 이 있는 플러그인)을 설치한다."""
+        stem = _safe_name(Path(filename or "plugin").stem) or "plugin"
+        norm = await asyncio.to_thread(_normalize_upload_zip, data, stem)
+        return await SkillService._install_plugins_from_zip(
+            user_id, norm, GithubRef("", stem, None, ""), f"upload:{filename}"[:500], db
+        )
+
+    @staticmethod
+    async def _install_plugins_from_zip(
+        user_id: str, data: bytes, g: GithubRef, url: str, db: AsyncSession
+    ) -> tuple[list[Plugin], list[Skill], Optional[str]]:
         found = await asyncio.to_thread(_find_plugins, data, g)
         dest_root = Path(settings.SKILLS_DIR) / user_id
 

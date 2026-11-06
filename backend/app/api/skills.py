@@ -99,6 +99,30 @@ async def install_plugin(
     )
 
 
+@router.post("/plugins/upload", response_model=PluginInstallResponse)
+async def upload_plugin_zip(
+    file: UploadFile = File(...),
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_session),
+):
+    """zip 파일로 플러그인 설치 (.claude-plugin/plugin.json 또는 marketplace.json 포함)"""
+    name = file.filename or "plugin.zip"
+    if not name.lower().endswith(".zip"):
+        raise HTTPException(400, ".zip 파일만 올릴 수 있습니다")
+    limit = settings.SKILL_MAX_DOWNLOAD_MB * 1024 * 1024
+    data = await file.read(limit + 1)
+    if len(data) > limit:
+        raise HTTPException(413, f"파일이 너무 큽니다 (최대 {settings.SKILL_MAX_DOWNLOAD_MB}MB)")
+    plugins, skills, sandbox_error = await SkillService.install_plugin_zip(current_user.id, name, data, db)
+    owners = _owner_map(plugins)
+    return PluginInstallResponse(
+        installed=[_plugin_response(p) for p in plugins],
+        skills=[_to_response(s, owners) for s in skills],
+        sandbox_synced=sandbox_error is None,
+        sandbox_error=sandbox_error,
+    )
+
+
 @router.post("/plugins/{plugin_id}/active", response_model=PluginResponse)
 async def set_plugin_active(
     plugin_id: str,

@@ -57,3 +57,38 @@ def test_bad_zip_and_path_escape(tmp_path):
     r = _install({"../evil/SKILL.md": MD, "ok/SKILL.md": MD.replace("my-skill", "ok-skill")}, tmp_path)
     assert [x["name"] for x in r] == ["ok-skill"]
     assert not (tmp_path.parent / "evil").exists()
+
+
+PJ = '{"name": "my-plugin", "description": "테스트 플러그인", "version": "1.2.0"}'
+
+
+def _plugin(files: dict, tmp_path, stem="plug"):
+    from app.services.skill_service import _find_plugins
+
+    norm = _normalize_upload_zip(_zip(files), stem)
+    g = GithubRef("", stem, None, "")
+    found = _find_plugins(norm, g)
+    return found, [_extract_skills(norm, g, tmp_path, pl["root"]) for pl in found]
+
+
+def test_plugin_zip_root_level(tmp_path):
+    found, skills = _plugin({
+        ".claude-plugin/plugin.json": PJ,
+        "skills/a/SKILL.md": MD.replace("my-skill", "a-skill"),
+        "skills/b/SKILL.md": MD.replace("my-skill", "b-skill"),
+    }, tmp_path)
+    assert [(f["name"], f["version"]) for f in found] == [("my-plugin", "1.2.0")]
+    assert sorted(x["name"] for x in skills[0]) == ["a-skill", "b-skill"]
+
+
+def test_plugin_zip_inside_folder(tmp_path):
+    found, skills = _plugin({"myplug/.claude-plugin/plugin.json": PJ, "myplug/skills/a/SKILL.md": MD}, tmp_path)
+    assert found[0]["name"] == "my-plugin" and skills[0][0]["name"] == "my-skill"
+
+
+def test_not_a_plugin():
+    from app.services.skill_service import _find_plugins
+
+    with pytest.raises(HTTPException) as e:
+        _find_plugins(_normalize_upload_zip(_zip({"x/SKILL.md": MD}), "x"), GithubRef("", "x", None, ""))
+    assert e.value.status_code == 404
