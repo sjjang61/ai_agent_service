@@ -172,10 +172,11 @@ async def browser_live(websocket: WebSocket):
                     f = await daemon_post(cid, {"cmd": "frame"}, timeout=20)
                 if not f.get("ok"):
                     continue
-                digest = hashlib.md5(f["img"].encode()).hexdigest()
+                focus = f.get("focus")
+                digest = hashlib.md5((f["img"] + repr(focus)).encode()).hexdigest()
                 if digest != last:
                     last = digest
-                    await send({"t": "frame", "img": f["img"], "url": f.get("url", ""), "title": f.get("title", "")})
+                    await send({"t": "frame", "img": f["img"], "url": f.get("url", ""), "title": f.get("title", ""), "focus": focus})
             except (WebSocketDisconnect, RuntimeError):
                 return
             except Exception:

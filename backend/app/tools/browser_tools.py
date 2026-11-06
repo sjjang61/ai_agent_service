@@ -21,7 +21,7 @@ from app.config import settings
 DAEMON_PATH = "/tmp/_browser_daemon.py"
 STATE_PATH = "/tmp/_browser_state.json"  # 저장된 로그인 상태. 데몬이 읽자마자 지운다
 DAEMON_PORT = 9333
-DAEMON_VERSION = 2
+DAEMON_VERSION = 3
 LOGIN_TIMEOUT_SECONDS = 600
 
 DAEMON_SOURCE = r'''
@@ -30,7 +30,7 @@ from http.server import BaseHTTPRequestHandler, HTTPServer
 from urllib.parse import urlparse
 from playwright.sync_api import sync_playwright
 
-PORT, IDLE_SECONDS, VERSION = 9333, 900, 2
+PORT, IDLE_SECONDS, VERSION = 9333, 900, 3
 STATE_PATH = "/tmp/_browser_state.json"
 SHOT_DIR = "/workspace/browser"
 
@@ -56,6 +56,18 @@ SNAP_JS = """() => {
     if (n >= 120) break;
   }
   return {elements: out, text: (document.body.innerText || '').slice(0, 3000)};
+}"""
+
+FOCUS_JS = """() => {
+  const el = document.activeElement;
+  if (!el || el === document.body) return null;
+  const t = (el.type || '').toLowerCase();
+  const editable = el.tagName === 'TEXTAREA' || el.isContentEditable || el.tagName === 'IFRAME' ||
+    (el.tagName === 'INPUT' && !['button','submit','checkbox','radio','reset','image','file','range','color'].includes(t));
+  if (!editable) return null;
+  const r = el.getBoundingClientRect();
+  if (r.width < 2 || r.height < 2) return null;
+  return {x: r.x, y: r.y, w: r.width, h: r.height, password: t === 'password'};
 }"""
 
 _cache = {}
@@ -118,7 +130,9 @@ def handle(c):
     if cmd == "export_state": return {"ok": True, "state": ctx.storage_state()}
     if cmd == "frame":
         raw = page.screenshot(type="jpeg", quality=int(c.get("quality") or 55))
-        return {"ok": True, "img": base64.b64encode(raw).decode(), "url": page.url, "title": page.title()}
+        try: focus = page.evaluate(FOCUS_JS)
+        except Exception: focus = None
+        return {"ok": True, "img": base64.b64encode(raw).decode(), "url": page.url, "title": page.title(), "focus": focus}
     if cmd == "mouse":   # 사용자의 직접 조작 (로그인 화면)
         x, y = float(c["x"]), float(c["y"])
         page.mouse.click(x, y, button=c.get("button") or "left", click_count=int(c.get("count") or 1))

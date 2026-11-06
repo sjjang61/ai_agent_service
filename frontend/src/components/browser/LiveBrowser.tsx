@@ -37,6 +37,9 @@ export default function LiveBrowser({ conversationId, initialUrl, doneLabel, onD
   const [pageUrl, setPageUrl] = useState('')
   const [addr, setAddr] = useState('')
   const [saving, setSaving] = useState(false)
+  // 브라우저에서 현재 선택된 입력란(뷰포트 좌표)과, 키보드 입력이 이 창으로 전달되는 상태인지
+  const [focus, setFocus] = useState<{ x: number; y: number; w: number; h: number; password: boolean } | null>(null)
+  const [kbd, setKbd] = useState(false)
 
   const send = useCallback((obj: Record<string, unknown>) => {
     const ws = wsRef.current
@@ -59,6 +62,7 @@ export default function LiveBrowser({ conversationId, initialUrl, doneLabel, onD
       } else if (m.t === 'frame') {
         setFrame(m.img)
         setPageUrl(m.url)
+        setFocus(m.focus ?? null)
         setAddr((a) => (document.activeElement?.id === 'live-addr' ? a : m.url))
       } else if (m.t === 'saved') {
         doneRef.current()
@@ -134,8 +138,25 @@ export default function LiveBrowser({ conversationId, initialUrl, doneLabel, onD
                 onContextMenu={(e) => { e.preventDefault(); send({ t: 'click', ...toViewport(e), button: 'right' }) }}
                 onWheel={(e) => send({ t: 'wheel', ...toViewport(e), dy: e.deltaY })}
               />
+              {focus && (
+                <div
+                  className={`absolute pointer-events-none rounded-[3px] border-2 ${kbd ? 'border-accent-primary animate-pulse' : 'border-accent-primary/40'}`}
+                  style={{
+                    left: `${(focus.x / VIEW_W) * 100}%`,
+                    top: `${(focus.y / VIEW_H) * 100}%`,
+                    width: `${(focus.w / VIEW_W) * 100}%`,
+                    height: `${(focus.h / VIEW_H) * 100}%`,
+                    boxShadow: kbd ? '0 0 0 3px rgba(59,130,246,0.25)' : undefined,
+                  }}
+                />
+              )}
+              <div className={`absolute left-2 bottom-2 px-2 py-1 rounded-md text-xs pointer-events-none ${focus && kbd ? 'bg-accent-primary text-white' : 'bg-black/60 text-white/90'}`}>
+                {focus && kbd ? (focus.password ? '● 비밀번호 입력 중' : '● 입력 중') : focus ? '입력란 선택됨 · 화면을 클릭하면 입력됩니다' : '입력란을 클릭하세요'}
+              </div>
               <textarea
                 ref={inputRef}
+                onFocus={() => setKbd(true)}
+                onBlur={() => setKbd(false)}
                 aria-label="브라우저 입력"
                 autoFocus
                 className="absolute left-0 top-0 w-px h-px opacity-0 pointer-events-none"
