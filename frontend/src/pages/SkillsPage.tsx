@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useMemo, useRef, useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import CustomizeLayout from '../components/skills/CustomizeLayout'
 import { T } from '../components/skills/typography'
@@ -46,6 +46,18 @@ export default function SkillsPage() {
     refresh()
     syncNote(res.data.sandbox_synced, res.data.sandbox_error, `설치됨: ${(res.data.installed as Skill[]).map((s) => s.name).join(', ')}`)
     return ''
+  }
+
+  const zipInput = useRef<HTMLInputElement>(null)
+  const uploadZip = async (file: File) => {
+    setNotice({ kind: 'ok', text: `'${file.name}' 올리는 중...` })
+    try {
+      const res = await skillsApi.uploadZip(file)
+      refresh()
+      syncNote(res.data.sandbox_synced, res.data.sandbox_error, `설치됨: ${(res.data.installed as Skill[]).map((s) => s.name).join(', ')}`)
+    } catch (err) {
+      setNotice({ kind: 'err', text: errorText(err, 'zip 파일을 설치하지 못했습니다') })
+    }
   }
 
   const create = async (input: SkillCreateInput) => {
@@ -98,8 +110,21 @@ export default function SkillsPage() {
         onSettings={{ title: '설치된 스킬을 sandbox 로 다시 복사', run: resync }}
         addItems={[
           { label: 'GitHub 에서 추가', hint: '저장소/폴더 URL 로 설치', onClick: () => setDialog('github') },
+          { label: 'ZIP 파일로 추가', hint: 'SKILL.md 가 있는 폴더를 압축한 파일', onClick: () => zipInput.current?.click() },
           { label: '직접 추가', hint: 'SKILL.md 를 작성하거나 파일로 불러오기', onClick: () => setDialog('custom') },
         ]}
+      />
+
+      <input
+        ref={zipInput}
+        type="file"
+        accept=".zip,application/zip"
+        className="hidden"
+        onChange={(e) => {
+          const f = e.target.files?.[0]
+          e.target.value = '' // 같은 파일을 다시 고를 수 있게 비운다
+          if (f) uploadZip(f)
+        }}
       />
 
       <div className="flex-1 overflow-y-auto px-8 pb-10">
@@ -124,7 +149,7 @@ export default function SkillsPage() {
           <div className="text-content-tertiary text-sm py-12 text-center">불러오는 중...</div>
         ) : visible.length === 0 ? (
           <div className="text-content-muted text-sm py-12 text-center">
-            {skills.length === 0 ? '설치된 스킬이 없습니다. 오른쪽 위 “추가” 로 GitHub 에서 설치하거나 직접 만들 수 있습니다.' : '조건에 맞는 스킬이 없습니다.'}
+            {skills.length === 0 ? '설치된 스킬이 없습니다. 오른쪽 위 “추가” 로 GitHub·ZIP 파일에서 설치하거나 직접 만들 수 있습니다.' : '조건에 맞는 스킬이 없습니다.'}
           </div>
         ) : (
           <>

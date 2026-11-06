@@ -1,6 +1,6 @@
 from typing import List
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.session import get_session
@@ -18,6 +18,7 @@ from app.schemas.skill import (
     SkillResponse,
     SkillSyncResponse,
 )
+from app.config import settings
 from app.services.skill_service import SkillService
 
 router = APIRouter()
@@ -137,6 +138,28 @@ async def install_skill(
     db: AsyncSession = Depends(get_session),
 ):
     skills, sandbox_error = await SkillService.install(current_user.id, data.url, db)
+    return SkillInstallResponse(
+        installed=[_to_response(s) for s in skills],
+        sandbox_synced=sandbox_error is None,
+        sandbox_error=sandbox_error,
+    )
+
+
+@router.post("/upload", response_model=SkillInstallResponse)
+async def upload_skill_zip(
+    file: UploadFile = File(...),
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_session),
+):
+    """zip 파일로 skill 설치 (SKILL.md 가 있는 폴더를 압축한 파일. 폴더 여러 개도 가능)"""
+    name = file.filename or "skill.zip"
+    if not name.lower().endswith(".zip"):
+        raise HTTPException(400, ".zip 파일만 올릴 수 있습니다")
+    limit = settings.SKILL_MAX_DOWNLOAD_MB * 1024 * 1024
+    data = await file.read(limit + 1)
+    if len(data) > limit:
+        raise HTTPException(413, f"파일이 너무 큽니다 (최대 {settings.SKILL_MAX_DOWNLOAD_MB}MB)")
+    skills, sandbox_error = await SkillService.install_zip(current_user.id, name, data, db)
     return SkillInstallResponse(
         installed=[_to_response(s) for s in skills],
         sandbox_synced=sandbox_error is None,

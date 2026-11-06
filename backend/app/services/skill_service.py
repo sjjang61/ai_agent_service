@@ -248,6 +248,43 @@ def _find_plugins(data: bytes, g: GithubRef) -> list[dict]:
     return out
 
 
+MAX_UPLOAD_ENTRIES = 5000
+
+
+def _normalize_upload_zip(data: bytes, stem: str) -> bytes:
+    """업로드한 zip 을 GitHub zipball 과 같은 모양(단일 최상위 폴더)으로 정리한다.
+    macOS 잡파일·위험한 경로를 제거하고, 크기를 제한하며, SKILL.md 가 루트에 있거나 폴더가 여럿이면 한 폴더로 감싼다."""
+    try:
+        src = zipfile.ZipFile(io.BytesIO(data))
+    except zipfile.BadZipFile as e:
+        raise HTTPException(400, "올바른 zip 파일이 아닙니다") from e
+    max_extract = settings.SKILL_MAX_EXTRACT_MB * 1024 * 1024
+    infos = []
+    for i in src.infolist():
+        if i.is_dir():
+            continue
+        parts = PurePosixPath(i.filename).parts
+        if i.filename.startswith("/") or ".." in parts or "__MACOSX" in parts or parts[-1] == ".DS_Store":
+            continue
+        infos.append(i)
+    if len(infos) > MAX_UPLOAD_ENTRIES:
+        raise HTTPException(413, f"zip 안의 파일이 너무 많습니다 (최대 {MAX_UPLOAD_ENTRIES}개)")
+    if sum(i.file_size for i in infos) > max_extract:
+        raise HTTPException(413, f"압축 해제 크기가 너무 큽니다 (최대 {settings.SKILL_MAX_EXTRACT_MB}MB)")
+    if not infos:
+        raise HTTPException(404, "SKILL.md 를 찾을 수 없습니다")
+    tops = {PurePosixPath(i.filename).parts[0] for i in infos}
+    root_skill = any(i.filename == "SKILL.md" for i in infos)
+    wrap = stem if root_skill else ("upload" if len(tops) > 1 else "")
+    out = io.BytesIO()
+    with zipfile.ZipFile(out, "w", zipfile.ZIP_DEFLATED) as dst:
+        for i in infos:
+            ni = zipfile.ZipInfo(f"{wrap}/{i.filename}" if wrap else i.filename, i.date_time)
+            ni.external_attr = i.external_attr  # symlink 표시를 유지해 추출 단계에서 건너뛴다
+            dst.writestr(ni, src.read(i))
+    return out.getvalue()
+
+
 _DIRNAME_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,99}$")
 
 
@@ -381,6 +418,18 @@ class SkillService:
         installed = await SkillService._save_skills(user_id, extracted, url, db)
         sandbox_error = await SkillService.sync_to_sandbox(user_id, installed, db)
         return installed, sandbox_error
+
+    @staticmethod
+    async def install_zip(
+        user_id: str, filename: str, data: bytes, db: AsyncSession
+    ) -> tuple[list[Skill], Optional[str]]:
+        """업로드한 zip(SKILL.md 가 있는 폴더 하나 또는 여러 개)에서 skill 을 설치한다."""
+        stem = _safe_name(Path(filename or "skill").stem) or "skill"
+        norm = await asyncio.to_thread(_normalize_upload_zip, data, stem)
+        dest_root = Path(settings.SKILLS_DIR) / user_id
+        extracted = await asyncio.to_thread(_extract_skills, norm, GithubRef("", stem, None, ""), dest_root)
+        installed = await SkillService._save_skills(user_id, extracted, f"upload:{filename}"[:500], db)
+        return installed, await SkillService.sync_to_sandbox(user_id, installed, db)
 
     @staticmethod
     async def create_custom(
