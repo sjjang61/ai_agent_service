@@ -14,6 +14,11 @@ function nextStepId() {
 
 // 대화별 진행 중인 요청의 AbortController (취소 시 연결을 끊는 데 사용)
 const controllers = new Map<string, AbortController>()
+/** 이 대화에서 응답을 스트리밍 받는 요청이 아직 진행 중인가 (다른 화면에 갔다 돌아왔을 때 화면 상태를 지키는 데 쓴다) */
+export function isStreaming(conversationId: string): boolean {
+  return controllers.has(conversationId)
+}
+
 const CANCEL_NOTE = '_(사용자가 실행을 중단했습니다)_'
 
 const MESSAGE_RENDERED_TOOLS = new Set(['create_widget', 'todo', 'form_ask_user', 'manage_schedule'])
