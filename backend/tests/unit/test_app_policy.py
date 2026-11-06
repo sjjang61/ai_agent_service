@@ -62,3 +62,14 @@ def test_ticket_and_session(monkeypatch):
     assert not app_auth.check_session(t, "app1", "u1", 0)  # 종류가 다름
     monkeypatch.setattr(app_auth, "TICKET_TTL", -1)
     assert not app_auth.check_ticket(app_auth.make_ticket("app1", "u1"), "app1", "u1")  # 만료
+
+
+def test_review_ticket_and_session():
+    t = app_auth.make_review_ticket("a1", "rev")
+    assert not app_auth.check_review_ticket(t, "a2")
+    assert app_auth.check_review_ticket(t, "a1")
+    assert not app_auth.check_review_ticket(t, "a1")  # 일회용
+    s = app_auth.make_review_session("a1")
+    assert app_auth.check_review_session(s, "a1") and not app_auth.check_review_session(s, "a2")
+    assert not app_auth.check_session(s, "a1", "rev", 0)  # 검수 세션으로 소유자 세션을 대신할 수 없다
+    assert not app_auth.check_review_ticket(app_auth.make_ticket("a1", "rev"), "a1")  # 소유자 티켓으로 검수할 수 없다

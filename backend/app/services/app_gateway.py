@@ -29,6 +29,7 @@ logger = logging.getLogger(__name__)
 
 STATUS_PATH = "/__app/status"
 SESSION_COOKIE = "appsess_"
+REVIEW_COOKIE = "appreview"
 HOP_BY_HOP = {"connection", "keep-alive", "proxy-authenticate", "proxy-authorization", "te", "trailers", "transfer-encoding", "upgrade"}
 
 _client: Optional[httpx.AsyncClient] = None
@@ -77,8 +78,8 @@ def _wants_html(request: Request) -> bool:
 
 def _fwd_headers(request: Request, st) -> dict:
     h = {k: v for k, v in request.headers.items() if k.lower() not in HOP_BY_HOP and k.lower() not in ("host", "cookie")}
-    # 소유자 세션 쿠키(appsess_*)는 어떤 앱에도 넘기지 않는다 (같은 호스트의 다른 포트 앱이 받을 수 있다)
-    cookies = "; ".join(c.strip() for c in request.headers.get("cookie", "").split(";") if c.strip() and not c.strip().startswith(SESSION_COOKIE))
+    # 소유자·검수자 세션 쿠키(appsess_*, appreview)는 어떤 앱에도 넘기지 않는다 (같은 호스트의 다른 포트 앱이 받을 수 있다)
+    cookies = "; ".join(c.strip() for c in request.headers.get("cookie", "").split(";") if c.strip() and not c.strip().startswith((SESSION_COOKIE, REVIEW_COOKIE + "=")))
     if cookies:
         h["cookie"] = cookies
     h["host"] = f"localhost:{st.container_port}"  # vite preview 등의 allowedHosts 검사를 통과하도록 업스트림 기준 호스트
@@ -131,6 +132,11 @@ def make_gateway(host, app_id: Optional[str], mode: str = "port") -> Starlette:
         """(허용 여부, 거부 응답 또는 None, 세션 쿠키로 바꿔야 할 티켓이 유효한지). WebSocket 에서도 쓴다."""
         if mode == "public":
             if not host.public_ok(st):
+                # 검수자 미리보기: 승인 전·정지된 앱도 검수 티켓/세션이 있으면 열어 볼 수 있다
+                if app_auth.check_review_session(cookies.get(REVIEW_COOKIE), st.id):
+                    return True, None, False
+                if query_t and app_auth.check_review_ticket(query_t, st.id):
+                    return True, None, "review"
                 return False, _error_page("공개되지 않은 앱입니다", "이 앱은 공개되지 않았거나 공개가 중단되었습니다.", 404), False
             if not _req_limiter.allow((client_ip, st.id)):
                 return False, Response("요청이 너무 많습니다. 잠시 후 다시 시도하세요.", status_code=429, headers={"Retry-After": "30"}), False
@@ -148,7 +154,10 @@ def make_gateway(host, app_id: Optional[str], mode: str = "port") -> Starlette:
         if ticket:  # 티켓 → 세션 쿠키로 교환하고 티켓 없는 주소로 이동
             q = _strip_token(request)
             resp = RedirectResponse(request.url.path + (f"?{q}" if q else ""), status_code=303)
-            resp.set_cookie(_cookie_name(st), app_auth.make_session(st.id, st.user_id, st.epoch), httponly=True, samesite="lax", path="/", max_age=app_auth.SESSION_TTL)
+            if ticket == "review":
+                resp.set_cookie(REVIEW_COOKIE, app_auth.make_review_session(st.id), httponly=True, samesite="lax", path="/", max_age=3600)
+            else:
+                resp.set_cookie(_cookie_name(st), app_auth.make_session(st.id, st.user_id, st.epoch), httponly=True, samesite="lax", path="/", max_age=app_auth.SESSION_TTL)
             return resp
         return None
 

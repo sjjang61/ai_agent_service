@@ -1,11 +1,11 @@
 import { useEffect, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { ArrowLeft, Flag, Loader2, Play, Search, Store, User as UserIcon } from 'lucide-react'
+import { useMutation, useQuery } from '@tanstack/react-query'
+import { ArrowLeft, ClipboardCheck, Flag, Loader2, Play, Search, Store, User as UserIcon } from 'lucide-react'
 import IconBar from '../components/layout/IconBar'
 import Sidebar from '../components/chat/Sidebar'
 import AppPreviewPanel from '../components/chat/AppPreviewPanel'
-import { storeApi, type QueueItem, type StoreApp } from '../api/apps'
+import { storeApi, type StoreApp } from '../api/apps'
 import { chatApi } from '../api/chat'
 import { useChatStore } from '../store/chatStore'
 import { CATEGORY_LABEL, categoryLabel, errorDetail } from '../components/apps/appStoreMeta'
@@ -57,56 +57,6 @@ function ReportDialog({ app, onClose }: { app: StoreApp; onClose: () => void }) 
   )
 }
 
-const QUEUES: [string, string][] = [['pending', '승인 대기'], ['approved', '공개 중 (신고 많은 순)'], ['suspended', '정지됨'], ['rejected', '반려됨']]
-
-function AdminQueue() {
-  const qc = useQueryClient()
-  const [status, setStatus] = useState('pending')
-  const { data: items = [], isLoading } = useQuery({ queryKey: ['store-queue', status], queryFn: async () => (await storeApi.adminQueue(status)).data })
-  const act = useMutation({
-    mutationFn: ({ id, action }: { id: string; action: 'approve' | 'reject' | 'suspend' }) => {
-      const note = action === 'approve' ? undefined : prompt(action === 'reject' ? '반려 사유 (소유자에게 표시됩니다)' : '정지 사유') ?? undefined
-      return storeApi.moderate(id, action, note)
-    },
-    onSettled: () => { qc.invalidateQueries({ queryKey: ['store-queue'] }); qc.invalidateQueries({ queryKey: ['store-apps'] }) },
-  })
-  const Btn = ({ it, action, label, cls }: { it: QueueItem; action: 'approve' | 'reject' | 'suspend'; label: string; cls: string }) => (
-    <button onClick={() => act.mutate({ id: it.id, action })} disabled={act.isPending} className={`px-2.5 py-1 rounded-md text-xs border-none cursor-pointer disabled:opacity-50 ${cls}`}>{label}</button>
-  )
-  return (
-    <div className="mt-4">
-      <div className="flex gap-1 flex-wrap mb-3">
-        {QUEUES.map(([k, l]) => (
-          <button key={k} onClick={() => setStatus(k)} className={`px-3 py-1.5 rounded-lg text-xs cursor-pointer border-none ${status === k ? 'bg-accent-primary text-white' : 'bg-surface-secondary text-content-muted hover:text-content-primary'}`}>{l}</button>
-        ))}
-      </div>
-      {isLoading ? <Loader2 size={14} className="animate-spin" /> : items.length === 0 ? <p className="text-sm text-content-muted py-6">항목이 없습니다.</p> : (
-        <div className="space-y-2">
-          {items.map((it) => (
-            <div key={it.id} className="rounded-xl border border-border bg-surface-secondary p-4">
-              <div className="flex items-start gap-3">
-                <div className="flex-1 min-w-0">
-                  <div className="text-sm font-medium text-content-primary">{it.title} <span className="text-xs text-content-tertiary">· {it.owner_name} · {it.kind === 'server' ? '서버형' : '정적'} v{it.version}</span></div>
-                  <p className="text-xs text-content-secondary mt-1 break-words">{it.description || '(설명 없음)'}</p>
-                  {it.moderation_note && <p className="text-xs text-accent-amber mt-1 break-words">메모: {it.moderation_note}</p>}
-                  {it.reports > 0 && (
-                    <div className="mt-2 text-xs text-accent-red">신고 {it.reports}건{it.reasons.map((r, i) => <div key={i} className="text-content-secondary break-words">- {r}</div>)}</div>
-                  )}
-                </div>
-                <div className="flex flex-col gap-1 flex-shrink-0">
-                  {status !== 'approved' && <Btn it={it} action="approve" label="승인" cls="bg-accent-done/20 text-accent-done" />}
-                  {status === 'approved' && <Btn it={it} action="suspend" label="정지" cls="bg-accent-red/15 text-accent-red" />}
-                  {status === 'pending' && <Btn it={it} action="reject" label="반려" cls="bg-surface-tertiary text-content-secondary" />}
-                </div>
-              </div>
-            </div>
-          ))}
-        </div>
-      )}
-    </div>
-  )
-}
-
 /** App Store: 다른 사용자가 공개한 웹앱을 둘러보고 열어 본다 (로그인 없이 누구나 접속할 수 있는 앱). */
 export default function StorePage() {
   const navigate = useNavigate()
@@ -116,7 +66,6 @@ export default function StorePage() {
   const [q, setQ] = useState('')
   const [category, setCategory] = useState('')
   const [sort, setSort] = useState<'popular' | 'new'>('popular')
-  const [tab, setTab] = useState<'store' | 'admin'>('store')
   const [reporting, setReporting] = useState<StoreApp | null>(null)
 
   useEffect(() => {
@@ -161,16 +110,15 @@ export default function StorePage() {
               <div className="flex items-center gap-3">
                 <h1 className="text-[26px] font-semibold text-content-primary flex items-center gap-2"><Store size={24} /> App Store</h1>
                 {info?.is_admin && (
-                  <div className="flex gap-1 ml-4">
-                    {([['store', '둘러보기'], ['admin', '검수']] as const).map(([k, l]) => (
-                      <button key={k} onClick={() => setTab(k)} className={`px-3 py-1.5 rounded-lg text-xs cursor-pointer border-none ${tab === k ? 'bg-accent-primary text-white' : 'bg-surface-secondary text-content-muted hover:text-content-primary'}`}>{l}</button>
-                    ))}
-                  </div>
+                  <button onClick={() => navigate('/store/review')} className="ml-4 flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs border border-border text-content-secondary hover:text-content-primary cursor-pointer bg-transparent">
+                    <ClipboardCheck size={13} /> 앱 승인
+                    {(info.review_pending ?? 0) > 0 && <span className="min-w-[16px] px-1 rounded-full bg-accent-primary text-white text-[10px] font-semibold text-center">{info.review_pending}</span>}
+                  </button>
                 )}
               </div>
               <p className="mt-1 text-[14px] text-content-secondary">사용자가 공개한 웹앱입니다. 로그인 없이 누구나 열 수 있는 앱이며, 신뢰할 수 없는 앱에는 개인정보를 입력하지 마세요.</p>
 
-              {tab === 'admin' && info?.is_admin ? <AdminQueue /> : (
+              {(
                 <>
                   <div className="mt-5 flex flex-wrap items-center gap-2">
                     <div className="relative flex-1 min-w-[220px] max-w-md">

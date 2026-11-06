@@ -12,6 +12,8 @@ from app.dependencies import get_current_user
 from app.models.published_app import AppReport, PublishedApp
 from app.models.user import User
 from app.services.app_host import host
+from app.config import settings
+from app.services import app_auth
 from app.services.app_policy import CATEGORIES, is_admin_email, public_url
 from app.services.app_service import AppService, PublishError, is_public
 
@@ -39,15 +41,24 @@ def _item(rec: PublishedApp, owner: str) -> StoreApp:
                     listed_at=rec.listed_at, url=public_url(rec.slug or ""))
 
 
+def is_reviewer(user: User) -> bool:
+    """검수(승인·반려·정지) 권한. 사용자 역할이 생기기 전에는 로그인한 모든 사용자 (APP_REVIEW_OPEN_TO_ALL), 아니면 ADMIN_EMAILS."""
+    return settings.APP_REVIEW_OPEN_TO_ALL or is_admin_email(user.email)
+
+
 def require_admin(user: User = Depends(get_current_user)) -> User:
-    if not is_admin_email(user.email):
-        raise HTTPException(status_code=403, detail="관리자만 사용할 수 있습니다")
+    if not is_reviewer(user):
+        raise HTTPException(status_code=403, detail="검수 권한이 없습니다")
     return user
 
 
 @router.get("/info")
-async def info(user: User = Depends(get_current_user)):
-    return {"is_admin": is_admin_email(user.email), "categories": CATEGORIES}
+async def info(user: User = Depends(get_current_user), db: AsyncSession = Depends(get_session)):
+    reviewer = is_reviewer(user)
+    pending = 0
+    if reviewer:
+        pending = (await db.execute(select(func.count()).select_from(PublishedApp).where(PublishedApp.moderation_status.in_(("pending", "suspended"))))).scalar() or 0
+    return {"is_admin": reviewer, "categories": CATEGORIES, "review_pending": pending}
 
 
 @router.get("/apps", response_model=List[StoreApp])
@@ -134,8 +145,22 @@ async def admin_moderate(app_id: str, data: ModerateRequest, admin: User = Depen
     rec = await db.get(PublishedApp, app_id)
     if not rec:
         raise HTTPException(status_code=404, detail="앱을 찾을 수 없습니다")
+    if rec.user_id == admin.id and not settings.APP_REVIEW_ALLOW_SELF:
+        raise HTTPException(status_code=403, detail="내 앱은 직접 검수할 수 없습니다")
     try:
         rec = await AppService.moderate(rec, db, data.action, data.note)
     except PublishError as e:
         raise HTTPException(status_code=400, detail=str(e))
     return {"id": rec.id, "visibility": rec.visibility, "moderation_status": rec.moderation_status}
+
+
+@router.post("/admin/apps/{app_id}/review-launch")
+async def admin_review_launch(app_id: str, admin: User = Depends(require_admin), db: AsyncSession = Depends(get_session)):
+    """검수용 미리보기 주소: 승인 전·정지된 앱도 공개 호스트명으로 열어 볼 수 있는 일회용 검수 티켓(60초)이 붙은 주소."""
+    rec = await db.get(PublishedApp, app_id)
+    if not rec or not rec.slug:
+        raise HTTPException(status_code=404, detail="앱을 찾을 수 없습니다")
+    st = host.states.get(rec.id)
+    if st and st.status == "stopped":
+        host.wake(rec.id)
+    return {"url": public_url(rec.slug) + "?t=" + app_auth.make_review_ticket(rec.id, admin.id)}

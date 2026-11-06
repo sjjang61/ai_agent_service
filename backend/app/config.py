@@ -157,6 +157,8 @@ class Settings(BaseSettings):
     APP_PUBLIC_RATE_PER_MIN: int = 600  # 공개 앱: IP·앱별 분당 요청 상한
     APP_PUBLIC_WAKE_PER_MIN: int = 6  # 공개 앱: 앱별 분당 깨우기 시도 상한 (익명 요청이 컨테이너를 계속 만들지 못하게)
     APP_REPORT_SUSPEND_THRESHOLD: int = 3  # 서로 다른 사용자 신고가 이 수에 이르면 자동 정지(검수 대기)
+    APP_REVIEW_OPEN_TO_ALL: bool = True  # true: 사용자 역할이 생기기 전까지 로그인한 모든 사용자가 App Store 검수(승인·반려·정지)를 할 수 있다. false 면 ADMIN_EMAILS 만
+    APP_REVIEW_ALLOW_SELF: bool = True  # false 면 자기 앱은 승인·반려할 수 없다 (역할을 도입하면 false 권장)
     ADMIN_EMAILS: str = ""  # 쉼표로 구분한 관리자 이메일 (App Store 검수·정지 권한)
     APP_BIND_HOST: str = "127.0.0.1"  # 프록시 리스너 바인드 주소. 원격 서버에서 외부에 열려면 0.0.0.0 (+ 방화벽, APP_REQUIRE_TOKEN)
     APP_PUBLIC_HOST: str = "localhost"  # 앱 URL 에 쓰는 호스트명

@@ -70,6 +70,33 @@ def check_ticket(token: Optional[str], app_id: str, owner_id: str) -> bool:
     return True
 
 
+def make_review_ticket(app_id: str, reviewer_id: str) -> str:
+    """검수자 미리보기용 일회용 티켓: 승인 전(공개되지 않은) 앱을 공개 호스트명으로 열어 볼 수 있다."""
+    return _sign({"k": "rticket", "aid": app_id, "uid": reviewer_id, "jti": secrets.token_hex(8), "exp": time.time() + TICKET_TTL})
+
+
+def check_review_ticket(token: Optional[str], app_id: str) -> bool:
+    p = _verify(token, "rticket")
+    if not p or p.get("aid") != app_id:
+        return False
+    now = time.time()
+    for j in [j for j, e in _used.items() if e < now]:
+        del _used[j]
+    if p["jti"] in _used:
+        return False
+    _used[p["jti"]] = p["exp"]
+    return True
+
+
+def make_review_session(app_id: str) -> str:
+    return _sign({"k": "rsession", "aid": app_id, "exp": time.time() + 3600})
+
+
+def check_review_session(token: Optional[str], app_id: str) -> bool:
+    p = _verify(token, "rsession")
+    return bool(p and p.get("aid") == app_id)
+
+
 def check_session(token: Optional[str], app_id: str, owner_id: str, epoch: int) -> bool:
     p = _verify(token, "session")
     return bool(p and p.get("aid") == app_id and p.get("uid") == owner_id and p.get("ep") == epoch)

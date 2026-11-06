@@ -70,11 +70,13 @@ export const appsApi = {
 }
 
 export const storeApi = {
-  info: () => apiClient.get<{ is_admin: boolean; categories: string[] }>('/store/info'),
+  info: () => apiClient.get<{ is_admin: boolean; categories: string[]; review_pending: number }>('/store/info'),
   list: (params: { q?: string; category?: string; sort?: 'popular' | 'new' }) => apiClient.get<StoreApp[]>('/store/apps', { params }),
   get: (id: string) => apiClient.get<StoreApp>(`/store/apps/${id}`),
   launch: async (id: string) => (await apiClient.post<{ url: string }>(`/store/apps/${id}/launch`)).data.url,
   report: (id: string, reason: string) => apiClient.post(`/store/apps/${id}/report`, { reason }),
   adminQueue: (status: string) => apiClient.get<QueueItem[]>('/store/admin/queue', { params: { status } }),
   moderate: (id: string, action: 'approve' | 'reject' | 'suspend', note?: string) => apiClient.post(`/store/admin/apps/${id}/moderate`, { action, note }),
+  /** 검수용 미리보기 주소: 승인 전·정지된 앱도 열어 볼 수 있다 (일회용 검수 티켓, 60초) */
+  reviewLaunch: async (id: string) => (await apiClient.post<{ url: string }>(`/store/admin/apps/${id}/review-launch`)).data.url,
 }
