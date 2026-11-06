@@ -26,6 +26,7 @@
   --accent-purple: #a855f7;
   --accent-amber: #f59e0b;
   --accent-cyan: #06b6d4;
+  --accent-done: #34d399; /* 완료 표시 (에메랄드). 다크 테마 기본 */
 }
 
 /* Dark Theme (default) */
@@ -50,6 +51,7 @@
 
 /* Light Theme */
 [data-theme="light"] {
+  --accent-done: #059669; /* 흰 배경 대비를 확보한 에메랄드 */
   --bg-primary: #ffffff;
   --bg-secondary: #f8f9fa;
   --bg-tertiary: #f1f3f5;

@@ -38,7 +38,7 @@ export const TOOL_LABELS: Record<string, string> = {
 function StepIcon({ type, tool, isActive }: { type: string; tool?: string; isActive?: boolean }) {
   if (isActive) return <Loader2 size={13} className="text-accent-primary animate-spin flex-shrink-0" />
   if (type === 'thought') return <Brain size={13} className="text-accent-purple flex-shrink-0" />
-  if (type === 'tool_result') return <CheckCircle2 size={13} className="text-accent-green flex-shrink-0" />
+  if (type === 'tool_result') return <CheckCircle2 size={13} className="text-accent-done flex-shrink-0" />
   switch (tool) {
     case 'code_executor': return <Code2 size={13} className="text-accent-amber flex-shrink-0" />
     case 'file_manager': return <FileText size={13} className="text-accent-cyan flex-shrink-0" />
@@ -71,7 +71,7 @@ function getLabel(type: string, tool?: string) {
 
 function getBadgeColor(type: string) {
   if (type === 'thought') return 'bg-accent-purple/20 text-accent-purple border-accent-purple/30'
-  if (type === 'tool_result') return 'bg-accent-green/20 text-accent-green border-accent-green/30'
+  if (type === 'tool_result') return 'bg-accent-done/20 text-accent-done border-accent-done/30'
   return 'bg-accent-primary/20 text-accent-primary border-accent-primary/30'
 }
 

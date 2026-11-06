@@ -45,6 +45,7 @@ export function settleTodos(todos: TodoItem[], outcome: PlanOutcome): TodoItem[]
 export default function TodoCard({ todos, running = true }: { todos: TodoItem[]; running?: boolean }) {
   const done = todos.filter((t) => t.status === 'completed').length
   const progress = (done / Math.max(todos.length, 1)) * 100
+  const allDone = todos.length > 0 && done === todos.length
 
   return (
     <div className="mb-3 rounded-[var(--radius-lg)] border border-border bg-surface-secondary p-4 shadow-sm">
@@ -54,7 +55,11 @@ export default function TodoCard({ todos, running = true }: { todos: TodoItem[];
           <span className="text-accent-primary">📋</span>
           작업 계획
         </h4>
-        <span className="text-xs font-medium text-content-secondary px-2 py-1 rounded-md bg-surface-tertiary">
+        <span
+          className={`text-xs font-medium px-2 py-1 rounded-md transition-colors ${
+            allDone ? 'bg-accent-done/15 text-accent-done' : 'bg-surface-tertiary text-content-secondary'
+          }`}
+        >
           {done}/{todos.length} 완료
         </span>
       </div>
@@ -62,7 +67,9 @@ export default function TodoCard({ todos, running = true }: { todos: TodoItem[];
       {/* 진행 바 */}
       <div className="h-2 rounded-full bg-surface-tertiary mb-3 overflow-hidden">
         <div
-          className="h-full bg-gradient-to-r from-accent-primary to-accent-blue transition-all duration-500 ease-out"
+          className={`h-full transition-all duration-500 ease-out ${
+            allDone ? 'bg-accent-done' : 'bg-gradient-to-r from-accent-primary to-accent-done'
+          }`}
           style={{ width: `${progress}%` }}
         />
       </div>
@@ -74,7 +81,7 @@ export default function TodoCard({ todos, running = true }: { todos: TodoItem[];
             key={t.id}
             className={`flex items-start gap-2.5 text-sm p-2 rounded-md transition-all duration-200 ${
               t.status === 'completed'
-                ? 'bg-accent-green/5 hover:bg-accent-green/10'
+                ? 'bg-accent-done/5 hover:bg-accent-done/10'
                 : t.status === 'in_progress' && running
                 ? 'bg-accent-primary/5 hover:bg-accent-primary/10'
                 : 'hover:bg-surface-tertiary/50'
@@ -83,7 +90,7 @@ export default function TodoCard({ todos, running = true }: { todos: TodoItem[];
             {t.status === 'completed' ? (
               <CheckCircle2
                 size={16}
-                className="text-accent-green mt-0.5 flex-shrink-0 animate-check"
+                className="text-accent-done mt-0.5 flex-shrink-0 animate-check"
                 strokeWidth={2.5}
               />
             ) : t.status === 'in_progress' && running ? (
@@ -94,7 +101,7 @@ export default function TodoCard({ todos, running = true }: { todos: TodoItem[];
             <span
               className={
                 t.status === 'completed'
-                  ? 'text-content-secondary line-through decoration-accent-green/40 decoration-2'
+                  ? 'text-content-secondary line-through decoration-accent-done/40 decoration-2'
                   : t.status === 'in_progress' && running
                   ? 'text-content-primary font-medium'
                   : 'text-content-secondary'

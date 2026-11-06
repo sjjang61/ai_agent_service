@@ -19,6 +19,7 @@ export default {
           hover: token('--accent-hover'),
           blue: token('--accent-blue'),
           green: token('--accent-green'),
+          done: token('--accent-done'),
           yellow: token('--accent-yellow'),
           orange: token('--accent-orange'),
           red: token('--accent-red'),
