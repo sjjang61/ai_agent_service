@@ -1,4 +1,4 @@
-export type ArtifactKind = 'image' | 'text' | 'pdf' | 'office' | 'archive' | 'other'
+export type ArtifactKind = 'image' | 'video' | 'text' | 'pdf' | 'office' | 'archive' | 'other'
 
 export interface Artifact {
   path: string
@@ -18,4 +18,4 @@ export interface ArtifactList {
 
 export type ArtifactPreview =
   | { kind: 'text'; content: string; size: number; truncated: boolean }
-  | { kind: 'image' | 'binary' | 'too_large' }
+  | { kind: 'image' | 'video' | 'binary' | 'too_large' }

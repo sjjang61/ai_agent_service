@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import axios from 'axios'
 import {
-  Archive, ChevronDown, ChevronRight, Download, File, FileText, FolderOpen, Folder, Image as ImageIcon,
+  Archive, ChevronDown, ChevronRight, Download, File, FileText, FolderOpen, Folder, Film, Image as ImageIcon,
   Link2, Loader2, Play, Presentation, RefreshCw, Search,
 } from 'lucide-react'
 import { sandboxApi } from '../../api/sandbox'
@@ -30,6 +30,7 @@ function KindIcon({ kind }: { kind: ArtifactKind }) {
   const cls = 'flex-shrink-0'
   switch (kind) {
     case 'image': return <ImageIcon size={13} className={`${cls} text-accent-purple`} />
+    case 'video': return <Film size={13} className={`${cls} text-accent-purple`} />
     case 'text': return <FileText size={13} className={`${cls} text-accent-cyan`} />
     case 'pdf': return <FileText size={13} className={`${cls} text-accent-red`} />
     case 'office': return <Presentation size={13} className={`${cls} text-accent-amber`} />
@@ -72,7 +73,16 @@ function Preview({ file, conversationId }: { file: Artifact; conversationId?: st
     setError(null)
     ;(async () => {
       try {
-        if (file.kind === 'image') {
+        if (file.kind === 'video' && file.size > 50 * 1024 * 1024) {
+          setPreview({ kind: 'too_large' }) // 서버의 미리보기 한도(ARTIFACT_VIDEO_PREVIEW_MAX_MB)와 같다
+        } else if (file.kind === 'video') {
+          // 인증 헤더가 필요해 <video src> 로 바로 부를 수 없으므로 blob 으로 받아 재생한다 (서버가 크기를 제한한다)
+          const res = await sandboxApi.fetchArtifactBlob(file.path, false, conversationId)
+          if (cancelled) return
+          objectUrl = URL.createObjectURL(res.data)
+          setImgUrl(objectUrl)
+          setPreview({ kind: 'video' })
+        } else if (file.kind === 'image') {
           const res = await sandboxApi.fetchArtifactBlob(file.path, false, conversationId)
           if (cancelled) return
           objectUrl = URL.createObjectURL(res.data)
@@ -96,6 +106,8 @@ function Preview({ file, conversationId }: { file: Artifact; conversationId?: st
 
   if (error) return <p className="text-xs text-accent-red px-2 py-2">{error}</p>
   if (!preview) return <p className="text-xs text-content-muted px-2 py-2">불러오는 중...</p>
+  if (preview.kind === 'video' && imgUrl)
+    return <video src={imgUrl} controls preload="metadata" className="max-w-full max-h-72 rounded border border-border m-2 bg-black" />
   if (preview.kind === 'image' && imgUrl)
     return <img src={imgUrl} alt={file.name} className="max-w-full max-h-72 rounded border border-border m-2 bg-surface-primary" />
   if (preview.kind === 'text')

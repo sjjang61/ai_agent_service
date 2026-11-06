@@ -7,6 +7,7 @@ from app.config import settings
 
 IMAGE_EXT = {"png": "image/png", "jpg": "image/jpeg", "jpeg": "image/jpeg", "gif": "image/gif",
              "webp": "image/webp", "svg": "image/svg+xml", "bmp": "image/bmp"}
+VIDEO_EXT = {"mp4": "video/mp4", "m4v": "video/mp4", "webm": "video/webm", "mov": "video/quicktime"}
 TEXT_EXT = {"txt", "md", "markdown", "json", "jsonl", "csv", "tsv", "py", "js", "jsx", "ts", "tsx", "html", "htm",
             "css", "scss", "yml", "yaml", "xml", "log", "sh", "bash", "sql", "ini", "toml", "cfg", "conf", "env",
             "java", "c", "h", "cpp", "go", "rs", "rb", "php", "r", "ipynb", "tex", "rst"}
@@ -19,10 +20,12 @@ _ALWAYS_PRUNE = ("node_modules", "__pycache__", ".git", ".cache", ".local", ".np
 
 
 def classify(name: str) -> tuple[str, Optional[str]]:
-    """(kind, mime) — kind: image | text | pdf | office | archive | other"""
+    """(kind, mime) — kind: image | video | text | pdf | office | archive | other"""
     ext = name.rsplit(".", 1)[-1].lower() if "." in name else ""
     if ext in IMAGE_EXT:
         return "image", IMAGE_EXT[ext]
+    if ext in VIDEO_EXT:
+        return "video", VIDEO_EXT[ext]
     if ext in TEXT_EXT:
         return "text", "text/plain"
     if ext in DOC_EXT:

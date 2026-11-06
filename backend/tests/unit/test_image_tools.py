@@ -217,6 +217,7 @@ def test_generate_video_posts_current_schema_and_decodes(monkeypatch):
 
     real = httpx.AsyncClient
     monkeypatch.setattr(httpx, "AsyncClient", lambda **kw: real(transport=httpx.MockTransport(handler), **kw))
+    monkeypatch.setattr(settings, "VIDEO_API_KEY", "")  # .env 의 실제 키가 테스트에 섞이지 않게 한다
     monkeypatch.setattr(settings, "GOOGLE_API_KEY", "gk")
     monkeypatch.setattr(settings, "VIDEO_STRIP_AUDIO", False)
     monkeypatch.setattr(vg, "probe_seconds", lambda c: None)
@@ -250,6 +251,7 @@ def test_generate_video_retries_without_refs_only_when_refs_are_suspect(monkeypa
     real = httpx.AsyncClient
     monkeypatch.setattr(httpx, "AsyncClient", lambda **kw: real(transport=httpx.MockTransport(handler), **kw))
     monkeypatch.setattr(vg, "probe_seconds", lambda c: None)
+    monkeypatch.setattr(settings, "VIDEO_API_KEY", "")
     monkeypatch.setattr(settings, "GOOGLE_API_KEY", "bad-image")
     assert asyncio.run(vg.generate_video("p", 4, "16:9", "360p", [(PNG, "image/png")])).content == MP4
     assert calls == [2, 1]                                                  # 첨부 때문에 거절되면 첨부 없이 한 번 더
@@ -258,3 +260,11 @@ def test_generate_video_retries_without_refs_only_when_refs_are_suspect(monkeypa
     with pytest.raises(vg.VideoGenerationError):
         asyncio.run(vg.generate_video("p", 4, "16:9", "360p", [(PNG, "image/png")]))
     assert calls == [2]                                                     # 쿼터 오류는 재시도하지 않는다
+
+
+def test_artifact_classify_video():
+    from app.services.artifact_service import classify
+
+    assert classify("clip.MP4") == ("video", "video/mp4")
+    assert classify("a/b.webm") == ("video", "video/webm") and classify("x.mov")[0] == "video"
+    assert classify("pic.png")[0] == "image" and classify("notes.txt")[0] == "text" and classify("movie.avi")[0] == "other"

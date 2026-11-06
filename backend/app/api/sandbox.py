@@ -237,8 +237,8 @@ async def preview_artifact(
     await SandboxService.touch(sb, db)
     kind, _ = artifact_service.classify(full)
     max_bytes = settings.ARTIFACT_PREVIEW_MAX_KB * 1024
-    if kind == "image":
-        return {"path": path, "kind": "image"}
+    if kind in ("image", "video"):
+        return {"path": path, "kind": kind}
     try:
         # 한도보다 조금 더 읽어 잘렸는지 판단한다 (큰 파일은 413 이므로 크기만 알려준다)
         data, _ = await sandbox_manager.read_file(sb.container_id, full, 5 * 1024 * 1024)
@@ -265,16 +265,16 @@ async def raw_artifact(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_session),
 ):
-    """파일 원본(바이너리 안전). download=false 는 이미지 미리보기용 (이미지 형식만 inline)."""
+    """파일 원본(바이너리 안전). download=false 는 이미지·동영상 미리보기용 (그 형식만 inline)."""
     sb = await _running_sandbox(current_user.id, db, conversation_id)
     full = _artifact_path(path)
     await SandboxService.touch(sb, db)
     name = full.rsplit("/", 1)[-1]
     kind, mime = artifact_service.classify(name)
-    max_mb = settings.ARTIFACT_MAX_DOWNLOAD_MB if download else 10
+    max_mb = settings.ARTIFACT_MAX_DOWNLOAD_MB if download else (settings.ARTIFACT_VIDEO_PREVIEW_MAX_MB if kind == "video" else 10)
     data, _ = await _read_artifact(sb, full, max_mb * 1024 * 1024)
     headers = {"X-Content-Type-Options": "nosniff", "Cache-Control": "private, no-store"}
-    if download or kind != "image":
+    if download or kind not in ("image", "video"):
         headers["Content-Disposition"] = f"attachment; filename*=UTF-8''{quote(name)}"
         return Response(content=data, media_type="application/octet-stream", headers=headers)
     return Response(content=data, media_type=mime, headers=headers)

@@ -163,6 +163,7 @@ class Settings(BaseSettings):
     # 산출물(artifacts) 보기
     ARTIFACT_PREVIEW_MAX_KB: int = 200
     ARTIFACT_MAX_DOWNLOAD_MB: int = 100
+    ARTIFACT_VIDEO_PREVIEW_MAX_MB: int = 50  # 이보다 큰 영상은 미리보기 대신 다운로드
     ARTIFACT_LIST_LIMIT: int = 2000
 
     # Skills (사용자별 설치 경로: SKILLS_DIR/{user_id}/{skill_name})
