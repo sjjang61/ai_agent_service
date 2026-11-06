@@ -64,3 +64,26 @@ class SkillInstallResponse(BaseModel):
 class SkillSyncResponse(BaseModel):
     synced: int
     sandbox_error: Optional[str] = None
+
+
+class SandboxSkill(BaseModel):
+    id: str
+    name: str
+    description: Optional[str] = None
+    skill_type: str = "custom"
+    installed: bool = False  # 현재 sandbox 에 설치(로드)되어 있는지
+
+
+class SandboxSkillList(BaseModel):
+    sandbox_running: bool
+    skills: List[SandboxSkill] = []
+
+
+class SandboxInstallRequest(BaseModel):
+    installed: bool  # True: 현재 sandbox 에 설치, False: 현재 sandbox 에서 제거
+    conversation_id: Optional[str] = None
+
+
+class SandboxInstallResponse(BaseModel):
+    installed: bool
+    sandbox_running: bool = True

@@ -13,6 +13,20 @@ export interface Skill {
 
 export type SkillType = 'builtin' | 'custom'
 
+/** 대화 입력창의 스킬 선택용: 스킬과 현재 sandbox 설치 여부 */
+export interface SandboxSkill {
+  id: string
+  name: string
+  description: string | null
+  skill_type: SkillType
+  installed: boolean
+}
+
+export interface SandboxSkillList {
+  sandbox_running: boolean
+  skills: SandboxSkill[]
+}
+
 export interface Plugin {
   id: string
   name: string

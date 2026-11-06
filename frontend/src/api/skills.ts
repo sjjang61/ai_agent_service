@@ -1,9 +1,13 @@
 import apiClient from './client'
-import type { SkillCreateInput, SkillType } from '../types/skill'
+import type { SandboxSkillList, SkillCreateInput, SkillType } from '../types/skill'
 
 export const skillsApi = {
   list: () => apiClient.get('/skills'),
   install: (url: string, skill_type?: SkillType) => apiClient.post('/skills/install', { url, skill_type }),
+  sandboxList: (conversationId?: string | null) =>
+    apiClient.get<SandboxSkillList>('/skills/sandbox', { params: { conversation_id: conversationId ?? undefined, skill_type: 'custom' } }),
+  setInSandbox: (id: string, installed: boolean, conversationId?: string | null) =>
+    apiClient.post<{ installed: boolean; sandbox_running: boolean }>(`/skills/${id}/sandbox`, { installed, conversation_id: conversationId ?? null }, { timeout: 120000 }),
   setType: (id: string, skill_type: SkillType) => apiClient.post(`/skills/${id}/type`, { skill_type }),
   uploadZip: (file: File, skill_type?: SkillType) => {
     const form = new FormData()

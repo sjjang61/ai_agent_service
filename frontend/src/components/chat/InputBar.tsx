@@ -1,11 +1,12 @@
 import { useState, useRef, useEffect } from 'react'
 import axios from 'axios'
-import { Send, Loader2, X, FileText, AlertCircle, Square, Plus, ThumbsUp, Settings, Mic, Folder, FolderUp, Paperclip, MessageSquare, BookMarked } from 'lucide-react'
+import { Send, Loader2, X, FileText, AlertCircle, Square, Plus, ThumbsUp, Settings, Mic, Folder, FolderUp, Paperclip, MessageSquare, BookMarked, Puzzle } from 'lucide-react'
 import { useAgentStore } from '../../store/agentStore'
 import { useAgentStream } from '../../hooks/useAgentStream'
 import { sandboxApi } from '../../api/sandbox'
 import { formatSize } from '../sandbox/ArtifactsPanel'
 import ReferencePicker, { MAX_REFERENCES } from './ReferencePicker'
+import SkillPickerDialog from './SkillPickerDialog'
 import type { Attachment, Reference } from '../../types/chat'
 
 const MAX_FILES = 10
@@ -47,6 +48,7 @@ function MenuItem({ icon, label, hint, disabled, onClick }: { icon: React.ReactN
 }
 
 export default function InputBar({ conversationId }: { conversationId: string }) {
+  const [skillsOpen, setSkillsOpen] = useState(false)
   const [value, setValue] = useState('')
   const [files, setFiles] = useState<Pending[]>([])
   const [dragging, setDragging] = useState(false)
@@ -342,6 +344,17 @@ export default function InputBar({ conversationId }: { conversationId: string })
                 )}
               </div>
               <button
+                onClick={() => setSkillsOpen(true)}
+                disabled={isRunning}
+                aria-label="스킬 선택"
+                title="스킬: custom 스킬을 현재 sandbox 에 설치·제거"
+                className="flex items-center gap-1.5 px-3 py-2 text-[13px] text-content-secondary
+                  hover:bg-surface-hover hover:text-content-primary rounded-[var(--radius-sm)] transition-colors
+                  disabled:opacity-40 disabled:cursor-not-allowed"
+              >
+                <Puzzle size={16} />
+              </button>
+              <button
                 className="flex items-center gap-1.5 px-3 py-2 text-[13px] text-content-secondary
                   hover:bg-surface-hover hover:text-content-primary rounded-[var(--radius-sm)] transition-colors"
               >
@@ -393,6 +406,8 @@ export default function InputBar({ conversationId }: { conversationId: string })
             </div>
           </div>
         </div>
+
+        {skillsOpen && <SkillPickerDialog conversationId={conversationId} onClose={() => setSkillsOpen(false)} />}
 
         {pickerOpen && (
           <ReferencePicker

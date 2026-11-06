@@ -18,6 +18,10 @@ from app.schemas.skill import (
     SkillInstallRequest,
     SkillInstallResponse,
     SkillResponse,
+    SandboxInstallRequest,
+    SandboxInstallResponse,
+    SandboxSkill,
+    SandboxSkillList,
     SkillSyncResponse,
     SkillTypeRequest,
 )
@@ -76,6 +80,58 @@ async def create_custom_skill(
     return SkillInstallResponse(
         installed=[_to_response(skill)], sandbox_synced=sandbox_error is None, sandbox_error=sandbox_error
     )
+
+
+@router.get("/sandbox", response_model=SandboxSkillList)
+async def list_sandbox_skills(
+    conversation_id: Optional[str] = None,
+    skill_type: str = "custom",
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_session),
+):
+    """대화 입력창의 스킬 선택용: 활성 스킬(기본 custom)과 각 스킬이 현재 sandbox 에 설치되어 있는지.
+    sandbox 가 꺼져 있으면 시작하지 않고 모두 미설치로 돌려준다 (켤 때 시작·복구된다)."""
+    from app.services.sandbox_service import resolve_scope
+
+    skills = [
+        s for s in await SkillService.list_skills(current_user.id, db)
+        if s.is_active and (skill_type == "all" or (s.skill_type or "builtin") == skill_type)
+    ]
+    sb = await SkillService.running_sandbox(current_user.id, db, await resolve_scope(conversation_id, current_user.id, db))
+    present = await SkillService.installed_in_sandbox(sb.container_id) if sb else set()
+    return SandboxSkillList(
+        sandbox_running=sb is not None,
+        skills=[
+            SandboxSkill(id=s.id, name=s.name, description=s.description, skill_type=s.skill_type or "builtin", installed=s.name in present)
+            for s in sorted(skills, key=lambda x: x.name)
+        ],
+    )
+
+
+@router.post("/{skill_id}/sandbox", response_model=SandboxInstallResponse)
+async def set_skill_in_sandbox(
+    skill_id: str,
+    data: SandboxInstallRequest,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_session),
+):
+    """스킬을 현재 sandbox 에 동적으로 설치(installed=true)하거나 제거(false)한다.
+    설치할 때 sandbox 가 꺼져 있으면 시작(백업 복구)한다. 제거는 /workspace/skills/<이름> 폴더만 지운다."""
+    from app.services.sandbox_service import SandboxService, resolve_scope, sandbox_manager
+    from app.services.skill_service import SANDBOX_SKILLS_DIR
+
+    skill = await SkillService.get_skill(skill_id, current_user.id, db)
+    scope = await resolve_scope(data.conversation_id, current_user.id, db)
+    if data.installed:
+        sb = await SandboxService.get_or_create_sandbox(current_user.id, db, scope)
+        await SkillService.ensure_in_sandbox(sb.container_id, [skill])
+        if skill.name not in await SkillService.installed_in_sandbox(sb.container_id):
+            raise HTTPException(500, "스킬 파일을 sandbox 에 설치하지 못했습니다 (스킬을 다시 설치해 보세요)")
+        return SandboxInstallResponse(installed=True)
+    sb = await SkillService.running_sandbox(current_user.id, db, scope)
+    if sb:
+        await sandbox_manager.remove_path(sb.container_id, f"{SANDBOX_SKILLS_DIR}/{skill.name}")
+    return SandboxInstallResponse(installed=False, sandbox_running=sb is not None)
 
 
 @router.get("/plugins", response_model=List[PluginResponse])

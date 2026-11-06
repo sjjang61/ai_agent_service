@@ -361,6 +361,22 @@ class SkillService:
             return f"{type(e).__name__}: {str(e)[:300]}"
 
     @staticmethod
+    async def installed_in_sandbox(container_id: str) -> set[str]:
+        """sandbox 의 /workspace/skills 에 SKILL.md 와 함께 설치되어 있는 skill 이름."""
+        _, out, _ = await sandbox_manager.exec_command(
+            container_id, f'for d in {SANDBOX_SKILLS_DIR}/*/; do [ -f "$d/SKILL.md" ] && basename "$d"; done; true'
+        )
+        return set(out.split())
+
+    @staticmethod
+    async def running_sandbox(user_id: str, db: AsyncSession, scope: Optional[str]):
+        """사용자(대화방 범위)의 실행 중인 sandbox. 없거나 꺼져 있으면 None (시작하지 않는다)."""
+        sb = await SandboxService.get_sandbox(user_id, db, scope)
+        if sb and sb.status == "running" and sb.container_id and await sandbox_manager.is_running(sb.container_id):
+            return sb
+        return None
+
+    @staticmethod
     async def ensure_in_sandbox(container_id: str, skills: list[Skill]) -> list[str]:
         """sandbox 에 SKILL.md 가 없는 skill 만 호스트 사본에서 복사한다. 반환: 새로 복사한 skill 이름.
 
