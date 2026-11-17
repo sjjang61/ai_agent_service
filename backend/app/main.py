@@ -3,9 +3,12 @@ import logging
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
+from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.api import admin, apps, store, auth, browser, calendar, channels, connectors, chat, documents, files, mcp, memory, sandbox, agents, schedules, shares, skills, spaces, tools, wiki, ws
+from app.services.drive_service import DriveError
+
+from app.api import admin, apps, store, auth, browser, calendar, channels, connectors, chat, documents, drive, files, mcp, memory, sandbox, agents, schedules, shares, skills, spaces, tools, wiki, ws
 from app.db.session import init_db
 from app.config import settings
 
@@ -90,6 +93,13 @@ async def lifespan(app: FastAPI):
             logging.getLogger(__name__).exception("[apps] 배포된 앱 로드 실패")
         app_reaper = asyncio.create_task(run_app_reaper())
     scheduler = asyncio.create_task(run_scheduler())
+    drive_task = None
+    from app.services import drive_storage
+
+    if drive_storage.enabled():
+        from app.services.drive_maintenance import run_drive_maintenance
+
+        drive_task = asyncio.create_task(run_drive_maintenance())  # 보관 기간이 지난 휴지통 정리
     channels = None
     if settings.CHANNELS_ENABLED:
         from app.channels.gateway import run_channels
@@ -101,6 +111,8 @@ async def lifespan(app: FastAPI):
         app_reaper.cancel()
         await app_host.shutdown()
     scheduler.cancel()
+    if drive_task:
+        drive_task.cancel()
     if channels:
         channels.cancel()
     await VectorStoreManager.cleanup()
@@ -108,6 +120,12 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(title="AI Agent Platform", version="0.1.0", lifespan=lifespan)
+
+
+@app.exception_handler(DriveError)
+async def _drive_error(_request, exc: DriveError):
+    """Drive 서비스의 사용자용 오류를 {detail} 형식(다른 API 와 같다)으로 돌려준다."""
+    return JSONResponse(status_code=exc.status, content={"detail": exc.message})
 
 app.add_middleware(
     CORSMiddleware,
@@ -122,6 +140,7 @@ app.include_router(auth.router, prefix="/api/auth", tags=["auth"])
 app.include_router(chat.router, prefix="/api/chat", tags=["chat"])
 app.include_router(shares.router, prefix="/api/chat", tags=["share"])
 app.include_router(shares.public_router, prefix="/api/shared", tags=["share"])
+app.include_router(drive.router, prefix="/api/drive", tags=["drive"])
 app.include_router(documents.router, prefix="/api", tags=["documents"])
 app.include_router(mcp.router, prefix="/api/mcp", tags=["mcp"])
 app.include_router(calendar.router, prefix="/api/calendar", tags=["calendar"])

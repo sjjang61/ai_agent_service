@@ -295,6 +295,20 @@ class Settings(BaseSettings):
     SCHEDULER_MIN_INTERVAL_HOURS: int = 1  # '매 N시간' 반복의 최소 간격
     SCHEDULER_DEFAULT_TIMEZONE: str = "Asia/Seoul"
 
+    # Drive: 사용자별 개인 산출물 공간 (MinIO 비공개 버킷 + DB 폴더 트리). MINIO_ENDPOINT 등 인증은 위 MinIO 설정을 쓴다
+    DRIVE_ENABLED: bool = True  # MinIO 가 설정되어 있어야 실제로 켜진다
+    MINIO_DRIVE_BUCKET: str = "agent-drive"  # 비공개 버킷 (익명 정책을 걸지 않는다). 공개 버킷(MINIO_PUBLIC_BUCKET)과 섞지 말 것
+    DRIVE_MAX_FILE_MB: int = 200
+    DRIVE_QUOTA_GB: float = 5.0  # 사용자당 총량 (휴지통에 있는 파일도 영구 삭제 전까지 센다)
+    DRIVE_MAX_DEPTH: int = 20
+    DRIVE_MAX_CHILDREN: int = 10000  # 폴더 하나에 둘 수 있는 항목 수
+    DRIVE_TRASH_RETENTION_DAYS: int = 30  # 휴지통 보관 일수 (0 이면 자동 영구 삭제 안 함)
+    DRIVE_IMPORT_MAX_MB: int = 500  # sandbox 에서 Drive 로 한 번에 저장할 수 있는 총 크기 (폴더 포함)
+    DRIVE_IMPORT_MAX_FILES: int = 2000  # 한 번에 저장할 수 있는 파일 수 (node_modules·.git 등은 제외하고 센다)
+    DRIVE_LOAD_MAX_MB: int = 50  # Drive 파일을 sandbox 로 불러올 수 있는 최대 크기 (메모리를 거치므로 작게 둔다)
+    DRIVE_UPLOADS_PER_MIN: int = 120  # 사용자당 분당 업로드 요청 수 (0 이면 제한 없음)
+    DRIVE_AUTO_SAVE_DEFAULT: bool = False  # 에이전트 산출물 자동 저장의 기본값 (사용자가 바꿀 수 있게 되기 전까지는 항상 수동)
+
     # 대화 공유 (로그인 없이 읽는 링크)
     SHARE_EXPIRE_DAYS: int = 0  # 0 이면 해제할 때까지 유효. 양수면 공유(갱신)한 날부터 이 일수 뒤 링크가 끊긴다
     SHARE_MAX_MESSAGES: int = 500  # 한 번에 공유할 수 있는 최대 메시지 수 (최근 것부터)

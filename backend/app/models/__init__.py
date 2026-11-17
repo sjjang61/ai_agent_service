@@ -43,3 +43,4 @@ from app.models.calendar_event import CalendarEvent
 from app.models.wiki_entry import WikiEdge
 from app.models.published_app import PublishedApp, AppReport
 from app.models.shared_conversation import SharedConversation
+from app.models.drive import DriveNode, DriveUsage
