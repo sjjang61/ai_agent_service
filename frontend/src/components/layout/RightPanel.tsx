@@ -24,7 +24,8 @@ export default function RightPanel({ title, subtitle, icon, onClose, wide, child
   }, [onClose])
 
   return (
-    <aside aria-label={title} className={`${wide ? 'w-[46vw] min-w-[420px] max-w-[900px]' : 'w-[420px]'} flex-shrink-0 border-l border-border flex flex-col h-screen overflow-hidden bg-surface-primary`}>
+    // 화면이 좁으면(데스크톱 앱의 분할 창 등) 채팅을 찌그러뜨리지 않도록 오른쪽에 겹쳐서 띄운다
+    <aside aria-label={title} className={`${wide ? 'w-[46vw] min-w-[420px] max-w-[900px]' : 'w-[420px]'} flex-shrink-0 border-l border-border flex flex-col h-screen overflow-hidden bg-surface-primary max-[1279px]:fixed max-[1279px]:right-0 max-[1279px]:top-0 max-[1279px]:z-30 max-[1279px]:max-w-[92vw] max-[1279px]:shadow-2xl`}>
       <div className="flex items-center gap-2 px-4 py-3 border-b border-border bg-surface-secondary">
         {icon && <span className="text-content-secondary flex-shrink-0">{icon}</span>}
         <div className="min-w-0 flex-1">

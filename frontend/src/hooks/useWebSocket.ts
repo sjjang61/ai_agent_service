@@ -1,5 +1,6 @@
 import { useEffect, useRef, useCallback } from 'react'
 import { useAuthStore } from '../store/authStore'
+import { wsUrl } from '../config/server'
 
 export function useWebSocket(
   conversationId: string | null,
@@ -11,7 +12,7 @@ export function useWebSocket(
   const connect = useCallback(() => {
     if (!conversationId || !token) return
     const ws = new WebSocket(
-      `ws://localhost:8500/ws/chat/${conversationId}?token=${token}`
+      wsUrl(`/ws/chat/${conversationId}?token=${token}`)
     )
     ws.onmessage = (e) => {
       try {

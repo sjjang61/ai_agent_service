@@ -7,6 +7,7 @@ import { chatApi } from '../../api/chat'
 import { useAuthStore } from '../../store/authStore'
 import type { AgentConfig } from '../../types/customAgent'
 import { currentTimezone } from '../../utils/time'
+import { apiUrl } from '../../config/server'
 
 interface Step { tool: string; done: boolean }
 interface Msg { role: 'user' | 'assistant'; content: string; steps: Step[]; error?: string }
@@ -48,7 +49,7 @@ export default function PreviewChat({ agentId, config, starters }: Props) {
         convRef.current = res.data.id as string
       }
       const cid = convRef.current
-      const resp = await fetch(`/api/chat/conversations/${cid}/messages`, {
+      const resp = await fetch(apiUrl(`/api/chat/conversations/${cid}/messages`), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
         body: JSON.stringify({ content, agent_config: config, timezone: currentTimezone() }),

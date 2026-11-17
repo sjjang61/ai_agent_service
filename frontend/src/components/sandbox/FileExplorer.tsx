@@ -2,6 +2,7 @@ import { useQuery } from '@tanstack/react-query'
 import axios from 'axios'
 import { useAuthStore } from '../../store/authStore'
 import { Folder, RefreshCw } from 'lucide-react'
+import { apiUrl } from '../../config/server'
 
 export default function FileExplorer({ path = '' }: { path?: string }) {
   const { token } = useAuthStore()
@@ -11,7 +12,7 @@ export default function FileExplorer({ path = '' }: { path?: string }) {
     queryKey: ['sandbox-files', path],
     queryFn: () =>
       axios
-        .get(`/api/sandbox/files?path=/workspace/${path}`, { headers })
+        .get(apiUrl(`/api/sandbox/files?path=/workspace/${path}`), { headers })
         .then((r) => r.data),
     retry: false,
   })

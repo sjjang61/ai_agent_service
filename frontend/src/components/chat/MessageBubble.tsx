@@ -25,6 +25,7 @@ import { getTypingSpeed } from '../../config/animation'
 import { useTextSelection } from '../../hooks/useTextSelection'
 import SelectionTooltip from '../wiki/SelectionTooltip'
 import WikiQuickAddDialog from '../wiki/WikiQuickAddDialog'
+import { apiUrl } from '../../config/server'
 
 // 코드 컴포넌트: 인라인 `code` 는 한 줄 강조로, 펜스 코드 블록(```)은 복사 버튼이 있는 블록으로 그린다.
 // react-markdown v9 에는 `inline` prop 이 없다. 블록 여부는 부모 <pre> 가 `block` 으로 알려 준다 (아래 components.pre).
@@ -326,9 +327,9 @@ export default function MessageBubble({ message }: { message: Message }) {
 
                   if (isDownloadLink) {
                     // URL을 상대 경로로 변환 (Vite 프록시를 통하도록)
-                    const relativePath = href.includes('://')
+                    const relativePath = apiUrl(href.includes('://')
                       ? href.substring(href.indexOf('/api/files/'))
-                      : href
+                      : href)
 
                     return (
                       <a

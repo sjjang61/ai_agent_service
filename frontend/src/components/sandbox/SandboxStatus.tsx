@@ -3,6 +3,7 @@ import axios from 'axios'
 import { useAuthStore } from '../../store/authStore'
 import { Play, Square, Terminal, RefreshCw } from 'lucide-react'
 import { T } from '../skills/typography'
+import { apiUrl } from '../../config/server'
 
 export default function SandboxStatus() {
   const { token } = useAuthStore()
@@ -11,17 +12,17 @@ export default function SandboxStatus() {
 
   const { data: status, isLoading } = useQuery({
     queryKey: ['sandbox-status'],
-    queryFn: () => axios.get('/api/sandbox/status', { headers }).then((r) => r.data),
+    queryFn: () => axios.get(apiUrl('/api/sandbox/status'), { headers }).then((r) => r.data),
     refetchInterval: 10000,
   })
 
   const startMutation = useMutation({
-    mutationFn: () => axios.post('/api/sandbox/start', {}, { headers }),
+    mutationFn: () => axios.post(apiUrl('/api/sandbox/start'), {}, { headers }),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['sandbox-status'] }),
   })
 
   const stopMutation = useMutation({
-    mutationFn: () => axios.post('/api/sandbox/stop', {}, { headers }),
+    mutationFn: () => axios.post(apiUrl('/api/sandbox/stop'), {}, { headers }),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['sandbox-status'] }),
   })
 
