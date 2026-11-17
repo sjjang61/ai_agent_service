@@ -15,8 +15,9 @@ import { appsApi } from '../../api/apps'
 import DocumentsPanel from '../documents/DocumentsPanel'
 import { useDocuments } from '../../hooks/useDocuments'
 import { useRunWatchdog } from '../../hooks/useRunWatchdog'
-import { useEffect, useRef } from 'react'
-import { AppWindow, FileText, FolderOpen, ListChecks, Loader2 } from 'lucide-react'
+import { useEffect, useRef, useState } from 'react'
+import { AppWindow, FileText, FolderOpen, ListChecks, Loader2, Share2 } from 'lucide-react'
+import ShareDialog from './ShareDialog'
 import type { AgentStep } from '../../types/agent'
 import { useChatStore } from '../../store/chatStore'
 import { useAgentStore } from '../../store/agentStore'
@@ -36,9 +37,9 @@ export default function ChatLayout() {
     content: s.content,
     input: s.input,
     output: s.output,
-    timestamp: lastAssistant?.created_at ?? '',
     callId: s.call_id, // 저장된 이력도 실시간과 같은 방식으로 호출·결과를 짝짓고 팀원 작업을 묶는다
     agent: s.agent,
+    timestamp: lastAssistant?.created_at ?? '',
   }))
   const panelSteps = liveSteps.length > 0 ? liveSteps : savedSteps
   const taskCount = buildTaskItems(panelSteps).length
@@ -48,23 +49,23 @@ export default function ChatLayout() {
   // 실행이 시작돼 첫 단계가 생기면 우측에 작업 진행 패널을 자동으로 연다. 사용자가 닫으면 그 실행 동안은 다시 열지 않고,
   // 다른 패널(문서·Artifacts)을 보고 있으면 건드리지 않는다.
   const autoOpened = useRef(false)
-  useEffect(() => {
   // 자동으로 연 작업 진행 패널은 실행이 끝나면 자동으로 닫아 채팅 화면을 넓게 보여 준다.
   // 사용자가 직접 열었거나, 자동으로 연 뒤 다른 패널로 바꾸거나 닫았다면 건드리지 않는다.
   const closeOnFinish = useRef(false)
   const wasRunning = useRef(false)
+  useEffect(() => {
     if (!running) {
       autoOpened.current = false
-      return
       if (wasRunning.current && closeOnFinish.current) {
         const st = useAgentStore.getState()
         if (st.rightPanel === 'steps' && !st.selectedStep) st.closePanel()
       }
       wasRunning.current = false
       closeOnFinish.current = false
+      return
     }
-    if (liveSteps.length > 0 && !autoOpened.current) {
     wasRunning.current = true
+    if (liveSteps.length > 0 && !autoOpened.current) {
       autoOpened.current = true
       if (useAgentStore.getState().rightPanel === null) {
         useAgentStore.getState().togglePanel('steps')
@@ -72,11 +73,11 @@ export default function ChatLayout() {
       }
     }
   }, [running, liveSteps.length])
-  // 에이전트가 웹앱을 배포하면(deploy_web_app 성공) 우측에 앱 미리보기를 자동으로 연다. 같은 배포는 한 번만 연다.
   // 작업 진행 패널이 아닌 것으로 바뀌면(사용자가 닫거나 다른 패널을 열면) 끝나도 자동으로 닫지 않는다
   useEffect(() => {
     if (rightPanel !== 'steps') closeOnFinish.current = false
   }, [rightPanel])
+  // 에이전트가 웹앱을 배포하면(deploy_web_app 성공) 우측에 앱 미리보기를 자동으로 연다. 같은 배포는 한 번만 연다.
   const deployedApp = latestDeployedApp(panelSteps)
   const openedApp = useRef<string | null>(null)
   const liveApp = latestDeployedApp(liveSteps)
@@ -88,6 +89,7 @@ export default function ChatLayout() {
   }, [liveApp?.stepId])
   const { data: documents = [] } = useDocuments(currentConversationId)
   const docsProcessing = documents.some((d) => d.status === 'processing')
+  const [shareOpen, setShareOpen] = useState(false)
   const headerBtn = (active: boolean) =>
     `flex items-center gap-1.5 px-2.5 py-1.5 rounded-[var(--radius-md)] text-xs border transition-colors cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed ${
       active
@@ -116,6 +118,15 @@ export default function ChatLayout() {
 
         {/* 우측 패널 토글: 작업 진행 · 문서(RAG) · Artifacts */}
         <div className="absolute top-3 right-4 z-10 flex items-center gap-2">
+          <button
+            onClick={() => setShareOpen(true)}
+            disabled={!currentConversationId}
+            title={currentConversationId ? '이 대화를 링크로 공유 (로그인 없이 읽기)' : '대화를 선택하면 공유할 수 있습니다'}
+            className={headerBtn(false)}
+          >
+            <Share2 size={13} />
+            공유
+          </button>
           <button
             onClick={() => togglePanel('steps')}
             disabled={!currentConversationId}
@@ -181,6 +192,7 @@ export default function ChatLayout() {
           <WelcomeScreen />
         )}
       </main>
+      {shareOpen && currentConversationId && <ShareDialog conversationId={currentConversationId} onClose={() => setShareOpen(false)} />}
 
       {/* Right Detail Panel - Step Details */}
       {selectedStep && <SandboxDetailPanel />}

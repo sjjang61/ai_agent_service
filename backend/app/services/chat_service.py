@@ -120,6 +120,11 @@ class ChatService:
         if owned.scalar_one_or_none() is None:
             raise HTTPException(status_code=404, detail="대화를 찾을 수 없습니다")
 
+        # 공유 링크는 대화와 함께 사라진다 (FK 때문에 먼저 지운다)
+        from app.models.shared_conversation import SharedConversation
+
+        await db.execute(delete(SharedConversation).where(SharedConversation.conversation_id == conversation_id))
+
         # 벡터 컬렉션 삭제 (RAG 문서)
         VectorStoreManager.delete_collection(conversation_id)
 

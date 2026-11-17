@@ -1,6 +1,7 @@
 import { Routes, Route, Navigate } from 'react-router-dom'
 import { useAuthStore } from './store/authStore'
 import AdminUsagePage from './pages/AdminUsagePage'
+import SharedChatPage from './pages/SharedChatPage'
 import AuthPage from './pages/AuthPage'
 import CalendarPage from './pages/CalendarPage'
 import ChannelsPage from './pages/ChannelsPage'
@@ -11,8 +12,8 @@ import MyAppsPage from './pages/MyAppsPage'
 import StorePage from './pages/StorePage'
 import ReviewPage from './pages/ReviewPage'
 import McpSettingsPage from './pages/McpSettingsPage'
-import MemoryPage from './pages/MemoryPage'
 import ConnectorsPage from './pages/ConnectorsPage'
+import MemoryPage from './pages/MemoryPage'
 import SandboxPage from './pages/SandboxPage'
 import SchedulesPage from './pages/SchedulesPage'
 import SkillsPage from './pages/SkillsPage'
@@ -33,16 +34,18 @@ export default function App() {
   return (
     <Routes>
       <Route path="/auth" element={<AuthPage />} />
+      {/* 공유된 대화: 로그인 없이 읽는다 */}
+      <Route path="/share/:token" element={<SharedChatPage />} />
       <Route path="/" element={<PrivateRoute><ChatPage /></PrivateRoute>} />
       <Route path="/chat/:conversationId" element={<PrivateRoute><ChatPage /></PrivateRoute>} />
       <Route path="/store/review" element={<PrivateRoute><ReviewPage /></PrivateRoute>} />
       <Route path="/store" element={<PrivateRoute><StorePage /></PrivateRoute>} />
       <Route path="/apps" element={<PrivateRoute><MyAppsPage /></PrivateRoute>} />
       <Route path="/mcp" element={<PrivateRoute><McpSettingsPage /></PrivateRoute>} />
+      <Route path="/connectors" element={<PrivateRoute><ConnectorsPage /></PrivateRoute>} />
       <Route path="/memory" element={<PrivateRoute><MemoryPage /></PrivateRoute>} />
       <Route path="/calendar" element={<PrivateRoute><CalendarPage /></PrivateRoute>} />
       <Route path="/wiki" element={<PrivateRoute><WikiPage /></PrivateRoute>} />
-      <Route path="/connectors" element={<PrivateRoute><ConnectorsPage /></PrivateRoute>} />
       <Route path="/spaces" element={<PrivateRoute><SpacesPage /></PrivateRoute>} />
       <Route path="/spaces/pages/:pageId" element={<PrivateRoute><PageEditorPage /></PrivateRoute>} />
       <Route path="/schedules" element={<PrivateRoute><SchedulesPage /></PrivateRoute>} />

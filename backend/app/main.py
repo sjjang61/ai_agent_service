@@ -5,7 +5,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.api import admin, apps, store, auth, browser, calendar, channels, connectors, chat, documents, files, mcp, memory, sandbox, agents, schedules, skills, spaces, tools, wiki, ws
+from app.api import admin, apps, store, auth, browser, calendar, channels, connectors, chat, documents, files, mcp, memory, sandbox, agents, schedules, shares, skills, spaces, tools, wiki, ws
 from app.db.session import init_db
 from app.config import settings
 
@@ -120,6 +120,8 @@ app.add_middleware(
 app.include_router(admin.router, prefix="/api/admin", tags=["admin"])
 app.include_router(auth.router, prefix="/api/auth", tags=["auth"])
 app.include_router(chat.router, prefix="/api/chat", tags=["chat"])
+app.include_router(shares.router, prefix="/api/chat", tags=["share"])
+app.include_router(shares.public_router, prefix="/api/shared", tags=["share"])
 app.include_router(documents.router, prefix="/api", tags=["documents"])
 app.include_router(mcp.router, prefix="/api/mcp", tags=["mcp"])
 app.include_router(calendar.router, prefix="/api/calendar", tags=["calendar"])
@@ -135,9 +137,9 @@ app.include_router(agents.router, prefix="/api/agents", tags=["agents"])
 app.include_router(spaces.router, prefix="/api/workspace", tags=["workspace"])
 app.include_router(schedules.router, prefix="/api/schedules", tags=["schedules"])
 app.include_router(channels.router, prefix="/api/channels", tags=["channels"])
+app.include_router(connectors.router, prefix="/api/connectors", tags=["connectors"])
 app.include_router(browser.router, prefix="/api/browser", tags=["browser"])
 app.include_router(browser.ws_router, prefix="/ws")
-app.include_router(connectors.router, prefix="/api/connectors", tags=["connectors"])
 app.include_router(ws.router, prefix="/ws", tags=["ws"])
 
 

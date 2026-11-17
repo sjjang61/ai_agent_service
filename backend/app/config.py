@@ -224,11 +224,6 @@ class Settings(BaseSettings):
     # 브라우저 에이전트 (cli_browser_agent)
     BROWSER_MAX_STEPS: int = 30
     BROWSER_TIMEOUT_SECONDS: int = 300
-
-    # 채팅 첨부 파일 업로드 (sandbox /workspace/uploads/)
-    UPLOAD_MAX_MB: int = 50
-    UPLOAD_FOLDER_MAX_FILES: int = 300  # 폴더 업로드: 최대 파일 수
-    UPLOAD_FOLDER_MAX_MB: int = 100  # 폴더 업로드: 전체 크기
     BROWSER_PARALLEL_MAX: int = 3  # 로컬 브라우저에서 동시에 열 수 있는 병렬 작업(탭) 수
 
     # 로컬 브라우저(데스크톱 앱의 내장 브라우저). CDP 주소가 있고 해당 사용자일 때만 sandbox 대신 사용한다.
@@ -244,6 +239,11 @@ class Settings(BaseSettings):
     BROWSER_BLOCKED_DOMAINS: list[str] = []    # 이 도메인(하위 포함)으로는 이동하지 않는다
     BROWSER_ALLOWED_DOMAINS: list[str] = []    # 비어 있지 않으면 이 도메인만 허용
     BROWSER_SENSITIVE_DOMAINS: list[str] = []  # 추가로 '항상 승인' 대상으로 취급할 도메인 (기본 금융·결제 규칙 외)
+
+    # 채팅 첨부 파일 업로드 (sandbox /workspace/uploads/)
+    UPLOAD_MAX_MB: int = 50
+    UPLOAD_FOLDER_MAX_FILES: int = 300  # 폴더 업로드: 최대 파일 수
+    UPLOAD_FOLDER_MAX_MB: int = 100  # 폴더 업로드: 전체 크기
     REFERENCE_MAX_CHARS: int = 12000  # 참조(페이지·이전 대화) 하나당 에이전트에게 전달하는 최대 글자 수
 
     # 산출물(artifacts) 보기
@@ -294,6 +294,11 @@ class Settings(BaseSettings):
     SCHEDULER_MAX_CONSECUTIVE_FAILURES: int = 3  # 연속 실패 시 자동 일시중지
     SCHEDULER_MIN_INTERVAL_HOURS: int = 1  # '매 N시간' 반복의 최소 간격
     SCHEDULER_DEFAULT_TIMEZONE: str = "Asia/Seoul"
+
+    # 대화 공유 (로그인 없이 읽는 링크)
+    SHARE_EXPIRE_DAYS: int = 0  # 0 이면 해제할 때까지 유효. 양수면 공유(갱신)한 날부터 이 일수 뒤 링크가 끊긴다
+    SHARE_MAX_MESSAGES: int = 500  # 한 번에 공유할 수 있는 최대 메시지 수 (최근 것부터)
+    SHARE_RATE_PER_MIN: int = 60  # 공유 링크 조회 제한: IP 당 분당 (0 이면 제한 없음)
 
     # CORS
     CORS_ORIGINS: list[str] = [
