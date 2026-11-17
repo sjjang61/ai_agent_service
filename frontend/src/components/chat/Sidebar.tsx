@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import SearchDialog from './SearchDialog'
 import { dayKey, parseServerDate } from '../../utils/time'
-import { useNavigate } from 'react-router-dom'
+import { useLocation, useNavigate } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import {
   PenSquare,
@@ -20,8 +20,14 @@ import {
   LogOut,
   BarChart3,
   Wrench,
+  PanelLeftClose,
+  PanelLeftOpen,
+  Rocket,
+  Store,
 } from 'lucide-react'
 import { useChatStore } from '../../store/chatStore'
+import { useLayoutStore } from '../../store/layoutStore'
+import { IconButton } from '../layout/IconButton'
 import { chatApi } from '../../api/chat'
 import { agentsApi } from '../../api/agents'
 import type { CustomAgentSummary } from '../../types/customAgent'
@@ -30,6 +36,8 @@ import { useAuthStore } from '../../store/authStore'
 import type { Conversation } from '../../types/chat'
 
 export default function Sidebar() {
+  const collapsed = useLayoutStore((s) => s.sidebarCollapsed)
+  const toggleSidebar = useLayoutStore((s) => s.toggleSidebar)
   const {
     conversations,
     currentConversationId,
@@ -39,6 +47,7 @@ export default function Sidebar() {
   } = useChatStore()
   const { user, logout } = useAuthStore()
   const navigate = useNavigate()
+  const location = useLocation()
 
   const handleNewChat = async () => {
     const res = await chatApi.createConversation({ title: 'New Conversation' })
@@ -107,6 +116,62 @@ export default function Sidebar() {
   const todayConversations = conversations.filter((c) => dayKey(parseServerDate(c.created_at)) === today)
   const olderConversations = conversations.filter((c) => dayKey(parseServerDate(c.created_at)) !== today)
 
+  // 접힌 상태: 아이콘만 세로로 두고, 이름과 설명은 마우스를 올리거나 포커스하면 툴팁으로 보여 준다
+  if (collapsed) {
+    const on = (path: string) => location.pathname.startsWith(path)
+    const divider = <div role="separator" className="w-6 my-1 border-t border-border" />
+    return (
+      <aside aria-label="사이드바(접힘)" className="w-[var(--icon-bar-width)] bg-surface-secondary border-r border-border flex flex-col items-center py-3 gap-1 flex-shrink-0">
+        <IconButton icon={<PanelLeftOpen size={20} />} title="사이드바 펼치기" description="대화 목록과 메뉴를 펼칩니다" onClick={toggleSidebar} />
+        {divider}
+        <IconButton icon={<Search size={20} />} title="대화 검색" description="제목과 내용으로 이전 대화를 찾습니다 (Ctrl/⌘+K)" onClick={() => setSearchOpen(true)} />
+        <IconButton icon={<PenSquare size={20} />} title="New Chat" description="새 대화를 시작합니다" onClick={handleNewChat} />
+        <IconButton
+          icon={<Bot size={20} />}
+          title="My Agent"
+          description={`내가 만든 에이전트를 관리하고 새 대화를 시작합니다 (발행 ${published.length}개)`}
+          active={on('/agents')}
+          badge={published.length > 0}
+          onClick={() => navigate('/agents')}
+        />
+        <IconButton
+          icon={<Rocket size={20} />}
+          title="My Apps"
+          description={`내가 배포한 웹앱을 실행하고 관리합니다 (${myApps.length}개)`}
+          active={on('/apps')}
+          badge={myApps.some((a) => a.status === 'running')}
+          onClick={() => navigate('/apps')}
+        />
+        <IconButton icon={<Store size={20} />} title="App Store" description="공개된 앱을 둘러보고 실행합니다" active={on('/store')} onClick={() => navigate('/store')} />
+        <div className="flex-1" />
+        {divider}
+        <IconButton icon={<Wrench size={20} />} title="Tools" description="에이전트가 쓰는 도구를 켜고 끕니다" active={on('/tools')} onClick={() => navigate('/tools')} />
+        <IconButton icon={<Settings size={20} />} title="MCP Settings" description="외부 MCP 서버를 등록하고 관리합니다" active={on('/mcp')} onClick={() => navigate('/mcp')} />
+        <IconButton icon={<Sparkles size={20} />} title="Skills" description="스킬을 설치하고 관리해 에이전트의 능력을 확장합니다" active={on('/skills')} onClick={() => navigate('/skills')} />
+        <IconButton icon={<Brain size={20} />} title="Memory" description="에이전트가 기억하는 내용을 확인하고 정리합니다" active={on('/memory')} onClick={() => navigate('/memory')} />
+        <IconButton icon={<Box size={20} />} title="Sandbox" description="작업공간(sandbox)의 상태와 파일을 관리합니다" active={on('/sandbox')} onClick={() => navigate('/sandbox')} />
+        <IconButton icon={<BarChart3 size={20} />} title="Token Usage" description="토큰 사용량과 비용을 확인합니다" active={on('/admin/usage')} onClick={() => navigate('/admin/usage')} />
+        {divider}
+        <IconButton
+          icon={<LogOut size={20} />}
+          title="Logout"
+          description={user?.display_name ? `${user.display_name} 계정에서 로그아웃합니다` : '로그아웃합니다'}
+          onClick={() => { logout(); navigate('/auth') }}
+        />
+        {searchOpen && (
+          <SearchDialog
+            onClose={() => setSearchOpen(false)}
+            onSelect={(id) => {
+              setSearchOpen(false)
+              setCurrentConversation(id)
+              navigate(`/chat/${id}`)
+            }}
+          />
+        )}
+      </aside>
+    )
+  }
+
   return (
     <aside className="w-[var(--sidebar-width)] bg-surface-secondary border-r border-border flex flex-col overflow-hidden flex-shrink-0">
       {/* Header */}
@@ -131,6 +196,16 @@ export default function Sidebar() {
               text-content-secondary hover:text-content-primary hover:bg-surface-hover transition-colors"
           >
             <Search size={16} />
+          </button>
+          <button
+            onClick={toggleSidebar}
+            title="사이드바 접기"
+            aria-label="사이드바 접기"
+            aria-expanded={true}
+            className="w-7 h-7 rounded-[var(--radius-sm)] flex items-center justify-center border-none bg-transparent cursor-pointer
+              text-content-secondary hover:text-content-primary hover:bg-surface-hover transition-colors"
+          >
+            <PanelLeftClose size={16} />
           </button>
         </div>
       </div>
