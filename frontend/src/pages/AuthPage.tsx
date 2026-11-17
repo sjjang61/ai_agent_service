@@ -38,30 +38,30 @@ export default function AuthPage() {
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-slate-900">
-      <div className="w-full max-w-md bg-slate-800 rounded-xl p-8 shadow-2xl border border-slate-700">
+    <div className="min-h-screen flex items-center justify-center bg-surface-primary">
+      <div className="w-full max-w-md bg-surface-secondary rounded-xl p-8 shadow-lg border border-border">
         <div className="text-center mb-8">
-          <h1 className="text-2xl font-bold text-white">AI Agent Platform</h1>
-          <p className="text-slate-400 mt-1 text-sm">로그인 ID를 입력하세요</p>
+          <h1 className="text-2xl font-bold text-content-primary">AI Agent Platform</h1>
+          <p className="text-content-secondary mt-1 text-sm">로그인 ID를 입력하세요</p>
         </div>
 
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
-            <label className="block text-sm font-medium text-slate-300 mb-1">
+            <label className="block text-sm font-medium text-content-secondary mb-1">
               로그인 ID
             </label>
             <input
               type="text"
               value={loginId}
               onChange={(e) => setLoginId(e.target.value)}
-              className="w-full px-3 py-2 bg-slate-700 border border-slate-600 rounded-lg text-white focus:outline-none focus:border-blue-500"
+              className="w-full px-3 py-2 bg-surface-primary border border-border rounded-lg text-content-primary placeholder:text-content-muted focus:outline-none focus:border-accent-primary"
               placeholder="사용자 ID를 입력하세요"
               autoFocus
             />
           </div>
 
           {error && (
-            <p className="text-red-400 text-sm bg-red-900/20 px-3 py-2 rounded-lg">
+            <p className="text-accent-red text-sm bg-accent-red/10 px-3 py-2 rounded-lg">
               {error}
             </p>
           )}
@@ -69,13 +69,13 @@ export default function AuthPage() {
           <button
             type="submit"
             disabled={isLoading}
-            className="w-full py-2.5 px-4 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white font-semibold rounded-lg transition-colors"
+            className="w-full py-2.5 px-4 bg-accent-primary hover:bg-accent-hover disabled:opacity-50 text-white font-semibold rounded-lg transition-colors"
           >
             {isLoading ? '로그인 중...' : '로그인'}
           </button>
         </form>
 
-        <p className="mt-6 text-center text-slate-500 text-xs">
+        <p className="mt-6 text-center text-content-tertiary text-xs">
           처음 입력하는 ID는 자동으로 계정이 생성됩니다
         </p>
       </div>
