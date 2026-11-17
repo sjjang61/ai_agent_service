@@ -13,7 +13,8 @@ class WebCrawlerTool(BaseTool):
     name: str = "web_crawler"
     description: str = (
         "Crawl a webpage and extract its content. "
-        "Use this to read the full content of a specific URL."
+        "Use this to read the full content of a specific public URL. If the result is empty, partial, blocked or the page "
+        "needs JavaScript or a login, do not retry: use cli_browser_agent instead."
     )
     args_schema: type[BaseModel] = CrawlerInput
 

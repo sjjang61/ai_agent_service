@@ -64,6 +64,15 @@ def _valid_timezone(name: Optional[str]) -> str:
     return "UTC"
 
 
+async def browser_local_note(user_id: str, allow_browser: bool) -> str:
+    """데스크톱 앱의 내장 브라우저가 연결된 요청이면 '브라우저 우선' 안내(browser_local.md)를, 아니면 빈 문자열."""
+    if not allow_browser:
+        return ""
+    from app.services.local_browser import route_for
+
+    return "\n\n" + load("browser_local") if await route_for(user_id) is not None else ""
+
+
 def _time_context(tz_name: str) -> str:
     """'내일 9시' 같은 상대 표현을 해석할 수 있도록 현재 시각을 알려준다."""
     from datetime import datetime
@@ -163,7 +172,7 @@ class AgentOrchestrator:
         from app.tools.mcp_tools import (
             CallMcpToolTool, LoadMcpToolTool, RunMcpCodeTool, build_mcp_catalog_prompt,
         )
-        from app.tools.browser_tools import CliBrowserAgentTool
+        from app.tools.browser_tools import BrowserParallelTool, CliBrowserAgentTool
         from app.tools.interaction_tools import ChatAskUserTool, FormAskUserTool, HeadlessAskUserTool, NarrateTool, TodoTool
         from app.tools.skill_tool import LoadSkillTool
         from app.tools.schedule_tool import ManageScheduleTool
@@ -356,7 +365,12 @@ class AgentOrchestrator:
 
         skills = await self._get_active_skills(db, sandbox_cid)
         tools, mcp_prompt = await self._get_tools(db, skills, conversation_id, user_input, sandbox_cid)
-        system_prompt = compose_prompt(SYSTEM_PROMPT, self.runtime) + _time_context(self.user_timezone) + memory_context + build_skills_prompt(skills) + mcp_prompt + route_note + ("\n\n" + load("headless") if self.headless else "") + ("\n\n" + load("channel") if self.channel else "")
+        local_note = await browser_local_note(self.user_id, self.allow_browser)
+        if self.allow_browser:
+            from app.services.local_browser import mark_new_turn
+
+            mark_new_turn(self.user_id)  # 이 요청에서 브라우저를 처음 쓸 때 이전 탭을 정리한다
+        system_prompt = compose_prompt(SYSTEM_PROMPT, self.runtime) + _time_context(self.user_timezone) + memory_context + build_skills_prompt(skills) + mcp_prompt + local_note + route_note + ("\n\n" + load("headless") if self.headless else "") + ("\n\n" + load("channel") if self.channel else "")
 
         if settings.AGENT_ENGINE == "agno":
             from app.agent.agno_engine import AgnoRunner

@@ -28,6 +28,8 @@ export const TASK_LABELS: Record<string, string> = {
   narrate: '진행 안내',
   form_ask_user: '사용자 질문',
   cli_browser_agent: '브라우저 작업',
+  browser_parallel: '브라우저 병렬 작업',
+  browser_action: '브라우저 동작',
   manage_schedule: '예약 관리',
   generate_image: '이미지 생성',
   generate_video: '동영상 생성',
@@ -101,6 +103,14 @@ export function summarizeInput(tool: string | undefined, input: unknown): string
       return clip([str('server'), str('tool')].filter(Boolean).join(' · '))
     case 'create_widget':
       return clip(str('title'))
+    case 'browser_action': {
+      const target = str('url') || str('text') || (typeof o.ref === 'number' ? `요소 ${o.ref}` : '') || str('key') || str('direction')
+      return clip([str('action'), target].filter(Boolean).join(' · '))
+    }
+    case 'browser_parallel': {
+      const n = Array.isArray(o.tasks) ? o.tasks.length : 0
+      return n ? `${n}개 사이트 동시 작업` : ''
+    }
     default: {
       const first = Object.values(o).find((v) => typeof v === 'string' && v.trim()) as string | undefined
       return clip(first ?? JSON.stringify(o))
@@ -266,11 +276,24 @@ const key = (s: string) => s.toLowerCase().replace(/[^a-z0-9가-힣]/g, '')
  * 팀원이 한 도구 호출(agent 가 붙은 호출)을 그 팀원에게 위임한 작업(delegate_task_to_member) 아래로 옮긴다.
  * 팀원 이름은 위임 입력의 member_id 와 대소문자·기호를 무시하고 맞춘다. 맞는 위임이 없으면 진행 중인 위임에 붙이고, 그것도 없으면 그대로 둔다.
  */
+const BROWSER_PARENTS = new Set(['cli_browser_agent', 'browser_parallel'])
+const isBrowserAgent = (agent?: string) => !!agent && agent.startsWith('BrowserAgent')
+/** 브라우저 동작의 call_id(ba_<run>_<n>)에서 어느 브라우저 작업(run)의 동작인지 꺼낸다 */
+const runOfBrowserStep = (it: TaskItem) => /^ba_([A-Za-z0-9]+)_/.exec(it.call?.callId ?? it.result?.callId ?? '')?.[1]
+/** 부모(cli_browser_agent / browser_parallel)의 결과에 적힌 [browser_run:<run>] 태그들 */
+const runsOfParent = (p: TaskItem) => [...(p.result?.output ?? '').matchAll(/\[browser_run:([A-Za-z0-9]+)\]/g)].map((m) => m[1])
+
 function nestDelegates(items: TaskItem[]): TaskItem[] {
   const top: TaskItem[] = []
   const delegates: TaskItem[] = []
+  const browsers: TaskItem[] = [] // 브라우저 에이전트가 안에서 한 동작을 묶을 부모 (cli_browser_agent / browser_parallel)
+  const browserKids: TaskItem[] = []
   for (const it of items) {
     const agent = it.call?.agent ?? it.result?.agent
+    if (isBrowserAgent(agent)) {
+      browserKids.push(it) // 부모가 나중에 오는 경우(스트리밍이 아닌 실행)도 있어 반복이 끝난 뒤 짝짓는다
+      continue
+    }
     if (agent && it.tool !== 'delegate_task_to_member' && delegates.length) {
       const same = delegates.filter((d) => key(String((d.call?.input as { member_id?: unknown } | undefined)?.member_id ?? '')) === key(agent))
       const parent =
@@ -284,7 +307,24 @@ function nestDelegates(items: TaskItem[]): TaskItem[] {
     }
     top.push(it)
     if (it.tool === 'delegate_task_to_member') delegates.push(it)
+    if (it.tool && BROWSER_PARENTS.has(it.tool)) browsers.push(it)
   }
+  // 브라우저 동작을 부모에 붙인다: 부모 결과의 run 태그와 맞는 것을 우선하고, 남은 것은 진행 중인(없으면 마지막) 부모에 붙인다
+  if (browserKids.length) {
+    const rest: TaskItem[] = []
+    for (const k of browserKids) {
+      const run = runOfBrowserStep(k)
+      const owner = run ? browsers.find((b) => runsOfParent(b).includes(run)) : undefined
+      if (owner) (owner.children ??= []).push(k)
+      else rest.push(k)
+    }
+    if (rest.length) {
+      const fallback = [...browsers].reverse().find((b) => b.status === 'running') ?? browsers[browsers.length - 1]
+      if (fallback) (fallback.children ??= []).push(...rest)
+      else top.push(...rest) // 부모를 알 수 없으면 최상위에 그대로 보여 준다
+    }
+  }
+  for (const b of browsers) finishBrowserParent(b)
   for (const d of delegates) {
     if (!d.children) continue
     d.children = groupTaskItems(d.children)
@@ -293,6 +333,32 @@ function nestDelegates(items: TaskItem[]): TaskItem[] {
     if (d.status === 'done' && d.children.some((c) => c.status === 'running')) d.status = 'running'
   }
   return top
+}
+
+/** 브라우저 에이전트의 동작들을 부모 작업 아래에 정리한다. 병렬 실행이면 사이트(에이전트 이름)별로 묶는다 */
+function finishBrowserParent(p: TaskItem) {
+  const kids = p.children
+  if (!kids?.length) return
+  const agentOf = (k: TaskItem) => k.call?.agent ?? k.result?.agent ?? ''
+  const agents = [...new Set(kids.map(agentOf))]
+  if (agents.length > 1) {
+    p.children = agents.map((a) => {
+      const list = kids.filter((k) => agentOf(k) === a)
+      return {
+        key: `${p.key}:${a}`,
+        kind: 'tool' as const,
+        tool: 'browser_agent_run',
+        label: a.replace(/^BrowserAgent\s*·?\s*/, '') || 'BrowserAgent',
+        summary: `${list.length}단계`,
+        status: (list.some((k) => k.status === 'running') ? 'running' : list.some((k) => k.status === 'failed') ? 'failed' : 'done') as TaskStatus,
+        children: list,
+        childKind: 'same' as const,
+      }
+    })
+  }
+  p.childKind = 'delegate'
+  // 안의 동작이 아직 돌고 있으면 부모도 진행 중
+  if (p.status === 'done' && p.children!.some((c) => c.status === 'running')) p.status = 'running'
 }
 
 /** 지금 진행 중인 가장 안쪽(마지막) 작업 */
@@ -357,4 +423,21 @@ export function buildPlanBuckets(steps: AgentStep[], planIds: string[]): PlanBuc
   const byStep: Record<string, TaskItem[]> = {}
   for (const [id, list] of Object.entries(buckets)) byStep[id] = groupTaskItems(list)
   return { pre: groupTaskItems(pre), byStep }
+}
+
+
+/**
+ * 실행이 끝났는데도 결과(tool_result)를 받지 못한 작업이 '진행 중'으로 남지 않게 마무리한다.
+ * 정상 종료(completed)면 완료로, 중단(stopped)이면 중단된 것으로(failed) 표시한다. 실행 중(running)이면 그대로 둔다.
+ */
+export function settleTaskItems(items: TaskItem[], outcome: 'running' | 'completed' | 'stopped' | string): TaskItem[] {
+  if (outcome === 'running') return items
+  const final: TaskStatus = outcome === 'completed' ? 'done' : 'failed'
+  const walk = (list: TaskItem[]): TaskItem[] =>
+    list.map((it) => {
+      const children = it.children ? walk(it.children) : it.children
+      const status = it.status === 'running' ? final : it.status
+      return children === it.children && status === it.status ? it : { ...it, children, status }
+    })
+  return walk(items)
 }

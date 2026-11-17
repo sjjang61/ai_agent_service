@@ -68,7 +68,7 @@ def test_browser_action_waits_for_user_on_captcha(monkeypatch):
 
     calls = []
 
-    async def fake_call(user_id, payload, timeout=90, sandbox_cid="", use_profile=True):
+    async def fake_call(user_id, payload, timeout=90, sandbox_cid="", use_profile=True, session_id=""):
         calls.append(payload["cmd"])
         if payload["cmd"] == "goto":
             return {"ok": True, "url": "https://shop.test/captcha/1", "title": "t", "elements": [], "text": ""}

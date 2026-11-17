@@ -1,4 +1,4 @@
-"""브라우저 에이전트가 '사용자의 로그인이 필요하다'고 요청했을 때 완료를 기다리는 레지스트리.
+"""브라우저 에이전트가 '사용자의 로그인이 필요하다'고 요청하거나 쓰기 동작의 승인(info.kind == "approval")을 구할 때 응답을 기다리는 레지스트리.
 form_ask_user(core/forms.py)와 같은 방식이다. 단일 프로세스(in-memory) 기준.
 화면은 GET /api/browser/login-request 를 폴링해 요청을 보고, 사용자가 로그인을 끝내면 POST .../done 으로 알린다."""
 import asyncio
@@ -40,9 +40,9 @@ class PendingLogins:
         return p.info
 
     @classmethod
-    def resolve(cls, conversation_id: str, user_id: str, cancelled: bool = False) -> bool:
+    def resolve(cls, conversation_id: str, user_id: str, cancelled: bool = False, remember: bool = False) -> bool:
         p = cls._pending.get(conversation_id)
         if not p or p.user_id != user_id or p.future.done():
             return False
-        p.future.set_result({"cancelled": True} if cancelled else {"done": True})
+        p.future.set_result({"cancelled": True} if cancelled else ({"done": True, "remember": True} if remember else {"done": True}))
         return True

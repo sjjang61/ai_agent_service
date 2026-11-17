@@ -33,8 +33,10 @@ CODER_TOOLS = {
 }
 EXPLORER_TOOLS = {"read_file", "grep_file", "exec_command"}
 MCP_TOOLS = {"load_mcp_tool", "call_mcp_tool", "run_mcp_code"}
-INTERACTION_TOOLS = {"todo", "narrate", "form_ask_user", "cli_browser_agent", "manage_schedule"}
-LEADER_TOOLS = {"load_skill", "register_skill", "memory_tool", "read_image", "create_widget", "search_documents", "search_wiki", "generate_image", "generate_video", "upload_to_minio", "deploy_web_app", "manage_web_app"} | MCP_TOOLS | INTERACTION_TOOLS
+INTERACTION_TOOLS = {"todo", "narrate", "form_ask_user", "cli_browser_agent", "browser_parallel", "manage_schedule"}
+# Google Workspace 커넥터 도구 (사용자가 연결한 경우에만 만들어진다)
+CONNECTOR_TOOLS = {"google_gmail", "google_calendar", "google_drive", "google_docs", "google_sheets", "google_slides"}
+LEADER_TOOLS = {"load_skill", "register_skill", "memory_tool", "read_image", "create_widget", "search_documents", "search_wiki", "generate_image", "generate_video", "upload_to_minio", "deploy_web_app", "manage_web_app"} | MCP_TOOLS | INTERACTION_TOOLS | CONNECTOR_TOOLS
 LEGACY_TOOLS = {"file_manager", "shell_executor"}
 # Team 에서는 위임이 delegate_task_to_member 로 이미 제공되므로 call_sub_agent 는 제외한다
 TEAM_EXCLUDED = {"call_sub_agent"}
@@ -54,8 +56,6 @@ MAX_TOOL_OUTPUT = 20000
 
 
 # ── 모델 ─────────────────────────────────────────────────────────────────────
-def build_agno_model(llm_type: str, model: Optional[str] = None):
-    t = normalize_llm_type(llm_type)
 _PetModel = None
 
 
@@ -82,6 +82,8 @@ def _pet_model_class():
     return _PetModel
 
 
+def build_agno_model(llm_type: str, model: Optional[str] = None):
+    t = normalize_llm_type(llm_type)
     model_id = model or settings.default_model_for(t)
     if t == "pet":
         if not settings.PET_AGENT_URL:
@@ -297,6 +299,61 @@ def _extract_metrics(obj) -> tuple[int, int]:
 _background_tasks: set = set()
 
 
+async def _stream_team_events(team, kwargs: dict, streaming: bool, side_q, session_id: str) -> AsyncIterator[dict]:
+    """팀 실행을 화면 이벤트(dict)로 바꿔 내보낸다. 토큰 사용량은 {"type": "_metrics", ...} 로 따로 알린다.
+    도구 안 하위 에이전트의 진행 이벤트(side_events)는 도착 순서대로 끼워 넣는다."""
+    from app.agent import side_events
+    from app.core.monitoring import monitoring_context
+
+    # 이 실행 안의 모든 스팬(팀·멤버·모델·도구)에 대화·사용자 id 를 붙인다 (모니터링을 켠 경우에만 의미가 있다)
+    ctx = lambda: monitoring_context(session_id=session_id, user_id=str(kwargs.get("user_id") or ""), engine="agno")  # noqa: E731
+
+    if not streaming:
+        # 스트리밍 미지원 LLM: 완료 후 결과(RunOutput)에서 이벤트를 재구성한다. 기다리는 동안에도 하위 에이전트 진행은 바로 내보낸다
+        out = None
+        async for kind, payload in side_events.run_with_side(team.arun(**kwargs, stream=False), side_q, ctx):
+            if kind == "side":
+                yield payload  # type: ignore[misc]
+            else:
+                out = payload
+        inp, outp = _extract_metrics(out)
+        yield {"type": "_metrics", "input": inp, "output": outp}
+        for ev in _events_from_output(out):
+            yield ev
+        return
+
+    got_token = False
+    async for kind, ev in side_events.merge_stream(team.arun(**kwargs, stream=True, stream_events=True), side_q, ctx):
+        if kind == "side":
+            yield ev  # type: ignore[misc]
+            continue
+        name = getattr(ev, "event", "")
+        if name == "TeamRunContent":  # 리더의 응답 토큰 (멤버의 RunContent 는 중간 결과라 제외)
+            c = getattr(ev, "content", None)
+            if isinstance(c, str) and c:
+                got_token = True
+                yield {"type": "token", "content": c}
+        elif name in ("ToolCallStarted", "TeamToolCallStarted") and ev.tool:
+            yield _tool_call_event(ev.tool, ev)
+        elif name in ("ToolCallCompleted", "TeamToolCallCompleted") and ev.tool:
+            yield _tool_result_event(ev.tool, ev=ev)
+        elif name in ("ToolCallError", "TeamToolCallError") and ev.tool:
+            yield _tool_result_event(ev.tool, error=getattr(ev, "error", None) or "tool error", ev=ev)
+        elif name in ("RunError", "TeamRunError"):
+            yield {"type": "error", "message": getattr(ev, "content", None) or "Agent run failed"}
+            return
+        elif name in ("TeamModelRequestCompleted", "ModelRequestCompleted"):
+            yield {"type": "_metrics", "input": 0, "output": 0, "requests": 1}
+        elif name in ("TeamRunCompleted", "RunCompleted"):
+            inp, outp = _extract_metrics(ev)
+            yield {"type": "_metrics", "input": inp, "output": outp}
+    if not got_token:
+        from app.core.runs import RunRegistry
+
+        if not RunRegistry.cancel_requested(session_id):  # 사용자가 중단한 실행은 응답이 없는 것이 정상이다
+            logger.warning("[agno] 응답 토큰이 없습니다")
+
+
 async def stream_team(
     team,
     user_input: str,
@@ -329,43 +386,22 @@ async def stream_team(
     total_output_tokens = 0
     model_requests = 0  # LLM 호출 횟수 (리더와 팀원의 호출을 모두 센다)
 
-    if not streaming:
-        # 스트리밍 미지원 LLM: 완료 후 결과(RunOutput)에서 이벤트를 재구성한다
-        out = await team.arun(**kwargs, stream=False)
-        inp, outp = _extract_metrics(out)
-        total_input_tokens += inp
-        total_output_tokens += outp
-        for ev in _events_from_output(out):
-            yield ev
-    else:
-        got_token = False
-        async for ev in team.arun(**kwargs, stream=True, stream_events=True):
-            name = getattr(ev, "event", "")
-            if name == "TeamRunContent":  # 리더의 응답 토큰 (멤버의 RunContent 는 중간 결과라 제외)
-                c = getattr(ev, "content", None)
-                if isinstance(c, str) and c:
-                    got_token = True
-                    yield {"type": "token", "content": c}
-            elif name in ("ToolCallStarted", "TeamToolCallStarted") and ev.tool:
-                yield _tool_call_event(ev.tool, ev)
-            elif name in ("ToolCallCompleted", "TeamToolCallCompleted") and ev.tool:
-                yield _tool_result_event(ev.tool, ev=ev)
-            elif name in ("ToolCallError", "TeamToolCallError") and ev.tool:
-                yield _tool_result_event(ev.tool, error=getattr(ev, "error", None) or "tool error", ev=ev)
-            elif name in ("RunError", "TeamRunError"):
-                yield {"type": "error", "message": getattr(ev, "content", None) or "Agent run failed"}
-                return
-            elif name in ("TeamModelRequestCompleted", "ModelRequestCompleted"):
-                model_requests += 1
-            elif name in ("TeamRunCompleted", "RunCompleted"):
-                inp, outp = _extract_metrics(ev)
-                total_input_tokens += inp
-                total_output_tokens += outp
-        if not got_token:
-            from app.core.runs import RunRegistry
+    from app.agent import side_events
 
-            if not RunRegistry.cancel_requested(session_id):  # 사용자가 중단한 실행은 응답이 없는 것이 정상이다
-                logger.warning("[agno] 응답 토큰이 없습니다")
+    side_q = side_events.open_channel(session_id)  # 도구 안의 하위 에이전트(브라우저 등)가 진행 이벤트를 넣는 통로
+    try:
+        async for ev in _stream_team_events(team, kwargs, streaming, side_q, session_id):
+            kind = ev.get("type") if isinstance(ev, dict) else None
+            if kind == "_metrics":
+                total_input_tokens += ev["input"]
+                total_output_tokens += ev["output"]
+                model_requests += ev.get("requests", 0)
+                continue
+            yield ev
+            if kind == "error":
+                return  # 실행 오류: 사용량 집계 없이 끝낸다 (기존 동작)
+    finally:
+        side_events.close_channel(session_id, side_q)
 
     if total_input_tokens > 0 or total_output_tokens > 0:
         # 토큰 사용량 기록: 요청의 DB 세션은 이 시점에 취소·종료됐을 수 있어(중단·연결 끊김) 별도 세션의 독립 태스크로 기록한다.

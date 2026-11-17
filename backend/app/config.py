@@ -224,6 +224,21 @@ class Settings(BaseSettings):
     UPLOAD_MAX_MB: int = 50
     UPLOAD_FOLDER_MAX_FILES: int = 300  # 폴더 업로드: 최대 파일 수
     UPLOAD_FOLDER_MAX_MB: int = 100  # 폴더 업로드: 전체 크기
+    BROWSER_PARALLEL_MAX: int = 3  # 로컬 브라우저에서 동시에 열 수 있는 병렬 작업(탭) 수
+
+    # 로컬 브라우저(데스크톱 앱의 내장 브라우저). CDP 주소가 있고 해당 사용자일 때만 sandbox 대신 사용한다.
+    # 서버가 사용자 PC 에서 돌 때만 쓰는 설정이다 (원격 서버에서는 앱이 접속하는 브리지가 필요).
+    LOCAL_BROWSER_CDP_URL: str = ""            # 예: http://127.0.0.1:9222 (비우면 사용 안 함)
+    LOCAL_BROWSER_USER_ID: str = ""            # 이 사용자의 브라우저 작업만 로컬 브라우저로 보낸다 (필수)
+    LOCAL_BROWSER_ALLOW_PRIVATE: bool = False  # 사설·루프백 주소 접속 허용 여부
+
+    # 브라우저 에이전트 안전 정책
+    # local: 로컬 브라우저(사용자 PC 세션)일 때만 쓰기 동작 승인 / all: sandbox 브라우저에도 적용 / off: 승인 없음
+    BROWSER_APPROVAL_MODE: Literal["local", "all", "off"] = "local"
+    BROWSER_APPROVAL_TIMEOUT_SECONDS: int = 300
+    BROWSER_BLOCKED_DOMAINS: list[str] = []    # 이 도메인(하위 포함)으로는 이동하지 않는다
+    BROWSER_ALLOWED_DOMAINS: list[str] = []    # 비어 있지 않으면 이 도메인만 허용
+    BROWSER_SENSITIVE_DOMAINS: list[str] = []  # 추가로 '항상 승인' 대상으로 취급할 도메인 (기본 금융·결제 규칙 외)
     REFERENCE_MAX_CHARS: int = 12000  # 참조(페이지·이전 대화) 하나당 에이전트에게 전달하는 최대 글자 수
 
     # 산출물(artifacts) 보기

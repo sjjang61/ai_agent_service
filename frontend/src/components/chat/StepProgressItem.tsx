@@ -29,6 +29,8 @@ export const TOOL_LABELS: Record<string, string> = {
   narrate: '진행 안내',
   form_ask_user: '사용자 질문',
   cli_browser_agent: '브라우저 작업',
+  browser_parallel: '브라우저 병렬 작업',
+  browser_action: '브라우저 동작',
   manage_schedule: '예약 관리',
   generate_image: '이미지 생성',
   generate_video: '동영상 생성',
@@ -51,6 +53,8 @@ function StepIcon({ type, tool, isActive }: { type: string; tool?: string; isAct
     case 'narrate': return <Megaphone size={13} className="text-accent-purple flex-shrink-0" />
     case 'form_ask_user': return <MessageCircleQuestion size={13} className="text-accent-primary flex-shrink-0" />
     case 'manage_schedule': return <Clock size={13} className="text-accent-primary flex-shrink-0" />
+    case 'browser_parallel':
+    case 'browser_action':
     case 'cli_browser_agent': return <AppWindow size={13} className="text-accent-amber flex-shrink-0" />
     case 'create_widget': return <LayoutDashboard size={13} className="text-accent-purple flex-shrink-0" />
     case 'call_sub_agent': return <Bot size={13} className="text-accent-amber flex-shrink-0" />

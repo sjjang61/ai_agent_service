@@ -128,6 +128,18 @@ export default function InputBar({ conversationId }: { conversationId: string })
     }
   }
 
+  // 데스크톱 앱의 에이전트 브라우저에서 '스크린샷 첨부'를 누르면 현재 화면이 첨부 파일로 올라온다
+  const addFilesRef = useRef(addFiles)
+  addFilesRef.current = addFiles
+  useEffect(() => {
+    return window.desktop?.browser?.onScreenshot?.((shot) => {
+      const bin = atob(shot.data)
+      const bytes = new Uint8Array(bin.length)
+      for (let k = 0; k < bin.length; k++) bytes[k] = bin.charCodeAt(k)
+      addFilesRef.current([new File([bytes], shot.name, { type: 'image/png' })])
+    })
+  }, [])
+
   const addFolder = (list: FileList) => {
     const all = Array.from(list)
     const rel = (f: File) => (f as File & { webkitRelativePath?: string }).webkitRelativePath || f.name

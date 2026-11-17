@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { AlertCircle, CheckCircle2, ChevronRight, Circle, Loader2 } from 'lucide-react'
 import type { AgentStep, SelectedStepDetail } from '../../types/agent'
 import { useAgentStore } from '../../store/agentStore'
-import { buildPlanBuckets, buildTaskItems, currentTask, groupUnit, type TaskItem } from './taskItems'
+import { buildPlanBuckets, buildTaskItems, currentTask, groupUnit, settleTaskItems, type TaskItem } from './taskItems'
 import { extractLatestTodos, settleTodos, type PlanOutcome, type TodoItem } from './TodoCard'
 import BrowserShots, { parseBrowserRun } from './BrowserShots'
 
@@ -269,9 +269,16 @@ export default function StepsPanel({ steps, running, outcome = running ? 'runnin
     return t ? settleTodos(t, outcome) : null
   }, [steps, outcome])
   // 작업 계획이 있으면 todo 호출 행은 계획 목록과 겹치므로 숨긴다
-  const items = useMemo(() => buildTaskItems(steps).filter((i) => !(todos && i.tool === 'todo')), [steps, todos])
+  const items = useMemo(() => settleTaskItems(buildTaskItems(steps).filter((i) => !(todos && i.tool === 'todo')), outcome), [steps, todos, outcome])
   // 계획이 있으면 작업을 계획 단계 아래로 나눠 보여 준다
-  const buckets = useMemo(() => (todos ? buildPlanBuckets(steps, todos.map((t) => t.id)) : null), [steps, todos])
+  const buckets = useMemo(() => {
+    if (!todos) return null
+    const b = buildPlanBuckets(steps, todos.map((t) => t.id))
+    // 끝난 실행에서 결과가 오지 않은 작업이 '진행 중'으로 남지 않게 마무리한다
+    const byStep: Record<string, TaskItem[]> = {}
+    for (const [id, list] of Object.entries(b.byStep)) byStep[id] = settleTaskItems(list, outcome)
+    return { pre: settleTaskItems(b.pre, outcome), byStep }
+  }, [steps, todos, outcome])
   const current = running ? currentTask(items) : null
   const planStep = todos?.find((t) => t.status === 'in_progress')
   const finished = todos ? todos.filter((t) => t.status === 'completed').length : items.filter((i) => i.status !== 'running').length

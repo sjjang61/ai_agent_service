@@ -36,7 +36,7 @@ class AgentRunner:
             return ChatOpenAI(
                 model=settings.PET_MODEL_ID,
                 base_url=settings.PET_AGENT_URL,
-                api_key=settings.PET_API_KEY,
+                api_key=settings.PET_API_KEY or "EMPTY",  # 빈 값이면 라이브러리가 OPENAI_API_KEY 를 찾다 실패하므로 더미 키 사용
                 streaming=False,
                 timeout=settings.PET_TIMEOUT,
                 # PET 게이트웨이는 reasoning_effort="none" 을 enum 오류(choices=null)로 거부한다.

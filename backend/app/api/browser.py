@@ -46,11 +46,18 @@ class LoginRequestInfo(BaseModel):
     site: str
     url: str = ""
     reason: str = ""
+    kind: str = "login"  # login | approval (쓰기 동작 승인)
+    action: str = ""     # approval: 수행하려는 동작 요약
+    detail: str = ""     # approval: 대상 요소 라벨 등
+    level: str = ""      # approval: ask | ask_always (ask_always 는 '이 도메인 계속 허용' 불가)
+    session: str = ""    # 병렬 브라우저 작업이면 어느 작업(사이트)의 요청인지
+    local: bool = False  # 데스크톱 앱의 내장 브라우저로 진행 중 (라이브 브라우저 대신 앱에서 직접 처리)
 
 
 class LoginDone(BaseModel):
     conversation_id: str
     cancelled: bool = False
+    remember: bool = False  # approval: 이 대화에서 이 도메인은 다시 묻지 않는다
 
 
 @router.get("/profile", response_model=ProfileInfo)
@@ -79,7 +86,7 @@ async def get_login_request(conversation_id: str, current_user: User = Depends(g
 
 @router.post("/login-request/done")
 async def finish_login_request(data: LoginDone, current_user: User = Depends(get_current_user)):
-    if not PendingLogins.resolve(data.conversation_id, current_user.id, data.cancelled):
+    if not PendingLogins.resolve(data.conversation_id, current_user.id, data.cancelled, data.remember):
         raise HTTPException(status_code=404, detail="대기 중인 로그인 요청이 없습니다 (이미 처리했거나 시간이 초과되었습니다)")
     return {"status": "ok"}
 

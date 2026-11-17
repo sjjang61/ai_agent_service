@@ -21,6 +21,10 @@ export interface AgentStepData {
   tool?: string
   input?: unknown
   output?: string
+  /** 호출 식별자: 같은 도구가 동시에 여러 번 돌 때 호출과 결과를 정확히 짝짓는다 */
+  call_id?: string
+  /** 팀원이 한 호출이면 그 팀원 이름 */
+  agent?: string
 }
 
 export interface Attachment {

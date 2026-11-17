@@ -6,6 +6,7 @@ import { useChatStore } from '../store/chatStore'
 import type { AgentStreamEvent, MemorySavedItem } from '../types/agent'
 import type { Attachment, Message, Reference } from '../types/chat'
 import { currentTimezone } from '../utils/time'
+import { apiUrl } from '../config/server'
 
 let stepCounter = 0
 function nextStepId() {
@@ -78,7 +79,7 @@ export function useAgentStream(conversationId: string) {
       let fullContent = ''
       try {
         const response = await fetch(
-          `/api/chat/conversations/${conversationId}/messages`,
+          apiUrl(`/api/chat/conversations/${conversationId}/messages`),
           {
             method: 'POST',
             headers: {
@@ -111,12 +112,16 @@ export function useAgentStream(conversationId: string) {
 
         const reader = response.body?.getReader()
         const decoder = new TextDecoder()
+        let buf = ''
 
         while (reader) {
           const { done, value } = await reader.read()
           if (done) break
-          const chunk = decoder.decode(value)
-          const lines = chunk.split('\n')
+          // 네트워크 청크 경계에서 한 이벤트(특히 긴 도구 결과)가 잘려 오므로, 줄이 완성될 때까지 모았다가 처리한다.
+          // (한글 같은 멀티바이트 문자가 경계에서 깨지지 않게 stream 모드로 디코딩)
+          buf += decoder.decode(value, { stream: true })
+          const lines = buf.split('\n')
+          buf = lines.pop() ?? ''
           for (const line of lines) {
             if (!line.startsWith('data: ')) continue
             try {

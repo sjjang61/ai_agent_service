@@ -37,6 +37,8 @@ export default function ChatLayout() {
     input: s.input,
     output: s.output,
     timestamp: lastAssistant?.created_at ?? '',
+    callId: s.call_id, // 저장된 이력도 실시간과 같은 방식으로 호출·결과를 짝짓고 팀원 작업을 묶는다
+    agent: s.agent,
   }))
   const panelSteps = liveSteps.length > 0 ? liveSteps : savedSteps
   const taskCount = buildTaskItems(panelSteps).length
@@ -47,16 +49,34 @@ export default function ChatLayout() {
   // 다른 패널(문서·Artifacts)을 보고 있으면 건드리지 않는다.
   const autoOpened = useRef(false)
   useEffect(() => {
+  // 자동으로 연 작업 진행 패널은 실행이 끝나면 자동으로 닫아 채팅 화면을 넓게 보여 준다.
+  // 사용자가 직접 열었거나, 자동으로 연 뒤 다른 패널로 바꾸거나 닫았다면 건드리지 않는다.
+  const closeOnFinish = useRef(false)
+  const wasRunning = useRef(false)
     if (!running) {
       autoOpened.current = false
       return
+      if (wasRunning.current && closeOnFinish.current) {
+        const st = useAgentStore.getState()
+        if (st.rightPanel === 'steps' && !st.selectedStep) st.closePanel()
+      }
+      wasRunning.current = false
+      closeOnFinish.current = false
     }
     if (liveSteps.length > 0 && !autoOpened.current) {
+    wasRunning.current = true
       autoOpened.current = true
-      if (useAgentStore.getState().rightPanel === null) useAgentStore.getState().togglePanel('steps')
+      if (useAgentStore.getState().rightPanel === null) {
+        useAgentStore.getState().togglePanel('steps')
+        closeOnFinish.current = true
+      }
     }
   }, [running, liveSteps.length])
   // 에이전트가 웹앱을 배포하면(deploy_web_app 성공) 우측에 앱 미리보기를 자동으로 연다. 같은 배포는 한 번만 연다.
+  // 작업 진행 패널이 아닌 것으로 바뀌면(사용자가 닫거나 다른 패널을 열면) 끝나도 자동으로 닫지 않는다
+  useEffect(() => {
+    if (rightPanel !== 'steps') closeOnFinish.current = false
+  }, [rightPanel])
   const deployedApp = latestDeployedApp(panelSteps)
   const openedApp = useRef<string | null>(null)
   const liveApp = latestDeployedApp(liveSteps)

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { ArrowLeft, Loader2, RotateCw, X } from 'lucide-react'
 import { useAuthStore } from '../../store/authStore'
+import { wsUrl } from '../../config/server'
 
 const VIEW_W = 1280
 const VIEW_H = 800
@@ -47,12 +48,9 @@ export default function LiveBrowser({ conversationId, initialUrl, doneLabel, onD
   }, [])
 
   useEffect(() => {
-    const proto = location.protocol === 'https:' ? 'wss:' : 'ws:'
     const q = new URLSearchParams({ token: token ?? '' })
     if (conversationId) q.set('conversation_id', conversationId)
-    // 개발 서버(vite)의 WebSocket 프록시가 불안정해, 기존 채팅 WebSocket 처럼 개발 중에는 백엔드(8500)에 직접 연결한다
-    const host = location.port === "5173" ? `${location.hostname}:8500` : location.host
-    const ws = new WebSocket(`${proto}//${host}/ws/browser/live?${q}`)
+    const ws = new WebSocket(wsUrl(`/ws/browser/live?${q}`))
     wsRef.current = ws
     // 개발 모드(StrictMode)에서는 첫 연결이 곧바로 닫히므로, 이미 정리한 연결의 이벤트는 무시한다
     let disposed = false

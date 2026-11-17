@@ -25,6 +25,7 @@ LLM 에 보내는 모든 프롬프트는 이 폴더의 `.md` 파일입니다. �
 | `skills_installed.md` `skills_none.md` | 스킬 안내 (`{{skills}}`) | `tools/skill_tool.py` |
 | `mcp_catalog.md` | MCP 도구 목록 머리말 `{{tools}}` | `tools/mcp_tools.py` |
 | `headless.md` | 예약(무인) 실행 지침 | `agent/orchestrator.py` |
+| `browser_local.md` | 데스크톱 앱의 내장 브라우저가 연결된 요청에만 붙는 안내 (브라우저 우선 사용 상황) | `agent/orchestrator.py` |
 | `scope_reminder.md` | 마지막 사용자 메시지 끝에 붙는 응답 범위 안내 (LLM 입력에만) | `agent/scope.py` |
 
 ### 팀·서브에이전트 (`agent/agno_engine.py`, `tools/`)
@@ -45,6 +46,7 @@ LLM 에 보내는 모든 프롬프트는 이 폴더의 `.md` 파일입니다. �
 | `pricing_extract.md` | 가격 페이지 텍스트에서 모델 단가를 JSON 으로 추출 (구조화 데이터·표 파싱이 실패했을 때의 대비) `{{text}}` | `services/pricing_update.py` |
 | `followup_questions.md` | 답변 뒤에 이어서 물어볼 만한 질문 2개 `{{question}}` `{{answer}}` | `services/followup_service.py` |
 | `skill_translate.md` | 스킬 문서를 한국어로 번역 `{{text}}` | `services/skill_translate.py` |
+| `skill_category.md` | 스킬 이름·설명을 읽고 카테고리 하나를 고르기 (규칙으로 확정되지 않을 때만) `{{categories}}` `{{name}}` `{{description}}` | `services/skill_category.py` |
 | `request_router.md` | 요청을 서술/단순/복잡으로 분류하고, 복잡하면 전체 작업 계획 생성 | `agent/router.py` |
 | `plan_context.md` | 복잡한 요청에서 시스템이 만든 계획을 따르라는 안내 (시스템 프롬프트에 붙음) | `agent/orchestrator.py` |
 | `route_simple.md` | 단순 요청이므로 todo 계획을 만들지 말라는 안내 | `agent/orchestrator.py` |
