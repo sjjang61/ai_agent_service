@@ -6,12 +6,11 @@ import PageHeader from '../components/skills/PageHeader'
 import AddSkillDialog from '../components/skills/AddSkillDialog'
 import SkillDetailDialog from '../components/skills/SkillDetailDialog'
 import SkillPickerDialog from '../components/chat/SkillPickerDialog'
-import { Puzzle } from 'lucide-react'
+import { ChevronDown, ChevronRight, Puzzle, Wand2 } from 'lucide-react'
 import { GithubDialog, ItemCard, errorText } from '../components/skills/common'
 import { skillsApi } from '../api/skills'
-import type { Skill, SkillCreateInput, SkillType } from '../types/skill'
+import type { Skill, SkillCategory, SkillCreateInput, SkillType } from '../types/skill'
 
-const PAGE = 12
 
 export default function SkillsPage() {
   const queryClient = useQueryClient()
@@ -19,14 +18,20 @@ export default function SkillsPage() {
     queryKey: ['skills'],
     queryFn: async () => (await skillsApi.list()).data,
   })
+  const { data: categories = [] } = useQuery<SkillCategory[]>({
+    queryKey: ['skill-categories'],
+    queryFn: async () => (await skillsApi.categories()).data,
+    staleTime: Infinity,
+  })
   const [query, setQuery] = useState('')
   const [source, setSource] = useState<'all' | 'personal' | string>('all') // string = plugin_id
   const [dialog, setDialog] = useState<'github' | 'custom' | null>(null)
   const [detail, setDetail] = useState<Skill | null>(null)
   const [pickerOpen, setPickerOpen] = useState(false)
   const [typeFilter, setTypeFilter] = useState<'all' | SkillType>('all')
-  const [newType, setNewType] = useState<SkillType>('builtin') // 새로 추가하는 스킬의 타입
-  const [expanded, setExpanded] = useState(false)
+  const [newType, setNewType] = useState<SkillType>('custom') // 새로 추가하는 스킬의 타입 (기본은 항상 커스텀)
+  const [collapsed, setCollapsed] = useState<Set<string>>(new Set()) // 접어 둔 카테고리
+  const [categorizing, setCategorizing] = useState(false)
   const [notice, setNotice] = useState<{ kind: 'ok' | 'err'; text: string } | null>(null)
 
   const refresh = () => queryClient.invalidateQueries({ queryKey: ['skills'] })
@@ -44,7 +49,39 @@ export default function SkillsPage() {
     if (source !== 'all' && source !== 'personal' && s.plugin_id !== source) return false
     return !q || s.name.toLowerCase().includes(q) || (s.description ?? '').toLowerCase().includes(q)
   })
-  const shown = expanded ? visible : visible.slice(0, PAGE)
+  // 카테고리별로 묶는다 (서버가 준 순서, 비어 있는 카테고리는 숨김). 모르는 id 는 '기타' 로 취급한다.
+  const groups = useMemo(() => {
+    const known = new Set(categories.map((c) => c.id))
+    const by = new Map<string, Skill[]>()
+    for (const s of visible) {
+      const id = known.has(s.category) ? s.category : 'etc'
+      by.set(id, [...(by.get(id) ?? []), s])
+    }
+    const order = categories.length ? categories : [{ id: 'etc', label: '기타' }]
+    return order.filter((c) => by.has(c.id)).map((c) => ({ ...c, skills: by.get(c.id)! }))
+  }, [visible, categories])
+  const searching = q !== ''
+  const toggleGroup = (id: string) =>
+    setCollapsed((prev) => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+
+  const recategorize = async () => {
+    setCategorizing(true)
+    setNotice({ kind: 'ok', text: '스킬 설명을 읽어 카테고리를 다시 분류하는 중...' })
+    try {
+      const res = await skillsApi.recategorize()
+      refresh()
+      setNotice({ kind: 'ok', text: `카테고리를 다시 분류했습니다 (${res.data.total}개 중 ${res.data.changed}개 변경)` })
+    } catch (err) {
+      setNotice({ kind: 'err', text: errorText(err, '카테고리를 다시 분류하지 못했습니다') })
+    } finally {
+      setCategorizing(false)
+    }
+  }
 
   const syncNote = (synced: boolean, err: string | null | undefined, okText: string) =>
     setNotice(synced ? { kind: 'ok', text: `${okText} (sandbox /workspace/skills/ 에 복사됨)` } : { kind: 'err', text: `${okText} — sandbox 복사 실패: ${err ?? '알 수 없는 오류'}` })
@@ -160,6 +197,15 @@ export default function SkillsPage() {
           </button>
           <div className="flex-1" />
           <button
+            onClick={recategorize}
+            disabled={categorizing}
+            title="스킬 설명(description)을 읽어 카테고리를 다시 자동 분류합니다. 직접 고른 카테고리는 바뀌지 않습니다."
+            className="flex items-center gap-1.5 px-3 py-1.5 mr-2 rounded-md border border-border bg-transparent text-[12px] text-content-secondary hover:text-content-primary hover:bg-surface-hover cursor-pointer disabled:opacity-50"
+          >
+            <Wand2 size={14} />
+            {categorizing ? '분류 중...' : '카테고리 다시 분류'}
+          </button>
+          <button
             onClick={() => setPickerOpen(true)}
             title="custom 스킬을 사용자 공용 sandbox 에 설치·제거합니다 (대화 입력창의 스킬 버튼과 같은 화면)"
             className="flex items-center gap-1.5 px-3 py-1.5 mr-2 rounded-md border border-border bg-transparent text-[12px] text-content-secondary hover:text-content-primary hover:bg-surface-hover cursor-pointer"
@@ -174,8 +220,8 @@ export default function SkillsPage() {
               onChange={(e) => setNewType(e.target.value as SkillType)}
               className="bg-surface-secondary border border-border rounded-md px-2 py-1 text-[12px] text-content-primary"
             >
-              <option value="builtin">빌트인 (자동 설치)</option>
               <option value="custom">커스텀 (필요할 때 설치)</option>
+              <option value="builtin">빌트인 (자동 설치)</option>
             </select>
           </label>
         </div>
@@ -187,27 +233,40 @@ export default function SkillsPage() {
             {skills.length === 0 ? '설치된 스킬이 없습니다. 오른쪽 위 “추가” 로 GitHub·ZIP 파일에서 설치하거나 직접 만들 수 있습니다.' : '조건에 맞는 스킬이 없습니다.'}
           </div>
         ) : (
-          <>
-            <div className="grid grid-cols-1 xl:grid-cols-2 gap-x-6">
-              {shown.map((s) => (
-                <ItemCard
-                  key={s.id}
-                  name={s.name}
-                  description={s.description}
-                  meta={[s.skill_type === 'custom' ? '커스텀' : null, s.plugin_name ? `플러그인 · ${s.plugin_name}` : null].filter(Boolean).join(' · ') || undefined}
-                  active={s.is_active}
-                  onToggle={() => toggle(s)}
-                  onDelete={() => remove(s)}
-                  onOpen={() => setDetail(s)}
-                />
-              ))}
-            </div>
-            {visible.length > PAGE && (
-              <button onClick={() => setExpanded((e) => !e)} className="mt-3 ml-3 text-[13px] text-content-tertiary hover:text-content-primary border-none bg-transparent cursor-pointer">
-                {expanded ? '접기' : `외 ${visible.length - PAGE}개 더 보기`}
-              </button>
-            )}
-          </>
+          <div className="space-y-5">
+            {groups.map((g) => {
+              const open = searching || !collapsed.has(g.id) // 검색 중에는 모두 펼쳐 결과가 숨지 않게 한다
+              return (
+                <section key={g.id}>
+                  <button
+                    onClick={() => toggleGroup(g.id)}
+                    aria-expanded={open}
+                    className="w-full flex items-center gap-2 px-3 py-2 border-none bg-transparent cursor-pointer text-left hover:bg-surface-hover rounded-md"
+                  >
+                    {open ? <ChevronDown size={15} className="text-content-tertiary" /> : <ChevronRight size={15} className="text-content-tertiary" />}
+                    <span className="text-[14px] font-semibold text-content-primary">{g.label}</span>
+                    <span className="text-[12px] text-content-tertiary">{g.skills.length}</span>
+                  </button>
+                  {open && (
+                    <div className="grid grid-cols-1 xl:grid-cols-2 gap-x-6">
+                      {g.skills.map((s) => (
+                        <ItemCard
+                          key={s.id}
+                          name={s.name}
+                          description={s.description}
+                          meta={[s.skill_type === 'custom' ? '커스텀' : null, s.plugin_name ? `플러그인 · ${s.plugin_name}` : null].filter(Boolean).join(' · ') || undefined}
+                          active={s.is_active}
+                          onToggle={() => toggle(s)}
+                          onDelete={() => remove(s)}
+                          onOpen={() => setDetail(s)}
+                        />
+                      ))}
+                    </div>
+                  )}
+                </section>
+              )
+            })}
+          </div>
         )}
       </div>
 

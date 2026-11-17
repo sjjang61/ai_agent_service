@@ -144,3 +144,45 @@ def test_skills_prompt_marks_custom_and_sync_skips_custom():
         return copied
 
     assert asyncio.run(go()) == ["a"]               # custom 은 자동 설치하지 않는다
+
+
+@pytest.mark.asyncio
+async def test_new_skills_default_to_custom_unless_a_type_is_given(monkeypatch):
+    """GitHub·ZIP 로 추가하는 새 스킬은 타입을 정하지 않으면 custom, 명시하면 그 타입이다. 재설치는 타입을 바꾸지 않는다."""
+    from app.services import skill_service as ss
+
+    added, existing = [], {}
+
+    class Res:
+        def __init__(self, v):
+            self.v = v
+
+        def scalar_one_or_none(self):
+            return self.v
+
+    class FakeDb:
+        async def execute(self, stmt):
+            return Res(existing.get("s"))
+
+        def add(self, obj):
+            added.append(obj)
+
+        async def commit(self):
+            pass
+
+        async def refresh(self, obj):
+            pass
+
+    async def no_categories(skills, db):
+        return None
+
+    monkeypatch.setattr(ss, "assign_categories", no_categories)
+    item = [{"name": "a-skill", "description": "설명", "path": "/x/a-skill"}]
+    await ss.SkillService._save_skills("u1", item, "https://github.com/x/y", FakeDb())
+    assert added[-1].skill_type == "custom"  # 기본값은 항상 커스텀
+    await ss.SkillService._save_skills("u1", [dict(item[0], name="b-skill")], "u", FakeDb(), "builtin")
+    assert added[-1].skill_type == "builtin"  # 사용자가 명시하면 그대로
+    existing["s"] = added[-1]
+    await ss.SkillService._save_skills("u1", [dict(item[0], name="b-skill")], "u", FakeDb())
+    assert existing["s"].skill_type == "builtin"  # 재설치는 타입을 바꾸지 않는다
+    assert ss.DEFAULT_SKILL_TYPE == "custom"

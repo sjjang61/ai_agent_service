@@ -9,6 +9,15 @@ export interface Skill {
   plugin_name: string | null
   /** builtin: sandbox 가 만들어질 때 자동 설치 / custom: 자동 설치하지 않고 필요할 때(load_skill) 설치 */
   skill_type: SkillType
+  /** description 으로 자동 분류한 카테고리 id */
+  category: string
+  /** 사용자가 직접 고른 카테고리 (자동 분류가 바꾸지 않음) */
+  category_locked: boolean
+}
+
+export interface SkillCategory {
+  id: string
+  label: string
 }
 
 export type SkillType = 'builtin' | 'custom'

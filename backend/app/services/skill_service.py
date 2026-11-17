@@ -20,9 +20,28 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.config import settings
 from app.models.plugin import Plugin
 from app.models.skill import Skill
+from app.services.skill_category import classify_many
 from app.services.sandbox_service import SandboxService, sandbox_manager
 
 SKILL_TYPES = ("builtin", "custom")
+# 스킬을 새로 추가할 때(GitHub·ZIP·직접 추가·플러그인·sandbox 에서 등록) 타입을 정하지 않으면 항상 custom 이다.
+# 사용자가 추가 화면에서 builtin 을 고르거나 나중에 상세에서 바꿀 때만 builtin 이 된다. (DB 의 server_default 는 기존 스킬 호환을 위해 builtin 그대로)
+DEFAULT_SKILL_TYPE = "custom"
+
+
+async def assign_categories(skills: list[Skill], db: AsyncSession, force: bool = False, use_llm: bool = True) -> int:
+    """description 을 읽어 카테고리를 자동 분류해 저장한다. 직접 고른(category_locked) 스킬은 건드리지 않는다.
+    force=False 면 아직 분류되지 않았거나 이전 분류가 없는 스킬만 대상으로 한다. 바뀐 개수를 돌려준다."""
+    targets = [s for s in skills if not s.category_locked and (force or not s.category)]
+    if not targets:
+        return 0
+    cats = await classify_many([(s.name, s.description or "") for s in targets], use_llm=use_llm)
+    changed = 0
+    for s, c in zip(targets, cats):
+        if s.category != c:
+            s.category, changed = c, changed + 1
+    await db.commit()
+    return changed
 MAX_SKILLS_PER_INSTALL = 20
 MAX_PLUGINS_PER_INSTALL = 10
 MAX_CUSTOM_SKILL_BYTES = 200 * 1024
@@ -410,6 +429,8 @@ class SkillService:
             )
             skill = r.scalar_one_or_none()
             if skill:  # 재설치 = 업데이트 (타입은 명시했을 때만 바꾼다)
+                if skill.description != item["description"]:
+                    skill.category = None  # 설명이 바뀌면 다시 분류한다 (직접 고른 카테고리는 유지)
                 skill.description = item["description"]
                 skill.source_url = url
                 skill.install_path = item["path"]
@@ -422,11 +443,12 @@ class SkillService:
                     description=item["description"],
                     source_url=url,
                     install_path=item["path"],
-                    skill_type=skill_type or "builtin",
+                    skill_type=skill_type or DEFAULT_SKILL_TYPE,
                 )
                 db.add(skill)
             installed.append(skill)
         await db.commit()
+        await assign_categories(installed, db)
         for s in installed:
             await db.refresh(s)
         return installed
@@ -489,10 +511,11 @@ class SkillService:
         (target / "SKILL.md").write_text(text, encoding="utf-8")
         skill = Skill(
             user_id=user_id, name=safe, description=" ".join(description.split()),
-            source_url="manual:direct", install_path=str(target), skill_type=skill_type or "builtin",
+            source_url="manual:direct", install_path=str(target), skill_type=skill_type or DEFAULT_SKILL_TYPE,
         )
         db.add(skill)
         await db.commit()
+        await assign_categories([skill], db)
         await db.refresh(skill)
         return skill, await SkillService.sync_to_sandbox(user_id, [skill], db)
 
@@ -554,6 +577,30 @@ class SkillService:
         if changed and skill_type == "builtin" and skill.is_active:
             err = await SkillService.sync_to_sandbox(user_id, [skill], db)
         return skill, err
+
+    @staticmethod
+    async def set_category(skill_id: str, user_id: str, category: str, db: AsyncSession) -> Skill:
+        """카테고리를 직접 지정한다(고정). 'auto' 면 고정을 풀고 description 으로 다시 자동 분류한다."""
+        from app.services.skill_category import CATEGORY_IDS
+
+        skill = await SkillService.get_skill(skill_id, user_id, db)
+        if category == "auto":
+            skill.category_locked = False
+            await db.commit()
+            await assign_categories([skill], db, force=True)
+        else:
+            if category not in CATEGORY_IDS:
+                raise HTTPException(400, "알 수 없는 카테고리입니다")
+            skill.category, skill.category_locked = category, True
+            await db.commit()
+        await db.refresh(skill)
+        return skill
+
+    @staticmethod
+    async def recategorize(user_id: str, db: AsyncSession) -> tuple[int, int]:
+        """직접 고르지 않은 모든 스킬을 description 으로 다시 분류한다. (바뀐 개수, 대상 개수)"""
+        skills = [s for s in await SkillService.list_skills(user_id, db) if not s.category_locked]
+        return await assign_categories(skills, db, force=True), len(skills)
 
     @staticmethod
     async def set_active(skill_id: str, user_id: str, active: bool, db: AsyncSession) -> Skill:
@@ -724,18 +771,21 @@ class SkillService:
             skill = existing.get(item["name"])
             source = f"sandbox:{SANDBOX_SKILLS_DIR}/{dirname}"
             if skill:
+                if skill.description != item["description"]:
+                    skill.category = None
                 skill.description, skill.source_url, skill.install_path = (
                     item["description"], source, item["path"],
                 )
             else:
                 skill = Skill(
                     user_id=user_id, name=item["name"], description=item["description"],
-                    source_url=source, install_path=item["path"],
+                    source_url=source, install_path=item["path"], skill_type=DEFAULT_SKILL_TYPE,
                 )
                 db.add(skill)
             imported.append(skill)
         if imported:
             await db.commit()
+            await assign_categories(imported, db)
             for sk in imported:
                 await db.refresh(sk)
         return imported, errors

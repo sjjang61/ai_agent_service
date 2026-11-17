@@ -38,6 +38,7 @@ async def init_db():
         await conn.run_sync(_ensure_conversation_channel)
         await conn.run_sync(_ensure_message_order_index)
         await conn.run_sync(_ensure_skill_type)
+        await conn.run_sync(_ensure_skill_category)
         await conn.run_sync(_ensure_published_app_columns)
 
 
@@ -161,6 +162,22 @@ def _ensure_skill_type(sync_conn) -> None:
 
     if "skill_type" not in {c["name"] for c in inspect(sync_conn).get_columns("skills")}:
         sync_conn.execute(text("ALTER TABLE skills ADD COLUMN skill_type VARCHAR(10) NOT NULL DEFAULT 'builtin'"))
+
+
+def _ensure_skill_category(sync_conn) -> None:
+    """skills.category / category_locked 보강 (alembic w6a1b2c3d4e5 와 같은 변경). 기존 스킬은 키워드 규칙으로 바로 분류한다(LLM 은 '다시 분류'에서)."""
+    from sqlalchemy import inspect, text
+
+    cols = {c["name"] for c in inspect(sync_conn).get_columns("skills")}
+    if "category" not in cols:
+        sync_conn.execute(text("ALTER TABLE skills ADD COLUMN category VARCHAR(20) NULL"))
+    if "category_locked" not in cols:
+        sync_conn.execute(text("ALTER TABLE skills ADD COLUMN category_locked BOOLEAN NOT NULL DEFAULT 0"))
+    from app.services.skill_category import classify_by_rules
+
+    rows = sync_conn.execute(text("SELECT id, name, description FROM skills WHERE category IS NULL")).all()
+    for sid, name, desc in rows:
+        sync_conn.execute(text("UPDATE skills SET category = :c WHERE id = :i"), {"c": classify_by_rules(name, desc or "")[0], "i": sid})
 
 
 def _ensure_published_app_columns(sync_conn) -> None:

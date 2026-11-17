@@ -6,7 +6,7 @@ import rehypeSanitize from 'rehype-sanitize'
 import { File, FileText, Loader2, X } from 'lucide-react'
 import { skillsApi } from '../../api/skills'
 import { formatFullDateTime } from '../../utils/time'
-import type { Skill, SkillDetail, SkillFileContent, SkillTranslation, SkillType } from '../../types/skill'
+import type { Skill, SkillCategory, SkillDetail, SkillFileContent, SkillTranslation, SkillType } from '../../types/skill'
 
 /** SKILL.md 맨 앞의 --- frontmatter 를 본문과 분리한다 */
 function splitFrontmatter(text: string): { meta: string; body: string } {
@@ -165,6 +165,26 @@ export default function SkillDetailDialog({ skill, onClose }: { skill: Skill; on
   const [type, setType] = useState<SkillType>(skill.skill_type ?? 'builtin')
   const [typeBusy, setTypeBusy] = useState(false)
   const [typeNote, setTypeNote] = useState('')
+  const { data: categories = [] } = useQuery<SkillCategory[]>({
+    queryKey: ['skill-categories'],
+    queryFn: async () => (await skillsApi.categories()).data,
+    staleTime: Infinity,
+  })
+  const [category, setCategory] = useState(skill.category ?? 'etc')
+  const [locked, setLocked] = useState(!!skill.category_locked)
+  const [catBusy, setCatBusy] = useState(false)
+  // value: 카테고리 id 또는 'auto'(자동 분류로 되돌림)
+  const changeCategory = async (value: string) => {
+    setCatBusy(true)
+    try {
+      const res = await skillsApi.setCategory(skill.id, value)
+      setCategory(res.data.category)
+      setLocked(!!res.data.category_locked)
+      queryClient.invalidateQueries({ queryKey: ['skills'] })
+    } finally {
+      setCatBusy(false)
+    }
+  }
   const changeType = async (next: SkillType) => {
     if (next === type || typeBusy) return
     setTypeBusy(true)
@@ -228,6 +248,31 @@ export default function SkillDetailDialog({ skill, onClose }: { skill: Skill; on
               <span className="text-xs text-content-muted">
                 {type === 'builtin' ? 'sandbox 가 만들어질 때 자동으로 설치됩니다.' : '자동 설치하지 않고, 에이전트가 불러올 때(load_skill) 필요한 sandbox 에 설치됩니다.'}
               </span>
+            </div>
+            <div className="mt-2 flex items-center gap-2 flex-wrap">
+              <span className="text-xs text-content-muted">카테고리</span>
+              <select
+                value={category}
+                disabled={catBusy}
+                onChange={(e) => changeCategory(e.target.value)}
+                className="bg-surface-secondary border border-border rounded-md px-2 py-1 text-xs text-content-primary disabled:opacity-60"
+              >
+                {categories.map((c) => (
+                  <option key={c.id} value={c.id}>{c.label}</option>
+                ))}
+              </select>
+              <span className="text-xs text-content-muted">
+                {locked ? '직접 지정함' : '설명을 읽어 자동 분류됨'}
+              </span>
+              {locked && (
+                <button
+                  disabled={catBusy}
+                  onClick={() => changeCategory('auto')}
+                  className="text-xs text-accent-primary border-none bg-transparent cursor-pointer underline disabled:opacity-60"
+                >
+                  자동 분류로 되돌리기
+                </button>
+              )}
             </div>
             {typeNote && <p className="mt-1.5 text-xs text-accent-red">{typeNote}</p>}
           </div>

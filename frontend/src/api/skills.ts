@@ -1,5 +1,5 @@
 import apiClient from './client'
-import type { SandboxSkillList, SkillCreateInput, SkillType } from '../types/skill'
+import type { SandboxSkillList, SkillCategory, SkillCreateInput, SkillType } from '../types/skill'
 
 export const skillsApi = {
   list: () => apiClient.get('/skills'),
@@ -8,6 +8,10 @@ export const skillsApi = {
     apiClient.get<SandboxSkillList>('/skills/sandbox', { params: { conversation_id: conversationId ?? undefined, skill_type: 'custom' } }),
   setInSandbox: (id: string, installed: boolean, conversationId?: string | null) =>
     apiClient.post<{ installed: boolean; sandbox_running: boolean }>(`/skills/${id}/sandbox`, { installed, conversation_id: conversationId ?? null }, { timeout: 120000 }),
+  categories: () => apiClient.get<SkillCategory[]>('/skills/categories'),
+  /** category: 카테고리 id, 'auto' 면 자동 분류로 되돌린다 */
+  setCategory: (id: string, category: string) => apiClient.post(`/skills/${id}/category`, { category }),
+  recategorize: () => apiClient.post<{ changed: number; total: number }>('/skills/recategorize', {}, { timeout: 300000 }),
   setType: (id: string, skill_type: SkillType) => apiClient.post(`/skills/${id}/type`, { skill_type }),
   uploadZip: (file: File, skill_type?: SkillType) => {
     const form = new FormData()

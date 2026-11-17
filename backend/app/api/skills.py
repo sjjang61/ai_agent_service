@@ -12,6 +12,9 @@ from app.models.skill import Skill
 from app.models.user import User
 from app.schemas.skill import (
     ActiveRequest,
+    CategoryInfo,
+    CategoryRequest,
+    RecategorizeResponse,
     PluginInstallResponse,
     PluginResponse,
     SkillCreateRequest,
@@ -42,6 +45,8 @@ def _to_response(s: Skill, plugins: dict | None = None) -> SkillResponse:
         source_url=s.source_url,
         is_active=s.is_active,
         skill_type=s.skill_type or "builtin",
+        category=s.category or "etc",
+        category_locked=bool(s.category_locked),
         created_at=s.created_at,
     )
 
@@ -65,6 +70,24 @@ async def list_skills(
 ):
     owners = _owner_map(await SkillService.list_plugins(current_user.id, db))
     return [_to_response(s, owners) for s in await SkillService.list_skills(current_user.id, db)]
+
+
+@router.get("/categories", response_model=List[CategoryInfo])
+async def list_categories(current_user: User = Depends(get_current_user)):
+    """자동 분류에 쓰는 카테고리 목록 (표시 순서대로)."""
+    from app.services.skill_category import CATEGORY_IDS, LABELS
+
+    return [CategoryInfo(id=c, label=LABELS[c]) for c in CATEGORY_IDS]
+
+
+@router.post("/recategorize", response_model=RecategorizeResponse)
+async def recategorize_skills(
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_session),
+):
+    """직접 고르지 않은 모든 스킬을 description 으로 다시 자동 분류한다 (모호한 것은 LLM 이 판단)."""
+    changed, total = await SkillService.recategorize(current_user.id, db)
+    return RecategorizeResponse(changed=changed, total=total)
 
 
 @router.post("/custom", response_model=SkillInstallResponse)
@@ -297,6 +320,19 @@ async def set_skill_active(
     db: AsyncSession = Depends(get_session),
 ):
     skill = await SkillService.set_active(skill_id, current_user.id, data.is_active, db)
+    owners = _owner_map(await SkillService.list_plugins(current_user.id, db))
+    return _to_response(skill, owners)
+
+
+@router.post("/{skill_id}/category", response_model=SkillResponse)
+async def set_skill_category(
+    skill_id: str,
+    data: CategoryRequest,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_session),
+):
+    """카테고리를 직접 지정한다 (이후 자동 분류가 바꾸지 않음). category='auto' 면 자동 분류로 되돌린다."""
+    skill = await SkillService.set_category(skill_id, current_user.id, data.category, db)
     owners = _owner_map(await SkillService.list_plugins(current_user.id, db))
     return _to_response(skill, owners)
 
