@@ -58,8 +58,8 @@ export default function Sidebar() {
   // My Apps: 내가 배포한 웹앱 (누르면 My Apps 화면에서 실행)
   const [appsOpen, setAppsOpen] = useState(false)
   const { data: myApps = [] } = useQuery<DeployedApp[]>({
-    queryKey: ['deployed-apps'],
-    queryFn: async () => (await appsApi.list()).data,
+    queryKey: ['deployed-apps', 'runnable'],
+    queryFn: async () => (await appsApi.listRunnable()).data,
     refetchInterval: 15000,
     retry: false,
   })

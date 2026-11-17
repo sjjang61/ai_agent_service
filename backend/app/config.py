@@ -196,7 +196,7 @@ class Settings(BaseSettings):
     APP_PUBLIC_HOST: str = "localhost"  # 앱 URL 에 쓰는 호스트명
     APP_REQUIRE_TOKEN: bool = False  # true 면 새 앱은 접근 토큰이 필수 (배포 때 private 로 앱별 지정도 가능)
     APP_CONTAINER_PORT: int = 5173  # 앱이 컨테이너 안에서 듣는 포트 (환경변수 PORT 로 전달)
-    APP_MAX_PER_USER: int = 5
+    APP_MAX_PER_USER: int = 10  # 사용자당 My Apps 에 둘 수 있는 앱 수 (시작에 실패한 앱도 센다). .env 의 APP_MAX_PER_USER 로 바꾼다
     APP_ARTIFACT_MAX_MB: int = 200
     APP_ARTIFACT_MAX_FILES: int = 50000
     APP_DATA_DIR: str = str(Path(__file__).parent.parent.parent / "data" / "apps")  # 아카이브·앱별 데이터(/workspace/data)

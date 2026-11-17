@@ -72,14 +72,20 @@ async def _own(app_id: str, user: User, db: AsyncSession):
 
 
 @router.get("/info")
-async def info():
+async def info(current_user: User = Depends(get_current_user), db: AsyncSession = Depends(get_session)):
+    count = len(await AppService.list_for_user(current_user.id, db))  # 시작에 실패한 앱도 한도에 들어간다 (배포 한도 검사와 같은 기준)
     return {"enabled": settings.APP_HOST_ENABLED, "port_start": settings.APP_PORT_START, "port_end": settings.APP_PORT_END,
-            "max_per_user": settings.APP_MAX_PER_USER, "idle_minutes": settings.APP_IDLE_MINUTES, "categories": CATEGORIES}
+            "max_per_user": settings.APP_MAX_PER_USER, "count": count, "idle_minutes": settings.APP_IDLE_MINUTES, "categories": CATEGORIES}
 
 
 @router.get("", response_model=List[AppResponse])
-async def list_apps(current_user: User = Depends(get_current_user), db: AsyncSession = Depends(get_session)):
-    return [_resp(r) for r in await AppService.list_for_user(current_user.id, db)]
+async def list_apps(
+    runnable: bool = Query(False, description="true 면 실행할 수 없는 앱(시작 실패 상태)을 뺀다. My Apps 목록용"),
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_session),
+):
+    apps = [_resp(r) for r in await AppService.list_for_user(current_user.id, db)]
+    return [a for a in apps if a.status != "failed"] if runnable else apps
 
 
 @router.post("", response_model=AppResponse)

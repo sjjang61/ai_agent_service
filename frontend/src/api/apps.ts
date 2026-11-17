@@ -57,7 +57,9 @@ export interface QueueItem extends StoreApp {
 
 export const appsApi = {
   list: () => apiClient.get<DeployedApp[]>('/apps'),
-  info: () => apiClient.get<{ categories: string[] }>('/apps/info'),
+  /** 실행할 수 없는(시작 실패) 앱을 뺀 목록 — My Apps·사이드바용. 전체 목록(list)은 샌드박스 관리 화면에서 정리용으로 쓴다 */
+  listRunnable: () => apiClient.get<DeployedApp[]>('/apps', { params: { runnable: true } }),
+  info: () => apiClient.get<{ categories: string[]; max_per_user: number; count: number }>('/apps/info'),
   start: (id: string) => apiClient.post<DeployedApp>(`/apps/${id}/start`, null, { timeout: 120000 }),
   stop: (id: string) => apiClient.post<DeployedApp>(`/apps/${id}/stop`),
   remove: (id: string) => apiClient.delete(`/apps/${id}`),

@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { ArrowLeft, ExternalLink, Globe, Loader2, Lock, Pencil, Play, Rocket, Square, Store } from 'lucide-react'
+import { ArrowLeft, ExternalLink, Globe, Loader2, Lock, Pencil, Play, Rocket, Square, Store, Trash2 } from 'lucide-react'
 import IconBar from '../components/layout/IconBar'
 import Sidebar from '../components/chat/Sidebar'
 import AppPreviewPanel from '../components/chat/AppPreviewPanel'
@@ -27,7 +27,7 @@ function VisibilityBadge({ app }: { app: DeployedApp }) {
   return <span className={`inline-flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded ${m[1]}`}><Globe size={9} /> {m[0]}</span>
 }
 
-function AppCard({ app, running, onRun, onPublish, onUnpublish }: { app: DeployedApp; running: boolean; onRun: () => void; onPublish: () => void; onUnpublish: () => void }) {
+function AppCard({ app, running, onRun, onPublish, onUnpublish, onDelete }: { app: DeployedApp; running: boolean; onRun: () => void; onPublish: () => void; onUnpublish: () => void; onDelete: () => void }) {
   const openNew = async () => {
     const w = window.open('', '_blank')
     try {
@@ -64,6 +64,7 @@ function AppCard({ app, running, onRun, onPublish, onUnpublish }: { app: Deploye
           {running ? '시작 중...' : '실행'}
         </button>
         <button onClick={openNew} title="새 창에서 열기" aria-label="새 창에서 열기" className="p-2 rounded-lg border border-border text-content-secondary hover:text-content-primary bg-transparent cursor-pointer"><ExternalLink size={14} /></button>
+        <button onClick={onDelete} title="삭제" aria-label="삭제" className="p-2 rounded-lg border border-border text-content-secondary hover:text-accent-red bg-transparent cursor-pointer"><Trash2 size={14} /></button>
       </div>
       <div className="flex items-center gap-2 text-xs">
         {app.visibility === 'public' ? (
@@ -93,6 +94,11 @@ export default function MyAppsPage() {
     mutationFn: async (a: DeployedApp) => appsApi.unpublish(a.id),
     onSettled: () => qc.invalidateQueries({ queryKey: ['deployed-apps'] }),
   })
+  const remove = useMutation({
+    mutationFn: async (a: DeployedApp) => appsApi.remove(a.id),
+    onError: (e) => setError(errorDetail(e, '앱을 삭제하지 못했습니다')),
+    onSettled: () => qc.invalidateQueries({ queryKey: ['deployed-apps'] }),
+  })
   const { setConversations } = useChatStore()
 
   // 왼쪽 사이드바(대화 목록)를 채운다
@@ -101,9 +107,16 @@ export default function MyAppsPage() {
   }, [setConversations])
 
   const { data: apps = [], isLoading } = useQuery({
-    queryKey: ['deployed-apps'],
-    queryFn: async () => (await appsApi.list()).data,
+    queryKey: ['deployed-apps', 'runnable'],
+    queryFn: async () => (await appsApi.listRunnable()).data,
     refetchInterval: (q) => ((q.state.data as DeployedApp[] | undefined)?.some((a) => a.status === 'starting') ? 2000 : 10000),
+  })
+  // 앱 수 / 최대 수 (시작에 실패한 앱도 센다: 목록에는 없어도 한도에는 들어간다)
+  const { data: limits } = useQuery({
+    queryKey: ['deployed-apps', 'limits'],
+    queryFn: async () => (await appsApi.info()).data,
+    refetchInterval: 30000,
+    retry: false,
   })
   const selected = apps.find((a) => a.id === openId) ?? null
 
@@ -180,6 +193,12 @@ export default function MyAppsPage() {
             <div className="max-w-5xl">
               <h1 className="text-[26px] font-semibold text-content-primary">My Apps</h1>
               <p className="mt-1 text-[14px] text-content-secondary">채팅에서 에이전트가 배포한 웹앱입니다. 쓰지 않으면 자동으로 내려가고, 실행하면 다시 시작합니다.</p>
+              {limits && (
+                <p className={`mt-1 text-[13px] ${limits.count >= limits.max_per_user ? 'text-accent-amber' : 'text-content-tertiary'}`}>
+                  내 앱 {limits.count} / {limits.max_per_user}개
+                  {limits.count >= limits.max_per_user && ' · 한도에 도달했습니다. 안 쓰는 앱을 삭제하면 새 앱을 배포할 수 있습니다.'}
+                </p>
+              )}
               {error && <p className="mt-3 text-sm text-accent-red whitespace-pre-wrap break-words">{error}</p>}
               {isLoading ? (
                 <div className="mt-8 text-sm text-content-muted"><Loader2 size={14} className="animate-spin inline mr-1" /> 불러오는 중...</div>
@@ -194,6 +213,7 @@ export default function MyAppsPage() {
                 <div className="mt-6 grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
                   {apps.map((a) => (
                     <AppCard key={a.id} app={a} running={runningId === a.id || a.status === 'starting'} onRun={() => run.mutate(a)} onPublish={() => setPublishing(a)}
+                      onDelete={() => confirm(`'${a.name}' 앱을 삭제할까요?\n배포 아카이브와 앱 데이터가 함께 삭제되며, 스토어에 공개된 앱이면 목록에서도 사라집니다.`) && remove.mutate(a)}
                       onUnpublish={() => confirm(`'${a.name}' 의 등록을 취소할까요?\n공개 주소로의 접속이 즉시 차단되고 스토어 목록에서 사라집니다.`) && unpublish.mutate(a)} />
                   ))}
                 </div>
