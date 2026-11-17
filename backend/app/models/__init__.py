@@ -13,6 +13,7 @@ from app.models.tool_execution import ToolExecution
 from app.models.document import Document
 from app.models.document_chunk import DocumentChunk
 from app.models.channel_account import ChannelAccount
+from app.models.connector_account import ConnectorAccount
 
 __all__ = [
     "User",
@@ -32,6 +33,7 @@ __all__ = [
     "Document",
     "DocumentChunk",
     "ChannelAccount",
+    "ConnectorAccount",
 ]
 from app.models.browser_profile import BrowserProfile
 from app.models.skill_translation import SkillTranslation

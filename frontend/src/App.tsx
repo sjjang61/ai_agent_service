@@ -12,6 +12,7 @@ import StorePage from './pages/StorePage'
 import ReviewPage from './pages/ReviewPage'
 import McpSettingsPage from './pages/McpSettingsPage'
 import MemoryPage from './pages/MemoryPage'
+import ConnectorsPage from './pages/ConnectorsPage'
 import SandboxPage from './pages/SandboxPage'
 import SchedulesPage from './pages/SchedulesPage'
 import SkillsPage from './pages/SkillsPage'
@@ -41,6 +42,7 @@ export default function App() {
       <Route path="/memory" element={<PrivateRoute><MemoryPage /></PrivateRoute>} />
       <Route path="/calendar" element={<PrivateRoute><CalendarPage /></PrivateRoute>} />
       <Route path="/wiki" element={<PrivateRoute><WikiPage /></PrivateRoute>} />
+      <Route path="/connectors" element={<PrivateRoute><ConnectorsPage /></PrivateRoute>} />
       <Route path="/spaces" element={<PrivateRoute><SpacesPage /></PrivateRoute>} />
       <Route path="/spaces/pages/:pageId" element={<PrivateRoute><PageEditorPage /></PrivateRoute>} />
       <Route path="/schedules" element={<PrivateRoute><SchedulesPage /></PrivateRoute>} />

@@ -1,10 +1,10 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { BarChart3, CalendarDays, Blocks, BookOpen, Bot, Box, Brain, Globe, MessageCircle, Package, Search, Server, Settings2, Wrench } from 'lucide-react'
+import { BarChart3, Cable, CalendarDays, Blocks, BookOpen, Bot, Box, Brain, Globe, MessageCircle, Package, Search, Server, Settings2, Wrench } from 'lucide-react'
 import IconBar from '../layout/IconBar'
 import { Tile } from './common'
 
-export type CustomizeSection = 'agents' | 'tools' | 'mcp' | 'skills' | 'plugins' | 'memory' | 'wiki' | 'sandbox' | 'calendar' | 'channels' | 'browser' | 'usage' | 'etc'
+export type CustomizeSection = 'agents' | 'tools' | 'mcp' | 'connectors' | 'skills' | 'plugins' | 'memory' | 'wiki' | 'sandbox' | 'calendar' | 'channels' | 'browser' | 'usage' | 'etc'
 
 interface Props {
   active: CustomizeSection
@@ -18,6 +18,7 @@ const NAV: { key: CustomizeSection; label: string; icon: React.ReactNode; path: 
   { key: 'agents', label: '에이전트', icon: <Bot size={17} />, path: '/agents' },
   { key: 'tools', label: '도구', icon: <Wrench size={17} />, path: '/tools' },
   { key: 'mcp', label: 'MCP 설정', icon: <Server size={17} />, path: '/mcp' },
+  { key: 'connectors', label: '커넥터', icon: <Cable size={17} />, path: '/connectors' },
   { key: 'skills', label: '스킬', icon: <Package size={17} />, path: '/skills' },
   { key: 'plugins', label: '플러그인', icon: <Blocks size={17} />, path: '/plugins' },
   { key: 'memory', label: '메모리', icon: <Brain size={17} />, path: '/memory' },

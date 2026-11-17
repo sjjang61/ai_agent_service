@@ -210,6 +210,23 @@ class AgentOrchestrator:
                     llm_provider=self.llm_provider, model=self.model,
                 )
             )
+            if settings.LOCAL_BROWSER_CDP_URL and self.user_id == settings.LOCAL_BROWSER_USER_ID:
+                # 데스크톱 앱 브라우저로 여러 사이트를 동시에 조작한다 (앱이 꺼져 있으면 도구 안에서 순차 실행으로 대체)
+                tools.append(
+                    BrowserParallelTool(
+                        user_id=self.user_id, sandbox_cid=sandbox_cid, conversation_id=conversation_id,
+                        login_enabled=not (self.headless or self.channel),
+                        llm_provider=self.llm_provider, model=self.model,
+                    )
+                )
+        # Google Workspace 커넥터: 사용자가 커넥터 화면에서 연결한 서비스의 도구만 노출한다 (예약·메신저처럼 화면 없는 실행은 조회만)
+        try:
+            from app.services.connector_service import ConnectorService
+            from app.tools.google_tools import build_connector_tools
+
+            tools += build_connector_tools(self.user_id, await ConnectorService.enabled_ids(self.user_id, db), allow_write=not (self.headless or self.channel))
+        except Exception:
+            logger.exception("[connectors] 커넥터 도구 구성 실패")
         if skills:
             tools.append(LoadSkillTool(skills={s.name: s.install_path for s in skills}, user_id=self.user_id, sandbox_cid=sandbox_cid))
 

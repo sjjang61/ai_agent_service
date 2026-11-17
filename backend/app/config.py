@@ -211,6 +211,11 @@ class Settings(BaseSettings):
 
     # 파일 도구: 공개 다운로드 링크(publish_file/write_file) · URL 다운로드(download_file)
     PUBLIC_BASE_URL: str = "http://localhost:8500"  # 공개 링크에 붙는 백엔드 외부 접근 주소
+    # Google Workspace 커넥터(Gmail·Calendar·Drive·Docs·Sheets·Slides): 사용자가 자기 Google 계정으로 OAuth 인증해 연결한다.
+    # Google Cloud 콘솔에서 'OAuth 클라이언트 ID(웹 애플리케이션)'를 만들고 승인된 리디렉션 URI 에 GOOGLE_OAUTH_REDIRECT_URI 를 등록한다.
+    GOOGLE_OAUTH_CLIENT_ID: str = ""
+    GOOGLE_OAUTH_CLIENT_SECRET: str = ""
+    GOOGLE_OAUTH_REDIRECT_URI: str = ""  # 비우면 {PUBLIC_BASE_URL}/api/connectors/google/callback
     PUBLISH_DIR: str = str(Path(__file__).parent.parent.parent / "data" / "published")
     PUBLISH_EXPIRE_HOURS: int = 24
     PUBLISH_MAX_MB: int = 100
