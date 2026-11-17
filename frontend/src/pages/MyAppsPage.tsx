@@ -173,7 +173,7 @@ export default function MyAppsPage() {
             </div>
             <div className="flex-1 min-h-0">
               {selected.status === 'running' ? (
-                <AppPreviewPanel key={selected.id} name={selected.name} launch={() => appsApi.launch(selected.id)} />
+                <AppPreviewPanel key={selected.id} name={selected.name} launch={() => appsApi.launch(selected.id)} logs={() => appsApi.logs(selected.id).then((r) => r.data.logs)} />
               ) : (
                 <div className="h-full flex flex-col items-center justify-center gap-3 text-sm text-content-muted px-6 text-center">
                   {selected.status === 'failed' ? (

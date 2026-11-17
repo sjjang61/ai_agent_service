@@ -193,7 +193,7 @@ export default function ChatLayout() {
       )}
       {!selectedStep && rightPanel === 'app' && deployedApp && (
         <RightPanel wide title={deployedApp.name} subtitle="배포된 앱 미리보기" icon={<AppWindow size={15} />} onClose={closePanel}>
-          <AppPreviewPanel key={deployedApp.appId} name={deployedApp.name} launch={() => appsApi.launch(deployedApp.appId)} />
+          <AppPreviewPanel key={deployedApp.appId} name={deployedApp.name} launch={() => appsApi.launch(deployedApp.appId)} logs={() => appsApi.logs(deployedApp.appId).then((r) => r.data.logs)} />
         </RightPanel>
       )}
       {!selectedStep && rightPanel === 'artifacts' && (
