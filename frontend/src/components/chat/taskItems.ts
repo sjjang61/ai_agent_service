@@ -34,6 +34,9 @@ export const TASK_LABELS: Record<string, string> = {
   generate_image: '이미지 생성',
   generate_video: '동영상 생성',
   upload_to_minio: '이미지 업로드',
+  drive_save: 'Drive 에 저장',
+  drive_load: 'Drive 에서 가져오기',
+  drive_list: 'Drive 목록',
   search_documents: '문서 검색',
   search_wiki: '위키 검색',
   memory_tool: '메모리',
@@ -73,6 +76,11 @@ export function summarizeInput(tool: string | undefined, input: unknown): string
     case 'generate_video':
       return clip(str('prompt'))
     case 'upload_to_minio':
+    case 'drive_save':
+      return clip(str('path'))
+    case 'drive_load':
+      return clip(str('drive_path'))
+    case 'drive_list':
       return clip(str('path'))
     case 'web_crawler':
     case 'download_file':

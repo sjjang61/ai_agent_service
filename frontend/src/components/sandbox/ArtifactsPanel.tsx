@@ -3,9 +3,11 @@ import { useQuery } from '@tanstack/react-query'
 import axios from 'axios'
 import {
   Archive, ChevronDown, ChevronRight, Download, File, FileText, FolderOpen, Folder, Film, Image as ImageIcon,
-  Link2, Loader2, Play, Presentation, RefreshCw, Search,
+  HardDrive, Link2, Loader2, Play, Presentation, RefreshCw, Search,
 } from 'lucide-react'
 import { sandboxApi } from '../../api/sandbox'
+import { driveApi, driveError } from '../../api/drive'
+import FolderPickerDialog from '../drive/FolderPickerDialog'
 import { formatFullDate, formatFullDateTime, parseServerDate } from '../../utils/time'
 import type { Artifact, ArtifactKind, ArtifactPreview } from '../../types/artifact'
 
@@ -183,6 +185,10 @@ export default function ArtifactsPanel({ compact = false, refreshTick = 0, conve
   const [notice, setNotice] = useState<{ kind: 'ok' | 'error'; text: string } | null>(null)
   const [starting, setStarting] = useState(false)
   const [busyPath, setBusyPath] = useState<string | null>(null)
+  // Drive 에 저장: 저장할 항목(파일 또는 폴더 경로)과 폴더 선택 대화상자 상태
+  const [driveTarget, setDriveTarget] = useState<{ path: string; name: string } | null>(null)
+  const [driveBusy, setDriveBusy] = useState(false)
+  const [driveErr, setDriveErr] = useState<string | null>(null)
 
   const { data, isLoading, isFetching, refetch, error } = useQuery({
     queryKey: ['sandbox-artifacts', conversationId ?? 'shared', showHidden, refreshTick],
@@ -237,6 +243,21 @@ export default function ArtifactsPanel({ compact = false, refreshTick = 0, conve
     }
   }
 
+  const saveToDrive = async (parentId: string) => {
+    if (!driveTarget) return
+    setDriveBusy(true)
+    setDriveErr(null)
+    try {
+      const r = await driveApi.importSandbox(conversationId, [driveTarget.path], parentId)
+      setDriveTarget(null)
+      setNotice({ kind: 'ok', text: `Drive 에 저장했습니다: ${r.saved.map((n) => n.name).join(', ')} (파일 ${r.files}개)` })
+    } catch (e) {
+      setDriveErr(driveError(e, 'Drive 에 저장하지 못했습니다'))
+    } finally {
+      setDriveBusy(false)
+    }
+  }
+
   const row = (f: Artifact, depth: number, showPath: boolean) => {
     const open = openPath === f.path
     return (
@@ -255,6 +276,9 @@ export default function ArtifactsPanel({ compact = false, refreshTick = 0, conve
           <button onClick={() => download(f)} title="다운로드" className="p-1 text-content-secondary hover:text-content-primary flex-shrink-0">
             {busyPath === f.path ? <Loader2 size={12} className="animate-spin" /> : <Download size={12} />}
           </button>
+          <button onClick={() => { setDriveErr(null); setDriveTarget({ path: f.path, name: f.name }) }} title="Drive 에 저장" aria-label={`${f.name} 을(를) Drive 에 저장`} className="p-1 text-content-secondary hover:text-content-primary flex-shrink-0">
+            <HardDrive size={12} />
+          </button>
           <button onClick={() => publish(f)} title="공개 링크 만들기" className="p-1 text-content-secondary hover:text-content-primary flex-shrink-0">
             <Link2 size={12} />
           </button>
@@ -270,17 +294,21 @@ export default function ArtifactsPanel({ compact = false, refreshTick = 0, conve
     for (const d of dirs) {
       const closed = closedDirs.has(d.path)
       out.push(
-        <button
-          key={`dir:${d.path}`}
-          onClick={() => setClosedDirs((s) => { const c = new Set(s); closed ? c.delete(d.path) : c.add(d.path); return c })}
-          className="w-full flex items-center gap-1.5 py-1 text-xs text-content-primary hover:bg-surface-hover rounded"
-          style={{ paddingLeft: 4 + depth * 14 }}
-        >
-          {closed ? <ChevronRight size={12} /> : <ChevronDown size={12} />}
-          {closed ? <Folder size={13} className="text-accent-primary" /> : <FolderOpen size={13} className="text-accent-primary" />}
-          <span className="font-medium">{d.name}</span>
-          <span className="text-content-muted">({countFiles(d)})</span>
-        </button>
+        <div key={`dir:${d.path}`} className="group flex items-center rounded hover:bg-surface-hover">
+          <button
+            onClick={() => setClosedDirs((s) => { const c = new Set(s); closed ? c.delete(d.path) : c.add(d.path); return c })}
+            className="flex-1 min-w-0 flex items-center gap-1.5 py-1 text-xs text-content-primary text-left"
+            style={{ paddingLeft: 4 + depth * 14 }}
+          >
+            {closed ? <ChevronRight size={12} /> : <ChevronDown size={12} />}
+            {closed ? <Folder size={13} className="text-accent-primary" /> : <FolderOpen size={13} className="text-accent-primary" />}
+            <span className="font-medium">{d.name}</span>
+            <span className="text-content-muted">({countFiles(d)})</span>
+          </button>
+          <button onClick={() => { setDriveErr(null); setDriveTarget({ path: d.path, name: d.name }) }} title="폴더를 Drive 에 저장" aria-label={`${d.name} 폴더를 Drive 에 저장`} className="p-1 mr-1 text-content-secondary hover:text-content-primary flex-shrink-0">
+            <HardDrive size={12} />
+          </button>
+        </div>
       )
       if (!closed) out.push(...renderNode(d, depth + 1))
     }
@@ -373,6 +401,10 @@ export default function ArtifactsPanel({ compact = false, refreshTick = 0, conve
           )}
           {data?.truncated && <p className="text-[10px] text-content-muted mt-2">파일이 많아 일부만 표시했습니다.</p>}
         </>
+      )}
+      {driveTarget && (
+        <FolderPickerDialog title={`'${driveTarget.name}' 을(를) Drive 에 저장`} exclude={[]} startId="root" confirmLabel="여기에 저장" busy={driveBusy} error={driveErr}
+          onPick={saveToDrive} onClose={() => { setDriveTarget(null); setDriveErr(null) }} />
       )}
     </div>
   )

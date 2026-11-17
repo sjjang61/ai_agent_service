@@ -17,6 +17,7 @@ SELECTABLE_TOOLS = [
     "read_image", "code_executor", "exec_command", "download_file", "publish_file", "create_widget",
     "memory_tool", "search_documents", "search_wiki", "todo", "narrate", "form_ask_user", "cli_browser_agent",
     "manage_schedule", "register_skill", "generate_image", "generate_video", "upload_to_minio",
+    "drive_save", "drive_load", "drive_list",
 ]
 
 

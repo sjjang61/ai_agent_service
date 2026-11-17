@@ -35,6 +35,9 @@ export const TOOL_LABELS: Record<string, string> = {
   generate_image: '이미지 생성',
   generate_video: '동영상 생성',
   upload_to_minio: '이미지 업로드',
+  drive_save: 'Drive 에 저장',
+  drive_load: 'Drive 에서 가져오기',
+  drive_list: 'Drive 목록',
 }
 
 function StepIcon({ type, tool, isActive }: { type: string; tool?: string; isActive?: boolean }) {

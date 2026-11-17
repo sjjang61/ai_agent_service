@@ -86,7 +86,7 @@ export default function Sidebar() {
 
   const handleDelete = async (e: React.MouseEvent, id: string) => {
     e.stopPropagation()
-    if (!confirm('이 대화를 삭제할까요? 삭제한 대화는 복구할 수 없습니다.')) return
+    if (!confirm('이 대화를 삭제할까요? 삭제한 대화는 복구할 수 없습니다.\n\n이 대화의 작업공간(sandbox) 파일도 함께 삭제됩니다. 보관할 산출물이 있다면 먼저 Artifacts 에서 Drive 에 저장하세요.')) return
     try {
       await chatApi.deleteConversation(id)
     } catch {

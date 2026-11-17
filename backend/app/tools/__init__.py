@@ -41,6 +41,12 @@ async def get_builtin_tools(
         image_tools.append(GenerateVideoTool(user_id=user_id, sandbox_cid=sandbox_cid, conversation_id=conversation_id))
     if object_storage.enabled():
         image_tools.append(UploadToMinioTool(user_id=user_id, sandbox_cid=sandbox_cid))
+    from app.services import drive_storage
+
+    if drive_storage.enabled():
+        from app.tools.drive_tools import DriveListTool, DriveLoadTool, DriveSaveTool
+
+        image_tools += [DriveSaveTool(user_id=user_id, sandbox_cid=sandbox_cid), DriveLoadTool(user_id=user_id, sandbox_cid=sandbox_cid), DriveListTool(user_id=user_id, sandbox_cid=sandbox_cid)]
 
     return image_tools + [
         WebSearchTool(),

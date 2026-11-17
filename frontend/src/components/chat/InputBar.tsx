@@ -1,12 +1,14 @@
 import { useState, useRef, useEffect } from 'react'
 import axios from 'axios'
-import { Send, Loader2, X, FileText, AlertCircle, Square, Plus, ThumbsUp, Settings, Mic, Folder, FolderUp, Paperclip, MessageSquare, BookMarked, Puzzle } from 'lucide-react'
+import { Send, Loader2, X, FileText, AlertCircle, Square, Plus, ThumbsUp, Settings, Mic, Folder, FolderUp, Paperclip, MessageSquare, BookMarked, Puzzle, HardDrive } from 'lucide-react'
 import { useAgentStore } from '../../store/agentStore'
 import { useAgentStream } from '../../hooks/useAgentStream'
 import { sandboxApi } from '../../api/sandbox'
 import { formatSize } from '../sandbox/ArtifactsPanel'
 import ReferencePicker, { MAX_REFERENCES } from './ReferencePicker'
 import SkillPickerDialog from './SkillPickerDialog'
+import DriveFilePickerDialog from '../drive/DriveFilePickerDialog'
+import { driveApi, driveError, type DriveNode } from '../../api/drive'
 import type { Attachment, Reference } from '../../types/chat'
 
 const MAX_FILES = 10
@@ -54,6 +56,7 @@ export default function InputBar({ conversationId }: { conversationId: string })
   const [dragging, setDragging] = useState(false)
   const [menuOpen, setMenuOpen] = useState(false)
   const [pickerOpen, setPickerOpen] = useState(false)
+  const [drivePickerOpen, setDrivePickerOpen] = useState(false)
   const [refs, setRefs] = useState<Reference[]>([])
   const menuRef = useRef<HTMLDivElement>(null)
   const folderInputRef = useRef<HTMLInputElement>(null)
@@ -126,6 +129,21 @@ export default function InputBar({ conversationId }: { conversationId: string })
           patch(id, { status: 'error', error: typeof detail === 'string' ? detail : 'Upload failed' })
         })
     }
+  }
+
+  // Drive 파일을 첨부한다: 서버가 sandbox 의 uploads 로 복사해 주므로 브라우저에서 다시 올리지 않는다
+  const attachFromDrive = (nodes: DriveNode[]) => {
+    setDrivePickerOpen(false)
+    const room = Math.max(MAX_FILES - files.length, 0)
+    for (const node of nodes.slice(0, room)) {
+      const id = `f${++seq}`
+      setFiles((l) => [...l, { id, name: node.name, size: node.size_bytes ?? 0, status: 'uploading', progress: 50 }])
+      driveApi
+        .attach(node.id, conversationId)
+        .then((att) => { patch(id, { status: 'done', progress: 100, attachment: att }); triggerWorkspaceRefresh() })
+        .catch((e) => patch(id, { status: 'error', error: driveError(e, 'Drive 파일을 첨부하지 못했습니다') }))
+    }
+    nodes.slice(room).forEach((n) => setFiles((l) => [...l, { id: `f${++seq}`, name: n.name, size: n.size_bytes ?? 0, status: 'error', progress: 0, error: `Max ${MAX_FILES} files` }]))
   }
 
   // 데스크톱 앱의 에이전트 브라우저에서 '스크린샷 첨부'를 누르면 현재 화면이 첨부 파일로 올라온다
@@ -345,6 +363,13 @@ export default function InputBar({ conversationId }: { conversationId: string })
                       disabled={files.length >= MAX_FILES}
                       onClick={() => { setMenuOpen(false); folderInputRef.current?.click() }}
                     />
+                    <MenuItem
+                      icon={<HardDrive size={15} />}
+                      label="Drive 에서 첨부"
+                      hint="내 Drive 의 파일"
+                      disabled={files.length >= MAX_FILES}
+                      onClick={() => { setMenuOpen(false); setDrivePickerOpen(true) }}
+                    />
                     <div className="my-1 border-t border-border" />
                     <MenuItem
                       icon={<BookMarked size={15} />}
@@ -419,6 +444,7 @@ export default function InputBar({ conversationId }: { conversationId: string })
           </div>
         </div>
 
+        {drivePickerOpen && <DriveFilePickerDialog maxSelect={Math.max(MAX_FILES - files.length, 1)} onPick={attachFromDrive} onClose={() => setDrivePickerOpen(false)} />}
         {skillsOpen && <SkillPickerDialog conversationId={conversationId} onClose={() => setSkillsOpen(false)} />}
 
         {pickerOpen && (

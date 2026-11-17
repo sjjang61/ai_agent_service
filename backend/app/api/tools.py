@@ -119,6 +119,21 @@ BUILTIN_TOOLS: List[ToolInfo] = [
         group="share",
     ),
     ToolInfo(
+        name="drive_save",
+        description="Save a workspace file or folder into the user's Drive (personal long-term file space) and return its Drive path.",
+        group="share",
+    ),
+    ToolInfo(
+        name="drive_load",
+        description="Copy a file from the user's Drive into the workspace.",
+        group="share",
+    ),
+    ToolInfo(
+        name="drive_list",
+        description="List files and folders in the user's Drive.",
+        group="share",
+    ),
+    ToolInfo(
         name="upload_to_minio",
         description="Upload one workspace image or video to the public MinIO bucket and return its public URL.",
         group="share",
