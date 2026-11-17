@@ -45,6 +45,24 @@ def _http() -> httpx.AsyncClient:
     return _client
 
 
+def embed_headers(headers: dict) -> dict:
+    """앱 응답을 이 서비스 화면(iframe)에서 열 수 있게 한다.
+
+    앱이 스스로 붙인 X-Frame-Options(SAMEORIGIN 등)는 포트가 다른 서비스 화면의 임베드를 막으므로 지운다.
+    대신 CSP frame-ancestors 를 이 서비스의 허용 출처(CORS_ORIGINS)로 정해, 다른 사이트가 앱을 감싸는 것(클릭재킹)은 계속 막는다.
+    앱이 CSP 를 따로 쓰면 그 지시문(frame-ancestors 만)만 바꾸고 나머지는 그대로 둔다.
+    """
+    out = {k: v for k, v in headers.items() if k.lower() != "x-frame-options"}
+    ancestors = "frame-ancestors 'self' " + " ".join(o for o in settings.CORS_ORIGINS if o and o != "*")
+    csp_key = next((k for k in out if k.lower() == "content-security-policy"), None)
+    if csp_key is None:
+        out["content-security-policy"] = ancestors
+    else:
+        parts = [d.strip() for d in out[csp_key].split(";") if d.strip() and not d.strip().lower().startswith("frame-ancestors")]
+        out[csp_key] = "; ".join(parts + [ancestors])
+    return out
+
+
 def _cookie_name(st) -> str:
     return f"{SESSION_COOKIE}{st.port}"
 
@@ -208,6 +226,7 @@ def make_gateway(host, app_id: Optional[str], mode: str = "port") -> Starlette:
         headers = {k: v for k, v in resp.headers.items() if k.lower() not in HOP_BY_HOP}
         if "location" in headers:
             headers["location"] = _rewrite_location(headers["location"], request, st)
+        headers = embed_headers(headers)
         if mode == "public":
             headers.setdefault("x-content-type-options", "nosniff")
         return StreamingResponse(resp.aiter_raw(), status_code=resp.status_code, headers=headers, background=BackgroundTask(resp.aclose))
