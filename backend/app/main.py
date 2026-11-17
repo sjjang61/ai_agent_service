@@ -61,6 +61,9 @@ def _setup_mcp_log_filter() -> None:
 async def lifespan(app: FastAPI):
     _setup_mcp_log_filter()
     await init_db()
+    from app.core.monitoring import setup_monitoring, shutdown_monitoring
+
+    setup_monitoring()  # AGENT_MONITORING_TYPE (none | opik | langfuse). 실패해도 서버는 그대로 뜬다
     try:  # 가격 페이지에서 갱신해 둔 모델 단가 (예상 비용 계산)
         from app.services.pricing import load_db_prices
 
@@ -101,6 +104,7 @@ async def lifespan(app: FastAPI):
     if channels:
         channels.cancel()
     await VectorStoreManager.cleanup()
+    shutdown_monitoring()  # 남은 트레이스를 서버에 보낸다
 
 
 app = FastAPI(title="AI Agent Platform", version="0.1.0", lifespan=lifespan)

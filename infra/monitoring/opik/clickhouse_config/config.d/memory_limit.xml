@@ -1,0 +1,12 @@
+<clickhouse>
+    <!-- 로컬 Docker VM(약 10GB)을 다른 컨테이너와 나눠 쓰므로 ClickHouse 가 메모리를 다 쓰려다 OOM 으로 죽지 않게 상한을 둔다.
+         이 값에 닿으면 ClickHouse 가 그 쿼리만 거절하고 계속 산다 (컨테이너 mem_limit 보다 작아야 한다). -->
+    <max_server_memory_usage>2147483648</max_server_memory_usage>
+    <!-- 시스템 로그 테이블은 메모리를 먹으므로 쿼리 로그 계열은 끈다 -->
+    <query_log remove="1"/>
+    <query_thread_log remove="1"/>
+    <trace_log remove="1"/>
+    <text_log remove="1"/>
+    <metric_log remove="1"/>
+    <asynchronous_metric_log remove="1"/>
+</clickhouse>

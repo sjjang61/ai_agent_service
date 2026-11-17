@@ -13,6 +13,16 @@ _LLM_TYPE_ALIASES = {
 }
 
 
+# 에이전트 응답 모니터링 도구 (AGENT_MONITORING_TYPE). 'opic' 같은 오타·별칭도 받는다
+MonitoringType = Literal["none", "opik", "langfuse"]
+_MONITORING_ALIASES = {"": "none", "off": "none", "false": "none", "0": "none", "disabled": "none", "opic": "opik", "comet": "opik"}
+
+
+def normalize_monitoring_type(value: str) -> str:
+    v = (value or "").strip().lower()
+    return _MONITORING_ALIASES.get(v, v)
+
+
 def normalize_llm_type(value: str) -> str:
     v = (value or "").strip().lower()
     return _LLM_TYPE_ALIASES.get(v, v)
@@ -57,10 +67,32 @@ class Settings(BaseSettings):
     GOOGLE_API_KEY: str = ""
     # 사용할 LLM 종류: pet | openai | gemini | anthropic
     LLM_TYPE: LLMType = "pet"
+
+    # 에이전트 응답 모니터링 (트레이스·지연·토큰·오류·평가). none | opik | langfuse — OpenTelemetry(OTLP)로 내보내므로 값만 바꾸면 도구를 바꿀 수 있다.
+    # 프롬프트·도구 결과 전문을 그대로 저장한다 → 반드시 자체 호스팅 서버를 쓴다 (infra/monitoring/opik).
+    AGENT_MONITORING_TYPE: MonitoringType = "none"
+    MONITORING_SERVICE_NAME: str = "ai-agent-backend"
+    MONITORING_SAMPLE_RATE: float = 1.0  # 0~1: 트레이스 표본 비율
+    MONITORING_MAX_SPAN_ATTRIBUTES: int = 2000  # 스팬 하나에 붙일 수 있는 속성 수 (OTel 기본 128 은 긴 대화에서 모자란다)
+    # LangChain 전체 계측: 직접 호출(라우터·메모리 추출·위키 등)과 LangGraph 엔진이 기록되지만, Agno 가 LangChain 도구를 부르는 경로에서는
+    # 같은 도구 호출 스팬이 두 번 생긴다(P0 확인). 기본은 끄고, 직접 호출 지점은 콜백으로 따로 계측한다(P1).
+    MONITORING_LANGCHAIN: bool = False
+    OPIK_URL: str = "http://localhost:15174"  # infra/monitoring/opik 의 NGINX_PORT. Opik Cloud 는 https://www.comet.com/opik
+    OPIK_PROJECT_NAME: str = "ai-agent-platform"
+    OPIK_WORKSPACE: str = "default"
+    OPIK_API_KEY: str = ""  # 자체 호스팅은 비워 둔다 (Opik Cloud 전용)
+    LANGFUSE_HOST: str = "http://localhost:3000"
+    LANGFUSE_PUBLIC_KEY: str = ""
+    LANGFUSE_SECRET_KEY: str = ""
     # LLM_TYPE 별 모델 (pet 은 PET_MODEL_ID 사용)
     OPENAI_MODEL: str = "gpt-4o"
     GEMINI_MODEL: str = "gemini-2.5-flash"
     ANTHROPIC_MODEL: str = "claude-sonnet-4-5"
+
+    @field_validator("AGENT_MONITORING_TYPE", mode="before")
+    @classmethod
+    def _normalize_monitoring_type(cls, v):
+        return normalize_monitoring_type(v) if isinstance(v, str) else v
 
     @field_validator("LLM_TYPE", mode="before")
     @classmethod
