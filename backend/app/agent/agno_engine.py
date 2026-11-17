@@ -56,18 +56,43 @@ MAX_TOOL_OUTPUT = 20000
 # ── 모델 ─────────────────────────────────────────────────────────────────────
 def build_agno_model(llm_type: str, model: Optional[str] = None):
     t = normalize_llm_type(llm_type)
-    model_id = model or settings.default_model_for(t)
-    if t == "pet":
+_PetModel = None
+
+
+def _pet_model_class():
+    """PET 게이트웨이용 모델 클래스. 게이트웨이는 오류를 HTTP 200 + {"state":400,"res":"..."} 로 돌려줄 때가 있어
+    그대로 두면 agno 가 "'NoneType' object is not subscriptable" 만 남긴다. 게이트웨이가 보낸 오류 내용을 그대로 드러낸다."""
+    global _PetModel
+    if _PetModel is None:
+        from agno.exceptions import ModelProviderError
         from agno.models.openai import OpenAILike
 
+        class PetModel(OpenAILike):
+            def _parse_provider_response(self, response, response_format=None):  # type: ignore[override]
+                if not getattr(response, "choices", None) and not getattr(response, "error", None):
+                    try:
+                        raw = response.model_dump(exclude_none=True)
+                    except Exception:  # noqa: BLE001
+                        raw = {}
+                    detail = str(raw.get("res") or raw.get("message") or raw)[:600]
+                    raise ModelProviderError(message=f"PET 게이트웨이 오류: {detail}", model_name=self.name, model_id=self.id)
+                return super()._parse_provider_response(response, response_format=response_format)
+
+        _PetModel = PetModel
+    return _PetModel
+
+
+    model_id = model or settings.default_model_for(t)
+    if t == "pet":
         if not settings.PET_AGENT_URL:
             raise ValueError("PET_AGENT_URL이 설정되지 않았습니다.")
-        return OpenAILike(
+        return _pet_model_class()(
             id=settings.PET_MODEL_ID,
             base_url=settings.PET_AGENT_URL,
-            api_key=settings.PET_API_KEY,
+            api_key=settings.PET_API_KEY or "EMPTY",  # 빈 값이면 라이브러리가 OPENAI_API_KEY 를 찾다 실패하므로 더미 키 사용
             timeout=settings.PET_TIMEOUT,
-            reasoning_effort=settings.PET_REASONING_EFFORT or None,
+            # PET 게이트웨이는 reasoning_effort 로 minimal|low|medium|high 만 받는다 ("none" 은 400 → choices 없는 응답 → 'NoneType' 오류)
+            reasoning_effort=None if settings.PET_REASONING_EFFORT in ("", "none") else settings.PET_REASONING_EFFORT,
         )
     if t == "openai":
         from agno.models.openai import OpenAIChat
