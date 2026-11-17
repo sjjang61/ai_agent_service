@@ -14,6 +14,7 @@ import {
   BookOpen,
   Brain,
   Package,
+  HardDrive,
 } from 'lucide-react'
 import { useThemeStore } from '../../store/themeStore'
 import { useAuthStore } from '../../store/authStore'
@@ -68,6 +69,13 @@ function IconButton({ icon, title, description, active, onClick, badge }: IconBu
     </button>
   )
 }
+      <IconButton
+        icon={<HardDrive size={20} />}
+        title="Drive"
+        description="내 파일 공간: 에이전트가 만든 산출물과 업로드한 파일을 폴더로 보관합니다"
+        active={isActive('/drive')}
+        onClick={() => navigate('/drive')}
+      />
 
 export default function IconBar() {
   const navigate = useNavigate()

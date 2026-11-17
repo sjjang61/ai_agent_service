@@ -2,6 +2,8 @@ import { Routes, Route, Navigate } from 'react-router-dom'
 import { useAuthStore } from './store/authStore'
 import AdminUsagePage from './pages/AdminUsagePage'
 import SharedChatPage from './pages/SharedChatPage'
+import DrivePage from './pages/DrivePage'
+import DriveTrashPage from './pages/DriveTrashPage'
 import AuthPage from './pages/AuthPage'
 import CalendarPage from './pages/CalendarPage'
 import ChannelsPage from './pages/ChannelsPage'
@@ -40,6 +42,9 @@ export default function App() {
       <Route path="/chat/:conversationId" element={<PrivateRoute><ChatPage /></PrivateRoute>} />
       <Route path="/store/review" element={<PrivateRoute><ReviewPage /></PrivateRoute>} />
       <Route path="/store" element={<PrivateRoute><StorePage /></PrivateRoute>} />
+      <Route path="/drive" element={<PrivateRoute><DrivePage /></PrivateRoute>} />
+      <Route path="/drive/trash" element={<PrivateRoute><DriveTrashPage /></PrivateRoute>} />
+      <Route path="/drive/:folderId" element={<PrivateRoute><DrivePage /></PrivateRoute>} />
       <Route path="/apps" element={<PrivateRoute><MyAppsPage /></PrivateRoute>} />
       <Route path="/mcp" element={<PrivateRoute><McpSettingsPage /></PrivateRoute>} />
       <Route path="/connectors" element={<PrivateRoute><ConnectorsPage /></PrivateRoute>} />
