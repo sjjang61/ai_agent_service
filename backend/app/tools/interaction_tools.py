@@ -1,4 +1,5 @@
 """작업 관리·사용자 상호작용 도구: todo / narrate / form_ask_user"""
+import uuid
 import json
 from collections import OrderedDict
 from typing import Literal, Optional
@@ -63,6 +64,22 @@ def _todo_result(current: list) -> str:
     return json.dumps(
         {"ok": True, "todos": current, "progress": f"{done}/{len(current)}", "next": nxt["content"] if nxt else None},
         ensure_ascii=False,
+    )
+
+
+def plan_review_note(conversation_id: str) -> str:
+    """작업(위임·브라우저 등)이 끝난 직후 도구 결과 뒤에 붙이는 계획 점검 안내. 끝나지 않은 단계가 있을 때만 (없으면 빈 문자열).
+    모델이 방금 끝난 작업으로 이미 처리된 단계를 놓치고 같은 일을 다시 맡기거나 계획 갱신을 건너뛰는 것을 막는다."""
+    current = _todo_store.get(conversation_id or "_") or []
+    if not current or all(x["status"] == "completed" for x in current):
+        return ""
+    mark = {"completed": "완료", "in_progress": "진행 중", "pending": "대기"}
+    rows = "\n".join(f"  {x['id']}. {x['content']} [{mark.get(x['status'], x['status'])}]" for x in current)
+    return (
+        "\n\n[계획 점검] 방금 끝난 작업을 계획과 대조하세요. 현재 계획:\n" + rows + "\n"
+        "- 이 작업으로 이미 처리된 단계가 있으면(예: 한 번의 위임이 여러 단계를 다 했을 때) 그 단계들을 `todo` 로 completed 처리하고, 남은 단계가 있으면 다음 단계를 `start` 하세요.\n"
+        "- 같은 일을 하는 단계가 둘로 나뉘어 있으면 `todo` 의 write 로 합쳐 다시 쓰세요(끝낸 단계는 completed 로 둡니다).\n"
+        "- 이미 끝난 일을 같은 방식으로 다시 위임하지 마세요. 남은 단계가 없으면 `todo` 를 갱신한 뒤 최종 답변을 하세요."
     )
 
 
@@ -159,7 +176,20 @@ class TodoTool(_Base):
         while len(_todo_store) > _MAX_CONVERSATIONS:
             _todo_store.popitem(last=False)
 
-        return _todo_result(current)
+        result = _todo_result(current)
+        if action in ("write", "start", "update"):
+            self._emit_plan_hint(result)
+        return result
+
+    def _emit_plan_hint(self, result: str) -> None:
+        """계획 상태가 바뀐 순간 화면 스트림에 바로 알린다.
+        한 응답에서 `start` 와 긴 작업 도구(브라우저 등)를 병렬로 호출하면 Agno 의 호출·결과 이벤트는 그 작업이 끝난 뒤에야 도착해서,
+        작업 중 화면이 새 단계를 모르고 이전 단계 아래에 진행 상황을 묶어 보여 준다. todo 는 몇 ms 만에 끝나므로 여기서 먼저 알려 순서를 맞춘다.
+        call_id 가 plan_hint_ 로 시작하는 이 결과는 목록에는 나타나지 않고(호출과 짝짓지 않는다), 계획 상태 계산에만 쓰인다."""
+        from app.agent import side_events
+
+        side_events.emit(self.conversation_id, {"type": "tool_result", "tool": "todo", "output": result,
+                                                "call_id": f"plan_hint_{uuid.uuid4().hex[:8]}", "success": True})
 
 
 # ── narrate ──────────────────────────────────────────────────────────────────

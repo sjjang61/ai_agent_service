@@ -11,6 +11,8 @@
 기존 LangChain BaseTool(내장 도구, MCP 도구)을 agno Function 으로 감싸서 그대로 재사용하고,
 Agno 이벤트를 기존 WebSocket/SSE 프로토콜(token / tool_call / tool_result / error)로 변환한다.
 """
+import re
+import time
 import asyncio
 import json
 import logging
@@ -133,6 +135,24 @@ def _json_schema(tool: BaseTool) -> dict:
     return schema
 
 
+# 한 단위의 작업을 끝내고 돌아오는 도구: 결과 뒤에 '계획 점검' 안내를 붙여 모델이 끝날 때마다 todo 를 대조하게 한다
+PLAN_REVIEW_TOOLS = {"cli_browser_agent", "browser_parallel", "call_sub_agent"}
+_RUN_TAG_TAIL = re.compile(r"\n*(\[browser_run:[A-Za-z0-9]+\])\s*$")
+
+
+def _with_plan_review(out: str, conversation_id: str) -> str:
+    """결과에 계획 점검 안내를 붙인다. 화면이 결과 끝의 [browser_run:태그] 로 작업을 짝짓는 데 쓰므로 태그는 맨 끝에 둔다."""
+    if not conversation_id:
+        return out
+    from app.tools.interaction_tools import plan_review_note
+
+    note = plan_review_note(conversation_id)
+    if not note:
+        return out
+    m = _RUN_TAG_TAIL.search(out)
+    return f"{out[: m.start()]}{note}\n\n{m.group(1)}" if m else out + note
+
+
 def to_agno_function(tool: BaseTool):
     from agno.tools.function import Function
 
@@ -142,7 +162,10 @@ def to_agno_function(tool: BaseTool):
         except Exception as e:  # 도구 오류는 LLM 이 볼 수 있도록 문자열로 반환
             return f"[Tool Error] {type(e).__name__}: {e}"
         out = out if isinstance(out, str) else json.dumps(out, ensure_ascii=False, default=str)
-        return out[:MAX_TOOL_OUTPUT]
+        out = out[:MAX_TOOL_OUTPUT]
+        if tool.name in PLAN_REVIEW_TOOLS and not out.startswith(("Error", "[Tool Error]")):
+            out = _with_plan_review(out, getattr(tool, "conversation_id", ""))
+        return out
 
     return Function(
         name=tool.name,

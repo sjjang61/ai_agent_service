@@ -275,6 +275,9 @@ function buildFlatItems(steps: AgentStep[]): TaskItem[] {
           key: s.id,
           kind: 'tool',
           tool: s.tool,
+/** 서버가 todo 상태 변경을 즉시 알리는 결과의 call_id 접두사 (backend TodoTool._emit_plan_hint) */
+const PLAN_HINT_PREFIX = 'plan_hint_'
+
           label: TASK_LABELS[s.tool ?? ''] ?? s.tool ?? '도구',
           summary: clip(s.output ?? ''),
           status: FAILED.test(s.output ?? '') ? 'failed' : 'done',
@@ -292,6 +295,7 @@ const key = (s: string) => s.toLowerCase().replace(/[^a-z0-9가-힣]/g, '')
 
 /**
  * 팀원이 한 도구 호출(agent 가 붙은 호출)을 그 팀원에게 위임한 작업(delegate_task_to_member) 아래로 옮긴다.
+      if (s.callId?.startsWith(PLAN_HINT_PREFIX)) continue // 계획 상태 알림(서버가 작업보다 먼저 보낸다): 목록에는 넣지 않고 activePlanStepAt 만 쓴다
  * 팀원 이름은 위임 입력의 member_id 와 대소문자·기호를 무시하고 맞춘다. 맞는 위임이 없으면 진행 중인 위임에 붙이고, 그것도 없으면 그대로 둔다.
  */
 const BROWSER_PARENTS = new Set(['cli_browser_agent', 'browser_parallel'])
