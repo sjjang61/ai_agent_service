@@ -38,6 +38,42 @@ def _summarize(text: str, limit: int = 300) -> str:
     return text[:limit] + ("…" if len(text) > limit else "")
 
 
+NO_ALERT = "[NO_ALERT]"
+PREVIOUS_RESULT_MAX = 4000
+
+
+def notify_rules(task: ScheduledTask) -> str:
+    """알림 조건이 있는 예약이면 실행 지시에 붙일 알림 규칙. 없으면 빈 문자열."""
+    mode = task.notify_mode or "always"
+    if mode == "on_condition" and (task.notify_condition or "").strip():
+        return render("scheduled_notify_condition", condition=task.notify_condition.strip())
+    if mode == "on_change" and (task.last_result or "").strip():  # 첫 실행은 비교할 결과가 없으니 항상 알린다
+        return render("scheduled_notify_change", previous=task.last_result[:PREVIOUS_RESULT_MAX])
+    return ""
+
+
+def split_no_alert(text: str) -> tuple[str, bool]:
+    """답변 첫 줄이 [NO_ALERT] 면 (표시를 뗀 본문, True)."""
+    lines = (text or "").lstrip().split("\n", 1)
+    if lines and lines[0].strip().upper().startswith(NO_ALERT):
+        rest = lines[0].strip()[len(NO_ALERT):].strip()
+        body = "\n".join(x for x in (rest, lines[1].strip() if len(lines) > 1 else "") if x)
+        return body or "알림 조건에 해당하지 않습니다", True
+    return text, False
+
+
+def should_notify(task: ScheduledTask, status: str, no_alert: bool, trigger: str = "schedule") -> bool:
+    """이번 실행 결과를 알림으로 올릴지. 실패는 방식과 무관하게 항상 알리고, 수동 실행은 사용자가 직접 본다."""
+    if status != "succeeded" or trigger != "schedule":
+        return True
+    mode = task.notify_mode or "always"
+    if mode == "on_failure":
+        return False
+    if mode in ("on_change", "on_condition"):
+        return not no_alert
+    return True
+
+
 def _local_label(task: ScheduledTask, when: datetime, fmt: str) -> str:
     try:
         tz = ZoneInfo(task.timezone)
@@ -112,6 +148,7 @@ async def execute_run(run_id: str) -> None:
             return
 
         status, error, full_response, agent_steps = "failed", None, "", []
+        rules, no_alert = "", False
         conv_id: Optional[str] = None
         try:
             started = now_utc()
@@ -131,6 +168,9 @@ async def execute_run(run_id: str) -> None:
             user_input = render(
                 "scheduled_run", when=_local_label(task, started, "%Y-%m-%d %H:%M"), timezone=task.timezone, prompt=task.prompt
             )
+            rules = notify_rules(task) if run.trigger == "schedule" else ""  # 수동 실행은 항상 결과를 보여 준다
+            if rules:
+                user_input = f"{user_input}\n\n{rules}"
             await ChatService.save_message(conv_id, "user", user_input, db)
 
             from app.services.agent_service import AgentService
@@ -174,6 +214,8 @@ async def execute_run(run_id: str) -> None:
                 status = "succeeded"
 
             if status == "succeeded":
+                if rules:
+                    full_response, no_alert = split_no_alert(full_response)
                 content = full_response
             elif status == "cancelled":
                 content = full_response + ("\n\n" if full_response else "") + CANCEL_NOTE
@@ -191,11 +233,14 @@ async def execute_run(run_id: str) -> None:
         if run is None:
             return
         run.status, run.error, run.finished_at = status, error, now_utc()
+        run.notify = should_notify(task, status, no_alert, run.trigger) if task is not None else True
         if conv_id:
             run.conversation_id = conv_id
         if task is not None:
             task.last_run_at = run.started_at or run.finished_at
             task.last_status = status
+            if status == "succeeded" and run.trigger == "schedule" and full_response.strip() and not no_alert:
+                task.last_result = full_response[:PREVIOUS_RESULT_MAX]  # on_change 의 비교 기준: 알린 마지막 결과
             # 수동 실행의 실패는 자동 일시중지 판단에 쓰지 않는다 (사용자가 직접 시험하는 중일 수 있음)
             if run.trigger == "schedule":
                 if status == "succeeded":
@@ -206,7 +251,7 @@ async def execute_run(run_id: str) -> None:
                         task.enabled, task.next_run_at, task.last_status = False, None, "auto_paused"
                         logger.warning("[scheduler] 연속 실패로 자동 일시중지 task=%s", task.id)
         await db.commit()
-        if task is not None and status in ("succeeded", "failed"):
+        if task is not None and run.notify and status in ("succeeded", "failed"):
             from app.channels.outbound import notify_schedule_result
 
             await notify_schedule_result(task.user_id, task.name, status, full_response, error)

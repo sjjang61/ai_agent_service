@@ -101,7 +101,7 @@ class ScheduleService:
             id=r.id, task_id=r.task_id, status=r.status, trigger=r.trigger,
             scheduled_for=aware(r.scheduled_for), started_at=aware(r.started_at), finished_at=aware(r.finished_at),
             conversation_id=r.conversation_id, summary=r.summary, error=r.error,
-            unread=r.status in NOTIFY_STATUSES and r.read_at is None,
+            unread=r.status in NOTIFY_STATUSES and r.notify is not False and r.read_at is None, notified=r.notify is not False,
         )
 
     @staticmethod
@@ -111,7 +111,7 @@ class ScheduleService:
         ids = [t.id for t in tasks]
         unread = dict((await db.execute(
             select(TaskRun.task_id, func.count()).where(
-                TaskRun.task_id.in_(ids), TaskRun.status.in_(NOTIFY_STATUSES), TaskRun.read_at.is_(None)
+                TaskRun.task_id.in_(ids), TaskRun.status.in_(NOTIFY_STATUSES), TaskRun.notify.is_not(False), TaskRun.read_at.is_(None)
             ).group_by(TaskRun.task_id)
         )).all())
         active = {x for (x,) in (await db.execute(
@@ -136,7 +136,7 @@ class ScheduleService:
                 status=status_of(t), enabled=t.enabled, running=t.id in active,
                 conversation_id=t.conversation_id, new_conversation_each_run=t.new_conversation_each_run,
                 allow_mcp=t.allow_mcp, allow_browser=t.allow_browser, llm_provider=t.llm_provider, model_name=t.model_name,
-                agent_id=t.agent_id, agent_name=agent_names.get(t.agent_id),
+                agent_id=t.agent_id, agent_name=agent_names.get(t.agent_id), notify_mode=t.notify_mode or "always", notify_condition=t.notify_condition,
                 next_run_at=aware(t.next_run_at), last_run_at=aware(t.last_run_at), last_status=t.last_status,
                 consecutive_failures=t.consecutive_failures, unread_count=int(unread.get(t.id, 0)),
                 last_run=ScheduleService.run_response(last) if last else None, created_at=aware(t.created_at),
@@ -150,6 +150,8 @@ class ScheduleService:
         if count >= settings.SCHEDULER_MAX_TASKS_PER_USER:
             raise HTTPException(status_code=400, detail=f"예약 작업은 최대 {settings.SCHEDULER_MAX_TASKS_PER_USER}개까지 만들 수 있습니다")
         d = _normalize(data.model_dump())
+        if d.get("notify_mode") == "on_condition" and not (d.get("notify_condition") or "").strip():
+            raise HTTPException(status_code=400, detail="알림 조건을 입력하세요 (알림 방식: 조건에 맞을 때만)")
         now = now_utc()
         _validate(d, now)
         t = ScheduledTask(user_id=user_id, **d, enabled=True, next_run_at=_next_run(d, now))
@@ -171,9 +173,13 @@ class ScheduleService:
             _validate(merged, now)
             for f in SCHEDULE_FIELDS:
                 setattr(t, f, merged.get(f))
-        for k in ("name", "prompt", "new_conversation_each_run", "allow_mcp", "allow_browser", "llm_provider", "model_name"):
+        for k in ("name", "prompt", "new_conversation_each_run", "allow_mcp", "allow_browser", "llm_provider", "model_name", "notify_mode"):
             if k in patch and patch[k] is not None:
                 setattr(t, k, patch[k].strip() if isinstance(patch[k], str) else patch[k])
+        if "notify_condition" in patch:
+            t.notify_condition = (patch["notify_condition"] or "").strip() or None
+        if t.notify_mode == "on_condition" and not t.notify_condition:
+            raise HTTPException(status_code=400, detail="알림 조건을 입력하세요 (알림 방식: 조건에 맞을 때만)")
         if "agent_id" in patch:  # 명시적으로 null 을 보내면 기본 에이전트로 되돌린다
             t.agent_id = patch["agent_id"]
         if schedule_changed:
@@ -223,7 +229,7 @@ class ScheduleService:
     async def unread_count(user_id: str, db: AsyncSession) -> int:
         return (await db.execute(
             select(func.count()).select_from(TaskRun).where(
-                TaskRun.user_id == user_id, TaskRun.status.in_(NOTIFY_STATUSES), TaskRun.read_at.is_(None)
+                TaskRun.user_id == user_id, TaskRun.status.in_(NOTIFY_STATUSES), TaskRun.notify.is_not(False), TaskRun.read_at.is_(None)
             )
         )).scalar() or 0
 

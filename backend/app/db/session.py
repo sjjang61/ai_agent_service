@@ -40,6 +40,7 @@ async def init_db():
         await conn.run_sync(_ensure_skill_type)
         await conn.run_sync(_ensure_skill_category)
         await conn.run_sync(_ensure_published_app_columns)
+        await conn.run_sync(_ensure_schedule_notify_columns)
 
 
 def _ensure_memory_columns(sync_conn) -> None:
@@ -178,6 +179,28 @@ def _ensure_skill_category(sync_conn) -> None:
     rows = sync_conn.execute(text("SELECT id, name, description FROM skills WHERE category IS NULL")).all()
     for sid, name, desc in rows:
         sync_conn.execute(text("UPDATE skills SET category = :c WHERE id = :i"), {"c": classify_by_rules(name, desc or "")[0], "i": sid})
+
+
+def _ensure_schedule_notify_columns(sync_conn) -> None:
+    """예약 작업의 조건부 알림 컬럼 보강 (alembic zb2c3d4e5f6a 와 같은 변경). 기존 예약은 모두 '항상 알림'이다."""
+    from sqlalchemy import inspect, text
+
+    insp = inspect(sync_conn)
+    plan = {
+        "scheduled_tasks": {
+            "notify_mode": "VARCHAR(20) NOT NULL DEFAULT 'always'",
+            "notify_condition": "TEXT NULL",
+            "last_result": "TEXT NULL",
+        },
+        "task_runs": {"notify": "BOOLEAN NOT NULL DEFAULT 1"},
+    }
+    for table, adds in plan.items():
+        if table not in insp.get_table_names():
+            continue
+        cols = {c["name"] for c in insp.get_columns(table)}
+        for name, ddl in adds.items():
+            if name not in cols:
+                sync_conn.execute(text(f"ALTER TABLE {table} ADD COLUMN {name} {ddl}"))
 
 
 def _ensure_published_app_columns(sync_conn) -> None:

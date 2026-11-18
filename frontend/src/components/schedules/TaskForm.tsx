@@ -3,8 +3,8 @@ import { useQuery } from '@tanstack/react-query'
 import { agentsApi } from '../../api/agents'
 import type { CustomAgentSummary } from '../../types/customAgent'
 import { Loader2, TriangleAlert } from 'lucide-react'
-import type { TaskInput } from '../../types/schedule'
-import { SCHEDULE_TYPE_OPTIONS, WEEKDAY_LABELS, allTimezones, errorText } from './scheduleUtils'
+import type { NotifyMode, TaskInput } from '../../types/schedule'
+import { NOTIFY_MODE_OPTIONS, SCHEDULE_TYPE_OPTIONS, WEEKDAY_LABELS, allTimezones, errorText } from './scheduleUtils'
 import { parseServerDate } from '../../utils/time'
 
 interface Props {
@@ -77,7 +77,7 @@ export default function TaskForm({ mode, initial, onSubmit, onCancel }: Props) {
     }
     setSubmitting(true)
     try {
-      await onSubmit({ ...v, run_at: t === 'once' ? new Date(onceLocal).toISOString() : null })
+      await onSubmit({ ...v, notify_condition: v.notify_mode === 'on_condition' ? (v.notify_condition ?? '').trim() : null, run_at: t === 'once' ? new Date(onceLocal).toISOString() : null })
     } catch (err) {
       setError(errorText(err))
       setSubmitting(false)
@@ -176,6 +176,27 @@ export default function TaskForm({ mode, initial, onSubmit, onCancel }: Props) {
           ))}
         </select>
       </Field>
+
+      <Field label="알림" hint={NOTIFY_MODE_OPTIONS.find((o) => o.value === v.notify_mode)?.hint + ' 실패는 어느 방식이든 항상 알립니다.'}>
+        <select value={v.notify_mode} onChange={(e) => set('notify_mode', e.target.value as NotifyMode)} className={inputCls}>
+          {NOTIFY_MODE_OPTIONS.map((o) => (
+            <option key={o.value} value={o.value}>{o.label}</option>
+          ))}
+        </select>
+      </Field>
+      {v.notify_mode === 'on_condition' && (
+        <Field label="알림 조건" hint="에이전트가 결과를 보고 이 조건에 해당하는지 판단합니다. 구체적으로 적을수록 정확합니다.">
+          <textarea
+            value={v.notify_condition ?? ''}
+            onChange={(e) => set('notify_condition', e.target.value)}
+            rows={2}
+            maxLength={1000}
+            placeholder="예: 2시간 안에 시작하는 일정이 있거나, 답장이 필요한 메일이 있을 때"
+            className={`${inputCls} resize-y leading-relaxed`}
+            required
+          />
+        </Field>
+      )}
 
       <div className="space-y-3 pt-1">
         <Check checked={v.new_conversation_each_run} onChange={(x) => set('new_conversation_each_run', x)} label="실행마다 새 대화로 저장" hint="끄면 한 대화에 결과가 이어져서 이전 결과와 비교할 수 있습니다." />

@@ -1,7 +1,14 @@
-import type { RunStatus, TaskInput, TaskStatus } from '../../types/schedule'
+import type { NotifyMode, RunStatus, TaskInput, TaskStatus } from '../../types/schedule'
 import { currentTimezone, dayKey, parseServerDate } from '../../utils/time'
 
 export const WEEKDAY_LABELS = ['월', '화', '수', '목', '금', '토', '일']
+
+export const NOTIFY_MODE_OPTIONS: { value: NotifyMode; label: string; hint: string }[] = [
+  { value: 'always', label: '항상', hint: '실행할 때마다 결과를 알립니다.' },
+  { value: 'on_failure', label: '실패했을 때만', hint: '성공한 실행은 조용히 기록만 남기고, 실패하면 알립니다.' },
+  { value: 'on_change', label: '이전과 달라졌을 때만', hint: '직전 결과와 비교해 의미 있는 변화가 있을 때만 알립니다. 첫 실행은 항상 알립니다.' },
+  { value: 'on_condition', label: '조건에 맞을 때만', hint: '아래 조건에 해당할 때만 알립니다. 해당하지 않으면 기록만 남깁니다.' },
+]
 
 export const SCHEDULE_TYPE_OPTIONS: { value: TaskInput['schedule_type']; label: string }[] = [
   { value: 'daily', label: '매일' },
@@ -46,6 +53,8 @@ export function emptyInput(): TaskInput {
     allow_mcp: false,
     allow_browser: false,
     agent_id: null,
+    notify_mode: 'always',
+    notify_condition: null,
   }
 }
 

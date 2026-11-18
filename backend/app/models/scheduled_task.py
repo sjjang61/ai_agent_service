@@ -40,6 +40,9 @@ class ScheduledTask(Base):
     allow_browser = Column(Boolean, nullable=False, default=False)
     llm_provider = Column(String(50), nullable=True)
     model_name = Column(String(100), nullable=True)
+    notify_mode = Column(String(20), nullable=False, default="always")  # always | on_failure | on_change | on_condition
+    notify_condition = Column(Text, nullable=True)  # on_condition: 알릴 조건(자연어)
+    last_result = Column(Text, nullable=True)  # 직전 성공 결과 (on_change 비교용)
     agent_id = Column(String(36), nullable=True)  # 지정하면 이 에이전트의 발행 버전으로 실행
 
     next_run_at = Column(DateTime, nullable=True, index=True)  # None: 예정 없음(완료/일시중지)
@@ -66,5 +69,6 @@ class TaskRun(Base):
     conversation_id = Column(String(36), nullable=True)
     summary = Column(Text, nullable=True)
     error = Column(Text, nullable=True)
+    notify = Column(Boolean, nullable=False, default=True)  # False: 알림 조건에 해당하지 않아 조용히 기록만 남긴 실행
     read_at = Column(DateTime, nullable=True)  # 결과를 확인한 시각 (None 이면 읽지 않음)
     created_at = Column(DateTime, default=_now)

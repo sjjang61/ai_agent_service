@@ -4,6 +4,7 @@ from typing import List, Literal, Optional
 from pydantic import BaseModel, Field, field_validator
 
 ScheduleType = Literal["once", "interval", "daily", "weekdays", "weekly", "monthly"]
+NotifyMode = Literal["always", "on_failure", "on_change", "on_condition"]
 
 
 def _to_utc_naive(v: Optional[datetime]) -> Optional[datetime]:
@@ -31,6 +32,8 @@ class TaskInput(BaseModel):
     llm_provider: Optional[str] = None
     model_name: Optional[str] = None
     agent_id: Optional[str] = None  # 커스텀 에이전트의 발행 버전으로 실행
+    notify_mode: NotifyMode = "always"
+    notify_condition: Optional[str] = Field(default=None, max_length=1000)
 
     @field_validator("run_at")
     @classmethod
@@ -64,6 +67,8 @@ class TaskUpdate(BaseModel):
     llm_provider: Optional[str] = None
     model_name: Optional[str] = None
     agent_id: Optional[str] = None  # 커스텀 에이전트의 발행 버전으로 실행
+    notify_mode: Optional[NotifyMode] = None
+    notify_condition: Optional[str] = Field(default=None, max_length=1000)
 
     @field_validator("run_at")
     @classmethod
@@ -87,6 +92,7 @@ class RunResponse(BaseModel):
     summary: Optional[str] = None
     error: Optional[str] = None
     unread: bool = False
+    notified: bool = True  # False: 알림 조건에 해당하지 않아 알리지 않은 실행
 
 
 class TaskResponse(BaseModel):
@@ -113,6 +119,8 @@ class TaskResponse(BaseModel):
     model_name: Optional[str] = None
     agent_id: Optional[str] = None
     agent_name: Optional[str] = None
+    notify_mode: str = "always"
+    notify_condition: Optional[str] = None
     next_run_at: Optional[datetime] = None
     last_run_at: Optional[datetime] = None
     last_status: Optional[str] = None

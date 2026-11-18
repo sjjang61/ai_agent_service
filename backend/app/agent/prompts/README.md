@@ -24,6 +24,7 @@ LLM 에 보내는 모든 프롬프트는 이 폴더의 `.md` 파일입니다. �
 | `summary_context.md` | 대화 앞부분 요약 구역 `{{summary}}` | `services/conversation_summary.py` |
 | `skills_installed.md` `skills_none.md` | 스킬 안내 (`{{skills}}`) | `tools/skill_tool.py` |
 | `mcp_catalog.md` | MCP 도구 목록 머리말 `{{tools}}` | `tools/mcp_tools.py` |
+| `scheduled_notify_condition.md` `scheduled_notify_change.md` | 예약 작업의 조건부 알림 규칙(`{{condition}}` / `{{previous}}`): 해당 없으면 첫 줄에 `[NO_ALERT]` | `services/task_runner.py` |
 | `headless.md` | 예약(무인) 실행 지침 | `agent/orchestrator.py` |
 | `browser_local.md` | 데스크톱 앱의 내장 브라우저가 연결된 요청에만 붙는 안내 (브라우저 우선 사용 상황) | `agent/orchestrator.py` |
 | `scope_reminder.md` | 마지막 사용자 메시지 끝에 붙는 응답 범위 안내 (LLM 입력에만) | `agent/scope.py` |

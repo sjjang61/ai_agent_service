@@ -1,7 +1,7 @@
 import { CheckCircle2, CircleSlash, Clock, Loader2, MessageSquare, Pause, Pencil, Play, SkipForward, Trash2, XCircle, Zap } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 import type { RunStatus, ScheduledTask, TaskRun } from '../../types/schedule'
-import { RUN_STATUS_LABEL, STATUS_LABEL, durationText, formatDateTime, formatShort, relativeFromNow } from './scheduleUtils'
+import { NOTIFY_MODE_OPTIONS, RUN_STATUS_LABEL, STATUS_LABEL, durationText, formatDateTime, formatShort, relativeFromNow } from './scheduleUtils'
 
 interface Props {
   task: ScheduledTask
@@ -38,6 +38,12 @@ function Info({ label, children }: { label: string; children: React.ReactNode })
       <div className="text-[13px] text-content-primary">{children}</div>
     </div>
   )
+}
+
+function notifyLabel(t: ScheduledTask): string | false {
+  if (t.notify_mode === 'always') return false
+  const o = NOTIFY_MODE_OPTIONS.find((x) => x.value === t.notify_mode)
+  return `알림: ${o?.label ?? t.notify_mode}${t.notify_mode === 'on_condition' && t.notify_condition ? ` (${t.notify_condition})` : ''}`
 }
 
 export default function TaskDetail({ task, runs, busy, onRunNow, onToggle, onEdit, onDelete, onOpenResult, onMarkAllRead }: Props) {
@@ -92,10 +98,10 @@ export default function TaskDetail({ task, runs, busy, onRunNow, onToggle, onEdi
         <Info label="시간대">{task.timezone}</Info>
         <Info label="옵션">
           <div className="flex flex-wrap gap-1.5">
-            {[task.agent_name && `에이전트: ${task.agent_name}`, task.new_conversation_each_run && '실행마다 새 대화', task.allow_mcp && 'MCP 허용', task.allow_browser && '브라우저 허용'].filter(Boolean).map((x) => (
+            {[task.agent_name && `에이전트: ${task.agent_name}`, task.new_conversation_each_run && '실행마다 새 대화', task.allow_mcp && 'MCP 허용', task.allow_browser && '브라우저 허용', notifyLabel(task)].filter(Boolean).map((x) => (
               <span key={String(x)} className="px-2 py-0.5 rounded-full bg-surface-hover text-[11px] text-content-secondary">{x}</span>
             ))}
-            {!task.agent_name && !task.new_conversation_each_run && !task.allow_mcp && !task.allow_browser && <span className="text-content-tertiary">기본</span>}
+            {!task.agent_name && !task.new_conversation_each_run && !task.allow_mcp && !task.allow_browser && task.notify_mode === 'always' && <span className="text-content-tertiary">기본</span>}
           </div>
         </Info>
         <div className="col-span-2">
@@ -132,6 +138,7 @@ export default function TaskDetail({ task, runs, busy, onRunNow, onToggle, onEdi
                     <span className="text-content-primary">{formatDateTime(r.started_at ?? r.scheduled_for)}</span>
                     <span className="text-content-tertiary">{RUN_STATUS_LABEL[r.status]}</span>
                     {r.trigger === 'manual' && <span className="px-1.5 py-0.5 rounded bg-surface-hover text-[10px] text-content-secondary">수동</span>}
+                    {!r.notified && <span className="px-1.5 py-0.5 rounded bg-surface-hover text-[10px] text-content-tertiary" title="알림 조건에 해당하지 않아 알리지 않았습니다">알림 없음</span>}
                     {r.unread && <span className="w-1.5 h-1.5 rounded-full bg-accent-primary" title="읽지 않음" />}
                     <span className="text-xs text-content-muted ml-auto">{durationText(r.started_at, r.finished_at)}</span>
                   </div>

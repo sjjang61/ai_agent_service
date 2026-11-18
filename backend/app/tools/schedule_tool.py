@@ -82,6 +82,17 @@ class ManageScheduleInput(BaseModel):
     run_at: Optional[str] = Field(default=None, description="For once: local date-time 'YYYY-MM-DD HH:MM' in `timezone`")
     in_minutes: Optional[int] = Field(default=None, description="For once: run N minutes from now (alternative to run_at)")
     timezone: Optional[str] = Field(default=None, description="IANA timezone like 'Asia/Seoul'. Omit to use the user's timezone")
+    notify_mode: Optional[Literal["always", "on_failure", "on_change", "on_condition"]] = Field(
+        default=None,
+        description=(
+            "When to notify the user of a run's result (create/update). always (default) | on_failure (only failures) | "
+            "on_change (only when the result changed meaningfully since last time) | on_condition (only when `notify_condition` holds). "
+            "Failures are always notified. Use a conditional mode when the user says things like 'only tell me if ...'."
+        ),
+    )
+    notify_condition: Optional[str] = Field(
+        default=None, description="For notify_mode=on_condition: the condition in plain words, e.g. 'a meeting starts within 2 hours'"
+    )
     request_quote: Optional[str] = Field(
         default=None,
         description=(
@@ -115,6 +126,7 @@ class ManageScheduleTool(BaseTool):
         return {
             "id": resp.id, "name": resp.name, "schedule_text": resp.schedule_text, "status": resp.status,
             "next_run_at": resp.next_run_at.isoformat() if resp.next_run_at else None, "timezone": resp.timezone,
+            "notify_mode": resp.notify_mode, "notify_condition": resp.notify_condition,
         }
 
     async def _resolve(self, ref: Optional[str], db):
@@ -182,6 +194,7 @@ class ManageScheduleTool(BaseTool):
                     schedule_type: Optional[str] = None, time: Optional[str] = None, weekdays: Optional[str] = None,
                     day_of_month: Optional[int] = None, interval_hours: Optional[int] = None, run_at: Optional[str] = None,
                     in_minutes: Optional[int] = None, timezone: Optional[str] = None,
+                    notify_mode: Optional[str] = None, notify_condition: Optional[str] = None,
                     request_quote: Optional[str] = None) -> str:
         from app.db.session import AsyncSessionLocal
 
@@ -216,7 +229,7 @@ class ManageScheduleTool(BaseTool):
                     data = TaskInput(
                         name=name, prompt=prompt, schedule_type=schedule_type, schedule_time=time,
                         weekdays=parse_weekdays(weekdays), day_of_month=day_of_month, interval_hours=interval_hours,
-                        run_at=run_utc, timezone=tz,
+                        run_at=run_utc, timezone=tz, notify_mode=notify_mode or "always", notify_condition=notify_condition,
                     )  # allow_mcp / allow_browser 는 기본값(False) — 이 도구로 켤 수 없다
                     t = await ScheduleService.create_task(self.user_id, data, db)
                     resp = (await ScheduleService.to_responses([t], db))[0]
@@ -257,6 +270,8 @@ class ManageScheduleTool(BaseTool):
                     if day_of_month: patch["day_of_month"] = day_of_month
                     if interval_hours: patch["interval_hours"] = interval_hours
                     if timezone: patch["timezone"] = self._tz(timezone)
+                    if notify_mode: patch["notify_mode"] = notify_mode
+                    if notify_condition is not None: patch["notify_condition"] = notify_condition
                     if in_minutes is not None:
                         patch["run_at"] = now_utc() + timedelta(minutes=in_minutes)
                     elif run_at:
