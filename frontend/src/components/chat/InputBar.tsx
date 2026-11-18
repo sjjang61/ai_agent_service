@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect } from 'react'
+import { useInputHistory } from '../../hooks/useInputHistory'
 import axios from 'axios'
 import { Send, Loader2, X, FileText, AlertCircle, Square, Plus, ThumbsUp, Settings, Mic, Folder, FolderUp, Paperclip, MessageSquare, BookMarked, Puzzle, HardDrive } from 'lucide-react'
 import { useAgentStore } from '../../store/agentStore'
@@ -64,6 +65,7 @@ export default function InputBar({ conversationId }: { conversationId: string })
   const { sendMessage, cancelRun } = useAgentStream(conversationId)
   const [cancelling, setCancelling] = useState(false)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
+  const history = useInputHistory()
   const fileInputRef = useRef<HTMLInputElement>(null)
 
   const handleCancel = async () => {
@@ -192,6 +194,7 @@ export default function InputBar({ conversationId }: { conversationId: string })
     const attachments = ready.map((f) => f.attachment!)
     const content = value.trim() || (attachments.length ? 'Please check the attached files.' : '참조한 자료를 확인해 주세요.')
     const references = refs
+    history.push(value)
     setValue('')
     setFiles([])
     setRefs([])
@@ -199,7 +202,33 @@ export default function InputBar({ conversationId }: { conversationId: string })
     await sendMessage(content, attachments, references)
   }
 
-  const handleKeyDown = (e: React.KeyboardEvent) => {
+  // 입력 기록 불러오기: ↑ 는 커서가 첫 줄일 때, ↓ 는 마지막 줄일 때만 (여러 줄 글 안에서는 커서 이동 그대로)
+  const recall = (text: string) => {
+    setValue(text)
+    requestAnimationFrame(() => {
+      const el = textareaRef.current
+      if (!el) return
+      el.style.height = 'auto'
+      el.style.height = `${el.scrollHeight}px`
+      el.setSelectionRange(text.length, text.length)
+    })
+  }
+
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    if ((e.key === 'ArrowUp' || e.key === 'ArrowDown') && !e.shiftKey && !e.altKey && !e.ctrlKey && !e.metaKey && !e.nativeEvent.isComposing) {
+      const el = e.currentTarget
+      if (el.selectionStart === el.selectionEnd) {
+        const pos = el.selectionStart
+        if (e.key === 'ArrowUp' && !el.value.slice(0, pos).includes('\n')) {
+          const t = history.prev(value)
+          if (t !== null) { e.preventDefault(); recall(t) }
+        } else if (e.key === 'ArrowDown' && history.browsing() && !el.value.slice(pos).includes('\n')) {
+          const t = history.next()
+          if (t !== null) { e.preventDefault(); recall(t) }
+        }
+      }
+      return
+    }
     if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) {
       e.preventDefault()
       handleSend()
@@ -318,7 +347,7 @@ export default function InputBar({ conversationId }: { conversationId: string })
             <textarea
               ref={textareaRef}
               value={value}
-              onChange={(e) => setValue(e.target.value)}
+              onChange={(e) => { history.reset(); setValue(e.target.value) }}
               onKeyDown={handleKeyDown}
               onInput={handleInput}
               onPaste={onPaste}
