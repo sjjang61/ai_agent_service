@@ -56,7 +56,11 @@ CONNECTORS: dict[str, dict] = {
 
 
 class ConnectorError(Exception):
-    """사용자에게 그대로 보여 줄 수 있는 연결 오류"""
+    """사용자에게 그대로 보여 줄 수 있는 연결 오류. expired=True 면 다시 연결해야 하는 오류(토큰 만료·취소)다."""
+
+    def __init__(self, message: str = "", expired: bool = False):
+        super().__init__(message)
+        self.expired = expired
 
 
 def redirect_uri() -> str:
@@ -194,19 +198,36 @@ class ConnectorService:
         if not force and acc.access_token_enc and acc.expires_at and acc.expires_at > now + timedelta(seconds=60):
             return crypto.decrypt(acc.access_token_enc)
         if not acc.refresh_token_enc:
-            raise ConnectorError("Google 계정 연결이 끊어졌습니다. 커넥터 화면에서 다시 연결해 주세요.")
+            raise ConnectorError("Google 계정 연결이 끊어졌습니다. 커넥터 화면에서 다시 연결해 주세요.", expired=True)
         async with httpx.AsyncClient(timeout=20) as client:
             r = await client.post(TOKEN_URL, data={
                 "client_id": settings.GOOGLE_OAUTH_CLIENT_ID, "client_secret": settings.GOOGLE_OAUTH_CLIENT_SECRET,
                 "refresh_token": crypto.decrypt(acc.refresh_token_enc), "grant_type": "refresh_token",
             })
+        if r.status_code >= 500:  # Google 쪽 일시 장애: 연결이 끊어진 것이 아니다
+            raise ConnectorError(f"Google 서버가 일시적으로 응답하지 않습니다. 잠시 후 다시 시도해 주세요. ({r.status_code})")
         if r.status_code != 200:
-            raise ConnectorError(f"Google 계정 연결이 만료됐습니다. 커넥터 화면에서 다시 연결해 주세요. ({_err(r)})")
+            raise ConnectorError(f"Google 계정 연결이 만료됐습니다. 커넥터 화면에서 다시 연결해 주세요. ({_err(r)})", expired=True)
         tok = r.json()
         acc.access_token_enc = crypto.encrypt(tok["access_token"])
         acc.expires_at = now + timedelta(seconds=int(tok.get("expires_in", 3600)))
         await db.commit()
         return tok["access_token"]
+
+    @staticmethod
+    async def verify(user_id: str, db: AsyncSession) -> dict:
+        """저장된 연결이 지금도 쓸 수 있는지 Google 에 실제로 확인한다 (refresh token 으로 새 access token 을 받아 본다).
+        status: valid(정상) | expired(다시 연결해야 함) | error(일시 오류 등 판단 보류) | none(연결 없음)."""
+        acc = await ConnectorService.account(user_id, db)
+        if not acc or not (acc.connectors or []):
+            return {"status": "none", "message": "연결된 계정이 없습니다"}
+        try:
+            await ConnectorService.access_token(acc, db, force=True)
+        except ConnectorError as e:
+            return {"status": "expired" if e.expired else "error", "message": str(e), "account_email": acc.email}
+        except httpx.HTTPError as e:
+            return {"status": "error", "message": f"Google 에 연결하지 못했습니다 ({type(e).__name__})", "account_email": acc.email}
+        return {"status": "valid", "message": "연결이 정상입니다", "account_email": acc.email}
 
 
 def _err(r: httpx.Response) -> str:

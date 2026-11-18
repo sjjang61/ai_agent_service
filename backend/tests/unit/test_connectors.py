@@ -214,3 +214,73 @@ async def test_complete_oauth_rejects_partial_consent(monkeypatch):
     monkeypatch.setattr(cs.httpx, "AsyncClient", FakeClient)
     with pytest.raises(cs.ConnectorError, match="권한"):
         await cs.ConnectorService.complete_oauth("c", cs.make_state("u1", "gmail"), object())
+
+
+class _Acc:
+    def __init__(self, refresh=True):
+        from app.core import crypto
+        self.email = "me@example.com"
+        self.connectors = ["gmail"]
+        self.refresh_token_enc = crypto.encrypt("RT") if refresh else None
+        self.access_token_enc = crypto.encrypt("OLD")  # 아직 안 끝난 access token 이 있어도 Google 에 실제로 확인해야 한다
+        self.expires_at = None
+
+
+class _Db:
+    async def commit(self):
+        pass
+
+
+def _patch_token_endpoint(monkeypatch, acc, reply=None, exc=None):
+    calls = []
+
+    class FakeClient:
+        def __init__(self, *a, **k):
+            pass
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *a):
+            return False
+
+        async def post(self, *a, **k):
+            calls.append(k.get("data"))
+            if exc:
+                raise exc
+            return reply
+
+    async def fake_account(user_id, db):
+        return acc
+
+    monkeypatch.setattr(cs.httpx, "AsyncClient", FakeClient)
+    monkeypatch.setattr(cs.ConnectorService, "account", staticmethod(fake_account))
+    return calls
+
+
+@pytest.mark.asyncio
+async def test_verify_valid_calls_google_with_refresh_token(monkeypatch):
+    acc = _Acc()
+    calls = _patch_token_endpoint(monkeypatch, acc, _Resp(200, {"access_token": "NEW", "expires_in": 3600}))
+    r = await cs.ConnectorService.verify("u1", _Db())
+    assert r["status"] == "valid" and r["account_email"] == "me@example.com"
+    assert calls and calls[0]["grant_type"] == "refresh_token" and calls[0]["refresh_token"] == "RT"
+
+
+@pytest.mark.asyncio
+async def test_verify_reports_expired_when_google_rejects_refresh_token(monkeypatch):
+    _patch_token_endpoint(monkeypatch, _Acc(), _Resp(400, {"error": "invalid_grant", "error_description": "Token has been expired or revoked."}))
+    r = await cs.ConnectorService.verify("u1", _Db())
+    assert r["status"] == "expired" and "다시 연결" in r["message"]
+
+
+@pytest.mark.asyncio
+async def test_verify_distinguishes_transient_errors_and_missing_account(monkeypatch):
+    _patch_token_endpoint(monkeypatch, _Acc(), _Resp(503, {}))
+    assert (await cs.ConnectorService.verify("u1", _Db()))["status"] == "error"  # Google 장애는 '만료'가 아니다
+    _patch_token_endpoint(monkeypatch, _Acc(), exc=cs.httpx.ConnectError("down"))
+    assert (await cs.ConnectorService.verify("u1", _Db()))["status"] == "error"
+    _patch_token_endpoint(monkeypatch, _Acc(refresh=False))
+    assert (await cs.ConnectorService.verify("u1", _Db()))["status"] == "expired"  # refresh token 없음
+    _patch_token_endpoint(monkeypatch, None)
+    assert (await cs.ConnectorService.verify("u1", _Db()))["status"] == "none"

@@ -4,20 +4,28 @@ import SettingsPage from '../components/skills/SettingsPage'
 import { errorText } from '../components/skills/common'
 import { headerActionCls, T } from '../components/skills/typography'
 import ConnectorIcon from '../components/connectors/ConnectorIcon'
-import { connectorsApi, type ConnectorInfo, type ConnectorList } from '../api/connectors'
+import { connectorsApi, type ConnectorInfo, type ConnectorList, type VerifyResult } from '../api/connectors'
+
+/** 연결 확인 상태: null=아직 안 함, 'checking'=확인 중 */
+type Health = VerifyResult | 'checking' | null
 
 const chip = (on: boolean) =>
   `px-4 py-1.5 rounded-full text-[14px] border cursor-pointer transition-colors ${
     on ? 'bg-content-primary text-surface-primary border-content-primary' : 'bg-transparent text-content-secondary border-border hover:text-content-primary'
   }`
 
-function ConnectorCard({ c, busy, disabled, onConnect, onDisconnect }: {
+function ConnectorCard({ c, busy, disabled, health, onConnect, onDisconnect, onVerify }: {
   c: ConnectorInfo
   busy: boolean
   disabled: boolean
+  health: Health
   onConnect: () => void
   onDisconnect: () => void
+  onVerify: () => void
 }) {
+  const checking = health === 'checking'
+  const expired = typeof health === 'object' && health?.status === 'expired'
+  const failed = typeof health === 'object' && health?.status === 'error'
   return (
     <div className="flex items-center gap-3 px-3 py-3 rounded-[var(--radius-lg)] hover:bg-surface-hover transition-colors">
       <ConnectorIcon id={c.id} />
@@ -30,7 +38,29 @@ function ConnectorCard({ c, busy, disabled, onConnect, onDisconnect }: {
       </div>
       {c.connected ? (
         <div className="flex items-center gap-2 flex-shrink-0">
-          <span className="flex items-center gap-1 text-[12px] text-accent-done"><Check size={13} /> 연결됨</span>
+          {checking ? (
+            <span className="flex items-center gap-1 text-[12px] text-content-tertiary"><Loader2 size={13} className="animate-spin" /> 확인 중</span>
+          ) : expired ? (
+            <span role="alert" title={(health as VerifyResult).message} className="flex items-center gap-1 text-[12px] text-accent-red"><AlertTriangle size={13} /> 만료됨</span>
+          ) : failed ? (
+            <span title={(health as VerifyResult).message} className="flex items-center gap-1 text-[12px] text-accent-amber"><AlertTriangle size={13} /> 확인 실패</span>
+          ) : (
+            <span className="flex items-center gap-1 text-[12px] text-accent-done"><Check size={13} /> 연결됨</span>
+          )}
+          {expired && (
+            <button onClick={onConnect} disabled={busy || disabled} className="px-2 py-1 rounded-md text-[12px] text-accent-primary border border-accent-primary/40 bg-transparent cursor-pointer disabled:opacity-40">
+              다시 연결
+            </button>
+          )}
+          <button
+            onClick={onVerify}
+            disabled={busy || checking}
+            title="연결 상태 확인"
+            aria-label={`${c.name} 연결 상태 확인`}
+            className="p-1.5 rounded-md text-content-tertiary hover:text-content-primary bg-transparent border-none cursor-pointer disabled:opacity-40"
+          >
+            <RefreshCw size={14} className={checking ? 'animate-spin' : ''} />
+          </button>
           <button
             onClick={onDisconnect}
             disabled={busy}
@@ -64,6 +94,8 @@ export default function ConnectorsPage() {
   const [category, setCategory] = useState('all')
   const [busyId, setBusyId] = useState<string | null>(null)
   const pollRef = useRef<number | null>(null)
+  const [health, setHealth] = useState<Health>(null)
+  const checkedRef = useRef(false)
 
   const load = useCallback(async () => {
     try {
@@ -73,6 +105,23 @@ export default function ConnectorsPage() {
       setError(errorText(e, '커넥터 목록을 불러오지 못했습니다'))
     }
   }, [])
+
+  // 화면의 '연결됨'은 저장된 기록이라 토큰이 만료·취소돼도 그대로다: Google 에 실제로 확인한다
+  const verify = useCallback(async () => {
+    setHealth('checking')
+    try {
+      setHealth(await connectorsApi.verify())
+    } catch {
+      setHealth({ status: 'error', message: '연결 상태를 확인하지 못했습니다' })
+    }
+  }, [])
+
+  useEffect(() => {
+    if (!checkedRef.current && data?.connectors.some((c) => c.connected)) {
+      checkedRef.current = true
+      verify()
+    }
+  }, [data, verify])
 
   useEffect(() => {
     load()
@@ -85,6 +134,8 @@ export default function ConnectorsPage() {
       if (e.data?.type === 'connector-connected' || e.data?.type === 'connector-error') {
         if (pollRef.current) window.clearInterval(pollRef.current)
         setBusyId(null)
+        checkedRef.current = false  // 새로 연결했으니 다시 확인한다
+        setHealth(null)
         load()
       }
     }
@@ -158,7 +209,7 @@ export default function ConnectorsPage() {
       title="커넥터"
       subtitle="연결한 서비스는 대화에서 도구로 바로 쓸 수 있습니다."
       actions={
-        <button onClick={load} className={headerActionCls}>
+        <button onClick={() => { load(); verify() }} className={headerActionCls}>
           <RefreshCw size={14} /> 새로고침
         </button>
       }
@@ -201,7 +252,7 @@ export default function ConnectorsPage() {
               <h2 className="text-[14px] font-semibold text-content-primary mb-2">연결됨</h2>
               <div className="grid grid-cols-1 xl:grid-cols-2 gap-x-6">
                 {connected.map((c) => (
-                  <ConnectorCard key={c.id} c={c} busy={busyId === c.id} disabled={false} onConnect={() => connect(c.id)} onDisconnect={() => disconnect(c)} />
+                  <ConnectorCard key={c.id} c={c} busy={busyId === c.id} disabled={false} onConnect={() => connect(c.id)} onDisconnect={() => disconnect(c)} health={health} onVerify={verify} />
                 ))}
               </div>
             </section>
@@ -211,7 +262,7 @@ export default function ConnectorsPage() {
               <h2 className="text-[14px] font-semibold text-content-primary mb-2">바로 연결</h2>
               <div className="grid grid-cols-1 xl:grid-cols-2 gap-x-6">
                 {available.map((c) => (
-                  <ConnectorCard key={c.id} c={c} busy={busyId === c.id} disabled={!data.configured} onConnect={() => connect(c.id)} onDisconnect={() => disconnect(c)} />
+                  <ConnectorCard key={c.id} c={c} busy={busyId === c.id} disabled={!data.configured} health={null} onVerify={verify} onConnect={() => connect(c.id)} onDisconnect={() => disconnect(c)} />
                 ))}
               </div>
             </section>

@@ -50,6 +50,18 @@ async def list_connectors(current_user: User = Depends(get_current_user), db: As
     )
 
 
+class VerifyResponse(BaseModel):
+    status: str  # valid | expired | error | none
+    message: str
+    account_email: Optional[str] = None
+
+
+@router.post("/verify", response_model=VerifyResponse)
+async def verify(current_user: User = Depends(get_current_user), db: AsyncSession = Depends(get_session)):
+    """연결이 실제로 유효한지 Google 에 확인한다. 화면의 '연결됨' 표시는 저장된 기록일 뿐이라, 토큰이 만료·취소됐는지는 이 호출로 안다."""
+    return VerifyResponse(**await ConnectorService.verify(current_user.id, db))
+
+
 @router.post("/{connector_id}/connect", response_model=ConnectResponse)
 async def connect(connector_id: str, current_user: User = Depends(get_current_user), db: AsyncSession = Depends(get_session)):
     """Google 인증 화면 주소를 돌려준다. 화면이 새 창으로 열고, 인증이 끝나면 콜백이 연결을 저장한다."""
