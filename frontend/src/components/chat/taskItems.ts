@@ -34,13 +34,14 @@ export const TASK_LABELS: Record<string, string> = {
   generate_image: '이미지 생성',
   generate_video: '동영상 생성',
   upload_to_minio: '이미지 업로드',
+  generate_speech: '음성 생성',
   drive_save: 'Drive 에 저장',
   drive_load: 'Drive 에서 가져오기',
   drive_list: 'Drive 목록',
-  search_documents: '문서 검색',
   register_function: '함수 등록',
   invoke_function: '함수 실행',
   list_functions: '함수 목록',
+  search_documents: '문서 검색',
   search_wiki: '위키 검색',
   memory_tool: '메모리',
 }
@@ -78,6 +79,8 @@ export function summarizeInput(tool: string | undefined, input: unknown): string
     case 'generate_image':
     case 'generate_video':
       return clip(str('prompt'))
+    case 'generate_speech':
+      return clip(str('text'))
     case 'upload_to_minio':
     case 'drive_save':
       return clip(str('path'))
@@ -85,13 +88,13 @@ export function summarizeInput(tool: string | undefined, input: unknown): string
       return clip(str('drive_path'))
     case 'drive_list':
       return clip(str('path'))
-    case 'web_crawler':
-    case 'download_file':
-      return clip(str('url'))
     case 'register_function':
       return clip(str('name') || str('path'))
     case 'invoke_function':
       return clip(str('name'))
+    case 'web_crawler':
+    case 'download_file':
+      return clip(str('url'))
     case 'load_skill': {
       const file = str('file')
       return file && file !== 'SKILL.md' ? `${str('name')} · ${file}` : str('name')

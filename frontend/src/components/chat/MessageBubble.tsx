@@ -7,6 +7,8 @@ import { oneDark, oneLight } from 'react-syntax-highlighter/dist/esm/styles/pris
 import type { Message } from '../../types/chat'
 import ThinkingIndicator from './ThinkingIndicator'
 import WidgetRenderer, { extractWidgets } from '../widgets/WidgetRenderer'
+import SpeechCard, { extractSpeech } from '../speech/SpeechCard'
+import AudioFilesCard, { extractAudioPaths } from '../speech/AudioFilesCard'
 import TodoCard, { extractLatestTodos, planOutcome, settleTodos } from './TodoCard'
 import FormCard, { extractLatestForm } from './FormCard'
 import LoginRequestCard from './LoginRequestCard'
@@ -141,6 +143,8 @@ export default function MessageBubble({ message }: { message: Message }) {
   const msgs = currentConversationId ? messages[currentConversationId] || [] : []
   const isLastAssistant = !isUser && msgs[msgs.length - 1]?.id === message.id
   const widgets = isUser ? [] : extractWidgets(message.agent_steps)
+  const speech = isUser ? [] : extractSpeech(message.agent_steps)
+  const audioPaths = isUser ? [] : extractAudioPaths(message.content, message.agent_steps, new Set(speech.flatMap((g) => g.audio.map((a) => a.path))))
   const rawTodos = isUser ? null : extractLatestTodos(message.agent_steps)
   const form = isUser ? null : extractLatestForm(message.agent_steps)
   const scheduleResults = isUser ? [] : extractScheduleResults(message.agent_steps)
@@ -226,6 +230,12 @@ export default function MessageBubble({ message }: { message: Message }) {
 
         <WidgetRenderer widgets={widgets} />
 
+        {speech.map((g, i) => (
+          <SpeechCard key={i} group={g} conversationId={message.conversation_id} />
+        ))}
+
+        {audioPaths.length > 0 && <AudioFilesCard candidates={audioPaths} conversationId={message.conversation_id} />}
+
         {scheduleResults.map((r, i) => (
           <ScheduleCard key={i} result={r} />
         ))}
@@ -301,6 +311,17 @@ export default function MessageBubble({ message }: { message: Message }) {
                         <video src={href} controls preload="metadata" className="max-w-full max-h-[420px] rounded-lg border border-border bg-black" />
                         <a href={href} target="_blank" rel="noopener noreferrer" className="block mt-1 text-xs text-accent-primary">
                           {props.children || '영상 열기'}
+                        </a>
+                      </span>
+                    )
+                  }
+                  // 공개 발행 링크(우리 서버)의 mp3·wav 는 바로 재생할 수 있게 한다
+                  if (/^https?:\/\/[^?#]+\/api\/files\/[^?#]+\.(mp3|wav)(\?.*)?$/i.test(href)) {
+                    return (
+                      <span className="block my-2">
+                        <audio src={href} controls preload="none" className="w-full max-w-[420px] h-8" />
+                        <a href={href} target="_blank" rel="noopener noreferrer" className="block mt-1 text-xs text-accent-primary">
+                          {props.children || '오디오 열기'}
                         </a>
                       </span>
                     )

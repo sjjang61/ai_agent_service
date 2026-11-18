@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import axios from 'axios'
 import {
-  Archive, ChevronDown, ChevronRight, Download, File, FileText, FolderOpen, Folder, Film, Image as ImageIcon,
+  Archive, ChevronDown, ChevronRight, Download, File, FileText, FolderOpen, Folder, Film, Image as ImageIcon, Volume2,
   HardDrive, Link2, Loader2, Play, Presentation, RefreshCw, Search,
 } from 'lucide-react'
 import { sandboxApi } from '../../api/sandbox'
@@ -33,6 +33,7 @@ function KindIcon({ kind }: { kind: ArtifactKind }) {
   switch (kind) {
     case 'image': return <ImageIcon size={13} className={`${cls} text-accent-purple`} />
     case 'video': return <Film size={13} className={`${cls} text-accent-purple`} />
+    case 'audio': return <Volume2 size={13} className={`${cls} text-accent-green`} />
     case 'text': return <FileText size={13} className={`${cls} text-accent-cyan`} />
     case 'pdf': return <FileText size={13} className={`${cls} text-accent-red`} />
     case 'office': return <Presentation size={13} className={`${cls} text-accent-amber`} />
@@ -84,6 +85,13 @@ function Preview({ file, conversationId }: { file: Artifact; conversationId?: st
           objectUrl = URL.createObjectURL(res.data)
           setImgUrl(objectUrl)
           setPreview({ kind: 'video' })
+        } else if (file.kind === 'audio') {
+          // 음성도 인증이 필요해 blob 으로 받아 재생한다 (다운로드용 경로라 큰 파일도 받는다)
+          const res = await sandboxApi.fetchArtifactBlob(file.path, true, conversationId)
+          if (cancelled) return
+          objectUrl = URL.createObjectURL(new Blob([res.data], { type: file.path.toLowerCase().endsWith('.mp3') ? 'audio/mpeg' : 'audio/wav' }))
+          setImgUrl(objectUrl)
+          setPreview({ kind: 'audio' })
         } else if (file.kind === 'image') {
           const res = await sandboxApi.fetchArtifactBlob(file.path, false, conversationId)
           if (cancelled) return
@@ -110,6 +118,8 @@ function Preview({ file, conversationId }: { file: Artifact; conversationId?: st
   if (!preview) return <p className="text-xs text-content-muted px-2 py-2">불러오는 중...</p>
   if (preview.kind === 'video' && imgUrl)
     return <video src={imgUrl} controls preload="metadata" className="max-w-full max-h-72 rounded border border-border m-2 bg-black" />
+  if (preview.kind === 'audio' && imgUrl)
+    return <audio src={imgUrl} controls preload="metadata" aria-label={`${file.name} 재생`} className="w-[calc(100%-16px)] max-w-[420px] m-2" />
   if (preview.kind === 'image' && imgUrl)
     return <img src={imgUrl} alt={file.name} className="max-w-full max-h-72 rounded border border-border m-2 bg-surface-primary" />
   if (preview.kind === 'text')
