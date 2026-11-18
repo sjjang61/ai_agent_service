@@ -230,6 +230,7 @@ class Settings(BaseSettings):
     # 서버가 사용자 PC 에서 돌 때만 쓰는 설정이다 (원격 서버에서는 앱이 접속하는 브리지가 필요).
     LOCAL_BROWSER_CDP_URL: str = ""            # 예: http://127.0.0.1:9222 (비우면 사용 안 함)
     LOCAL_BROWSER_USER_ID: str = ""            # 이 사용자의 브라우저 작업만 로컬 브라우저로 보낸다 (필수)
+    LOCAL_SHOTS_DIR: str = ""                   # 로컬 브라우저 스크린샷 저장 폴더 (비우면 시스템 임시 폴더)
     LOCAL_BROWSER_ALLOW_PRIVATE: bool = False  # 사설·루프백 주소 접속 허용 여부
 
     # 브라우저 에이전트 안전 정책

@@ -34,6 +34,8 @@ export interface BrowserShot {
 export const browserApi = {
   shots: (conversationId: string | null, run: string, limit = 30) =>
     apiClient.get<BrowserShot[]>('/browser/shots', { params: { conversation_id: conversationId ?? undefined, run, limit } }),
+  /** 데스크톱 로컬 브라우저 스크린샷 이미지 (path 가 local://파일명 인 것) */
+  shotImage: (name: string) => apiClient.get<Blob>('/browser/shots/image', { params: { name }, responseType: 'blob' }),
   profile: () => apiClient.get<BrowserProfile>('/browser/profile'),
   deleteProfile: () => apiClient.delete('/browser/profile'),
   deleteDomain: (domain: string) => apiClient.delete(`/browser/profile/domains/${encodeURIComponent(domain)}`),

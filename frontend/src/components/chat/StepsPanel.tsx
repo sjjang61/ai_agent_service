@@ -111,6 +111,7 @@ function GroupRow({ item }: { item: TaskItem }) {
                 onClick={() => setSelectedStep(selectedStep?.id === ownDetail.id ? null : ownDetail)}
                 className="w-full flex items-center gap-2 px-2 py-1.5 rounded-[var(--radius-md)] text-left border-none cursor-pointer text-xs bg-transparent hover:bg-surface-hover text-content-tertiary"
               >
+      <ShotsStrip item={item} />{/* 브라우저 작업: 접혀 있어도 방문한 화면의 미리보기를 보여 준다 */}
                 <ChevronRight size={12} className="flex-shrink-0" /> 위임 내용·결과 보기
               </button>
             </li>

@@ -107,29 +107,49 @@ async def list_shots(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_session),
 ):
-    """브라우저 작업 중 남긴 스크린샷 목록 (오래된 것부터). run='latest' 는 가장 최근 작업, 그 외는 작업 id."""
+    """브라우저 작업 중 남긴 스크린샷 목록 (오래된 것부터). run='latest' 는 가장 최근 작업, 그 외는 작업 id.
+    sandbox 브라우저의 스크린샷(컨테이너 안)과 데스크톱 로컬 브라우저의 스크린샷(서버 디스크)을 함께 읽는다."""
     import json
 
+    from app.services import local_shots
     from app.services.sandbox_service import SandboxService, sandbox_manager
 
-    sb = await SandboxService.get_sandbox(current_user.id, db, await resolve_scope(conversation_id, current_user.id, db))
-    if not sb or sb.status != "running" or not sb.container_id:
-        return []
+    rows: list[Shot] = [
+        Shot(path=r["f"], url=r["url"][:300], title=r["title"][:200], t=r["t"], run=r.get("run")) for r in local_shots.rows(current_user.id)
+    ]
     try:
-        data, _ = await sandbox_manager.read_file(sb.container_id, "/workspace/browser/shots/index.jsonl", 2 * 1024 * 1024)
-    except (FileNotFoundError, IsADirectoryError):
-        return []
-    rows = []
-    for line in data.decode("utf-8", errors="replace").splitlines():
+        sb = await SandboxService.get_sandbox(current_user.id, db, await resolve_scope(conversation_id, current_user.id, db))
+    except HTTPException:
+        sb = None
+    if sb and sb.status == "running" and sb.container_id:  # sandbox 가 꺼져 있어도 로컬 스크린샷은 보여 준다
         try:
-            r = json.loads(line)
-            rows.append(Shot(path=str(r["f"]), url=str(r.get("url", ""))[:300], title=str(r.get("title", ""))[:200], t=int(r["t"]), run=r.get("run")))
-        except (ValueError, KeyError, TypeError):
-            continue
+            data, _ = await sandbox_manager.read_file(sb.container_id, "/workspace/browser/shots/index.jsonl", 2 * 1024 * 1024)
+            for line in data.decode("utf-8", errors="replace").splitlines():
+                try:
+                    r = json.loads(line)
+                    rows.append(Shot(path=str(r["f"]), url=str(r.get("url", ""))[:300], title=str(r.get("title", ""))[:200], t=int(r["t"]), run=r.get("run")))
+                except (ValueError, KeyError, TypeError):
+                    continue
+        except (FileNotFoundError, IsADirectoryError):
+            pass
+    rows.sort(key=lambda r: r.t)
     if run == "latest":
         run = next((r.run for r in reversed(rows) if r.run), "")
     rows = [r for r in rows if r.run == run] if run else []
     return rows[-max(1, min(limit, 60)):]
+
+
+@router.get("/shots/image")
+async def shot_image(name: str, current_user: User = Depends(get_current_user)):
+    """로컬 브라우저 스크린샷 이미지 (본인 것만, 파일명 형식 검증)."""
+    from fastapi.responses import FileResponse
+
+    from app.services import local_shots
+
+    path = local_shots.image_path(current_user.id, name)
+    if path is None:
+        raise HTTPException(status_code=404, detail="스크린샷을 찾을 수 없습니다")
+    return FileResponse(path, media_type="image/jpeg", headers={"Cache-Control": "private, max-age=3600"})
 
 
 # ── 실시간 브라우저 ───────────────────────────────────────────────────────────

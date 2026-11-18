@@ -11,14 +11,23 @@ export function parseBrowserRun(output?: string): string | null {
   return output?.match(/\[browser_run:([0-9a-f]+)\]/)?.[1] ?? null
 }
 
+/** 결과 끝의 작업 태그와, 모델에게만 보내는 "[계획 점검]" 안내(서버가 도구 결과에 붙인다)를 화면에서는 가린다 */
 export function stripBrowserRun(output: string): string {
-  return output.replace(/\n*\[browser_run:[0-9a-f]+\]\s*$/, '')
+  return output.replace(/\n*\[browser_run:[0-9a-f]+\]\s*$/, '').replace(/\n*\[계획 점검\][\s\S]*$/, '')
+}
+
+/** 스크린샷 이미지: 로컬 브라우저 것(local://)은 서버 저장소에서, sandbox 브라우저 것은 컨테이너에서 가져온다 */
+async function fetchShotUrl(shot: BrowserShot, conversationId: string | null): Promise<string> {
+  const blob = shot.path.startsWith('local://')
+    ? (await browserApi.shotImage(shot.path.slice('local://'.length))).data
+    : (await sandboxApi.fetchArtifactBlob(shot.path, false, conversationId)).data
+  return URL.createObjectURL(blob)
 }
 
 function Thumb({ shot, conversationId, size, onOpen }: { shot: BrowserShot; conversationId: string | null; size: 'sm' | 'md'; onOpen: () => void }) {
   const { data: src } = useQuery({
     queryKey: ['browser-shot', conversationId, shot.path],
-    queryFn: async () => URL.createObjectURL((await sandboxApi.fetchArtifactBlob(shot.path, false, conversationId)).data),
+    queryFn: () => fetchShotUrl(shot, conversationId),
     staleTime: Infinity,
     gcTime: 10 * 60 * 1000,
   })
@@ -69,7 +78,7 @@ export default function BrowserShots({ run, running, size = 'md' }: Props) {
 function Lightbox({ shot, conversationId, onClose }: { shot: BrowserShot; conversationId: string | null; onClose: () => void }) {
   const { data: src } = useQuery({
     queryKey: ['browser-shot', conversationId, shot.path],
-    queryFn: async () => URL.createObjectURL((await sandboxApi.fetchArtifactBlob(shot.path, false, conversationId)).data),
+    queryFn: () => fetchShotUrl(shot, conversationId),
     staleTime: Infinity,
   })
   return (
