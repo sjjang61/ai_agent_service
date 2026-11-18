@@ -27,7 +27,7 @@ def test_sanitize_blocks_finance():
 
 def test_daemon_source_compiles_and_version_matches():
     compile(DAEMON_SOURCE, "daemon", "exec")
-    assert "VERSION = 9333, 900, 6" in DAEMON_SOURCE and DAEMON_VERSION == 6
+    assert "VERSION = 9333, 900, 14" in DAEMON_SOURCE and DAEMON_VERSION == 14
 
 
 def test_login_request_flow():
@@ -86,7 +86,7 @@ def test_browser_action_waits_for_user_on_captcha(monkeypatch):
         return await task
 
     out = asyncio.run(run(True))
-    assert "해결했습니다" in out and "results" in out and calls == ["goto", "snapshot"]
+    assert "해결했습니다" in out and "results" in out and calls == ["goto", "shot", "snapshot"]  # CAPTCHA 화면을 먼저 남긴다
     calls.clear()
     out = asyncio.run(run(False))                      # 사용자 화면이 없는 실행은 기다리지 않는다
     assert "captcha" in out and calls == ["goto"]

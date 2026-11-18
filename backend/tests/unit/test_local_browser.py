@@ -481,10 +481,10 @@ async def test_browser_action_emits_agent_tagged_steps_with_short_output(monkeyp
     out = await tool._arun("goto", url="https://x.com/")
     side_events.close_channel("conv-y", q)
     evs = [q.get_nowait() for _ in range(q.qsize())]
-    assert len(out) > 5000  # 모델에게는 전체 스냅샷
+    assert len(out) > 2000 and "Interactive elements" in out  # 모델에게는 전체 스냅샷 (요소는 한 줄 형식으로 압축돼 예전보다 짧다)
     assert [e["type"] for e in evs] == ["tool_call", "tool_result"] and evs[0]["call_id"] == evs[1]["call_id"]
     assert all(e["agent"] == "BrowserAgent · google.com" and e["tool"] == "browser_action" for e in evs)
-    assert evs[0]["input"] == {"action": "goto", "url": "https://x.com/"}
+    assert evs[0]["input"] == {"action": "goto", "url": "https://x.com/", "desc": "이동 · x.com/"}
     assert len(evs[1]["output"]) <= 200 and evs[1]["success"] is True  # 화면 기록에는 짧은 요약만
 
 

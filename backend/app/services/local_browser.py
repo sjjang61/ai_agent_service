@@ -22,30 +22,7 @@ import websockets
 
 from app.config import settings
 
-# sandbox 데몬과 같은 요소 수집 스크립트 (browser_tools.SNAP_JS 와 동일한 규칙: data-agent-ref 번호 부여)
-SNAP_JS = r"""(() => {
-  const sel = 'a[href],button,input,select,textarea,summary,[role=button],[role=link],[role=checkbox],[role=tab],[role=menuitem],[onclick]';
-  document.querySelectorAll('[data-agent-ref]').forEach(e => e.removeAttribute('data-agent-ref'));
-  const out = []; let n = 0;
-  for (const el of document.querySelectorAll(sel)) {
-    const r = el.getBoundingClientRect(); const st = getComputedStyle(el);
-    if (r.width < 2 || r.height < 2 || st.visibility === 'hidden' || st.display === 'none' || el.type === 'hidden') continue;
-    n++; el.setAttribute('data-agent-ref', String(n));
-    const label = (el.innerText || el.value || el.getAttribute('aria-label') || el.placeholder || el.title || el.alt || '').trim().replace(/\s+/g, ' ').slice(0, 80);
-    const item = {ref: n, tag: el.tagName.toLowerCase(), label};
-    if (el.type && el.tagName !== 'BUTTON' && el.tagName !== 'A') item.type = el.type;
-    if (el.getAttribute('role')) item.role = el.getAttribute('role');
-    if (el.name) item.name = el.name;
-    if (el.placeholder) item.placeholder = el.placeholder;
-    if (el.value && el.type !== 'password' && el.tagName !== 'BUTTON') item.value = String(el.value).slice(0, 60);
-    if (el.href) item.href = el.href.slice(0, 120);
-    if (el.checked) item.checked = true;
-    if (el.disabled) item.disabled = true;
-    out.push(item);
-    if (n >= 120) break;
-  }
-  return {elements: out, text: (document.body ? document.body.innerText : '').slice(0, 3000)};
-})()"""
+from app.services.browser_snapshot import SNAP_JS  # sandbox 데몬과 같은 요소 수집 스크립트 (data-agent-ref 번호 부여)
 
 # 키 이름 → (key, code, windowsVirtualKeyCode, text)
 _KEYS: dict[str, tuple[str, str, int, str]] = {
@@ -143,6 +120,11 @@ class LocalBrowser:
         ws_url = await self._find_ws_url()
         self._ws = await websockets.connect(ws_url, max_size=32 * 1024 * 1024, open_timeout=5)
         await self._send("Page.enable")
+        try:  # 사용자가 앱의 다른 곳을 보고 있어 브라우저 창에 포커스가 없어도 페이지가 포커스된 것으로 동작하게 한다
+            # (포커스가 빠지는 순간 팝업·패널을 닫는 사이트에서 클릭으로 연 화면이 바로 닫히는 것을 막는다)
+            await self._send("Emulation.setFocusEmulationEnabled", {"enabled": True})
+        except LocalBrowserError:
+            pass  # 지원하지 않는 브라우저 버전: 없어도 동작한다
 
     @staticmethod
     def _post_json(url: str, timeout: float = 2.0) -> Any:
@@ -241,7 +223,7 @@ class LocalBrowser:
                 s = await self._eval(SNAP_JS)
                 url = await self._eval("location.href")
                 title = await self._eval("document.title")
-                return {"url": url, "title": title, "elements": s["elements"], "text": s["text"]}
+                return {"url": url, "title": title, "elements": s["elements"], "text": s["text"], "sy": s.get("sy")}
             except LocalBrowserError:
                 if attempt:
                     raise
@@ -389,6 +371,11 @@ class LocalBrowser:
         if cmd == "wait":
             await asyncio.sleep(min(float(c.get("seconds") or 1), 10))
             return {"ok": True, **await self._snapshot()}
+        if cmd == "shot":  # sandbox 데몬과 같은 명령. 로컬 브라우저의 화면 저장은 도구(서버) 쪽이 frame 으로 한다
+            return {"ok": True}
+        if cmd == "frame":  # 현재 화면 JPEG (서버가 사용자의 sandbox 스크린샷 저장소에 남긴다)
+            res = await self._send("Page.captureScreenshot", {"format": "jpeg", "quality": int(c.get("quality") or 55)})
+            return {"ok": True, "img": res["data"], "url": await self._eval("location.href"), "title": await self._eval("document.title")}
         if cmd == "screenshot":
             import base64
 
@@ -482,6 +469,9 @@ def mark_new_turn(user_id: str) -> None:
     """사용자의 새 요청이 시작됐다. 이 요청에서 브라우저를 처음 쓸 때 열려 있던 탭을 모두 닫는다 (브라우저를 안 쓰는 요청은 탭을 건드리지 않는다)."""
     if settings.LOCAL_BROWSER_CDP_URL and user_id == settings.LOCAL_BROWSER_USER_ID:
         _fresh_users.add(user_id)
+        from app.tools.browser_tools import clear_handoff
+
+        clear_handoff(user_id)  # 새 요청에서는 탭을 닫고 시작하므로 이전 요청의 화면을 이어받지 않는다
 
 
 async def reset_if_new_turn(user_id: str) -> None:
