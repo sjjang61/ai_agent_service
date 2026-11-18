@@ -5,10 +5,14 @@ import { driveApi, type DriveNode } from '../../api/drive'
 import { NodeIcon, formatBytes } from './driveUtils'
 
 /** Drive 에서 파일을 골라 채팅에 첨부한다. 폴더를 눌러 들어가고, 파일은 체크해서 여러 개 고를 수 있다. */
-export default function DriveFilePickerDialog({ maxSelect, onPick, onClose }: {
+export default function DriveFilePickerDialog({ maxSelect, onPick, onClose, title = 'Drive 에서 첨부', confirmLabel = '첨부', extensions }: {
   maxSelect: number
   onPick: (files: DriveNode[]) => void
   onClose: () => void
+  title?: string
+  confirmLabel?: string
+  /** 있으면 이 확장자의 파일만 고를 수 있다 (소문자, 점 없이). 예: ['zip'] */
+  extensions?: string[]
 }) {
   const [current, setCurrent] = useState('root')
   const [picked, setPicked] = useState<Map<string, DriveNode>>(new Map())
@@ -19,6 +23,7 @@ export default function DriveFilePickerDialog({ maxSelect, onPick, onClose }: {
     return () => window.removeEventListener('keydown', onKey)
   }, [onClose])
 
+  const selectable = (n: DriveNode) => !extensions || extensions.includes(n.name.split('.').pop()?.toLowerCase() ?? '')
   const toggle = (n: DriveNode) => setPicked((m) => {
     const next = new Map(m)
     if (next.has(n.id)) next.delete(n.id)
@@ -28,9 +33,9 @@ export default function DriveFilePickerDialog({ maxSelect, onPick, onClose }: {
 
   return (
     <div className="fixed inset-0 z-50 flex items-start justify-center bg-black/50 pt-[12vh] px-4" onMouseDown={onClose}>
-      <div role="dialog" aria-label="Drive 에서 첨부" onMouseDown={(e) => e.stopPropagation()} className="w-full max-w-md rounded-xl border border-border bg-surface-primary shadow-xl">
+      <div role="dialog" aria-label={title} onMouseDown={(e) => e.stopPropagation()} className="w-full max-w-md rounded-xl border border-border bg-surface-primary shadow-xl">
         <div className="flex items-center gap-2 px-4 py-3 border-b border-border">
-          <h2 className="flex-1 m-0 text-sm font-semibold text-content-primary">Drive 에서 첨부</h2>
+          <h2 className="flex-1 m-0 text-sm font-semibold text-content-primary">{title}</h2>
           <button onClick={onClose} aria-label="닫기" className="p-1 border-none bg-transparent text-content-muted hover:text-content-primary cursor-pointer"><X size={15} /></button>
         </div>
         <nav aria-label="현재 위치" className="flex flex-wrap items-center gap-0.5 px-4 py-2 text-xs text-content-secondary border-b border-border">
@@ -53,8 +58,8 @@ export default function DriveFilePickerDialog({ maxSelect, onPick, onClose }: {
                   <NodeIcon node={n} /> <span className="truncate flex-1">{n.name}</span> <ChevronRight size={14} className="text-content-tertiary" />
                 </button>
               ) : (
-                <label className="flex items-center gap-2 px-3 py-2 rounded-lg text-sm text-content-primary hover:bg-surface-hover cursor-pointer">
-                  <input type="checkbox" checked={picked.has(n.id)} onChange={() => toggle(n)} disabled={!picked.has(n.id) && picked.size >= maxSelect} className="w-4 h-4 accent-[var(--accent-primary)]" />
+                <label className={`flex items-center gap-2 px-3 py-2 rounded-lg text-sm hover:bg-surface-hover ${selectable(n) ? 'text-content-primary cursor-pointer' : 'text-content-muted opacity-50 cursor-not-allowed'}`} title={selectable(n) ? undefined : `${(extensions ?? []).join(', ')} 파일만 선택할 수 있습니다`}>
+                  <input type="checkbox" checked={picked.has(n.id)} onChange={() => toggle(n)} disabled={!selectable(n) || (!picked.has(n.id) && picked.size >= maxSelect)} className="w-4 h-4 accent-[var(--accent-primary)]" />
                   <NodeIcon node={n} /> <span className="truncate flex-1">{n.name}</span>
                   <span className="text-xs text-content-tertiary">{formatBytes(n.size_bytes ?? 0)}</span>
                 </label>
@@ -65,7 +70,7 @@ export default function DriveFilePickerDialog({ maxSelect, onPick, onClose }: {
         <div className="flex items-center justify-end gap-2 px-4 py-3 border-t border-border">
           <span className="flex-1 text-xs text-content-tertiary">{picked.size > 0 ? `${picked.size}개 선택` : `최대 ${maxSelect}개`}</span>
           <button onClick={onClose} className="px-3 py-1.5 rounded-lg text-sm border border-border bg-transparent text-content-secondary hover:bg-surface-hover cursor-pointer">취소</button>
-          <button onClick={() => onPick([...picked.values()])} disabled={picked.size === 0} className="px-3 py-1.5 rounded-lg text-sm border-none bg-accent-primary text-white cursor-pointer disabled:opacity-50">첨부</button>
+          <button onClick={() => onPick([...picked.values()])} disabled={picked.size === 0} className="px-3 py-1.5 rounded-lg text-sm border-none bg-accent-primary text-white cursor-pointer disabled:opacity-50">{confirmLabel}</button>
         </div>
       </div>
     </div>

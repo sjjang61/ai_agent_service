@@ -38,6 +38,9 @@ export const TASK_LABELS: Record<string, string> = {
   drive_load: 'Drive 에서 가져오기',
   drive_list: 'Drive 목록',
   search_documents: '문서 검색',
+  register_function: '함수 등록',
+  invoke_function: '함수 실행',
+  list_functions: '함수 목록',
   search_wiki: '위키 검색',
   memory_tool: '메모리',
 }
@@ -85,6 +88,10 @@ export function summarizeInput(tool: string | undefined, input: unknown): string
     case 'web_crawler':
     case 'download_file':
       return clip(str('url'))
+    case 'register_function':
+      return clip(str('name') || str('path'))
+    case 'invoke_function':
+      return clip(str('name'))
     case 'load_skill': {
       const file = str('file')
       return file && file !== 'SKILL.md' ? `${str('name')} · ${file}` : str('name')

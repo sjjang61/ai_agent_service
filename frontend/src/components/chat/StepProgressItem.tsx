@@ -39,6 +39,9 @@ export const TOOL_LABELS: Record<string, string> = {
   drive_load: 'Drive 에서 가져오기',
   drive_list: 'Drive 목록',
 }
+  register_function: '함수 등록',
+  invoke_function: '함수 실행',
+  list_functions: '함수 목록',
 
 function StepIcon({ type, tool, isActive }: { type: string; tool?: string; isActive?: boolean }) {
   if (isActive) return <Loader2 size={13} className="text-accent-primary animate-spin flex-shrink-0" />

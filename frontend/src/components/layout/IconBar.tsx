@@ -15,10 +15,12 @@ import {
   Brain,
   Package,
   HardDrive,
+  Workflow,
 } from 'lucide-react'
 import { useThemeStore } from '../../store/themeStore'
 import { useAuthStore } from '../../store/authStore'
 import { schedulesApi } from '../../api/schedules'
+import { functionsApi } from '../../api/functions'
 import { IconButton, Tooltip } from './IconButton'
 
 export default function IconBar() {
@@ -33,6 +35,9 @@ export default function IconBar() {
     refetchInterval: 30000,
     retry: false,
   })
+
+  // Functions 를 쓸 수 있는 사용자(기능이 켜져 있고 허용된 사용자)에게만 Workflow 메뉴를 보인다
+  const { data: fnInfo } = useQuery({ queryKey: ['functions-info'], queryFn: functionsApi.info, retry: false, staleTime: 60_000 })
 
   const isActive = (path: string) => {
     if (path === '/') return location.pathname === '/' || location.pathname.startsWith('/chat')
@@ -69,6 +74,15 @@ export default function IconBar() {
         badge={(unread ?? 0) > 0}
         onClick={() => navigate('/schedules')}
       />
+      {fnInfo?.enabled && fnInfo.allowed && (
+        <IconButton
+          icon={<Workflow size={20} />}
+          title="Workflow"
+          description="zip 으로 만든 함수를 등록하고, 실행할 때마다 새 격리 환경에서 돌려 결과와 이력을 관리합니다"
+          active={isActive('/workflow')}
+          onClick={() => navigate('/workflow')}
+        />
+      )}
       <IconButton
         icon={<HardDrive size={20} />}
         title="Drive"
