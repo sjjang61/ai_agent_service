@@ -119,6 +119,11 @@ BUILTIN_TOOLS: List[ToolInfo] = [
         group="share",
     ),
     ToolInfo(
+        name="generate_speech",
+        description="Turn text into speech (WAV) with the marin or cedar voice and save it in the workspace; can make voice samples to compare.",
+        group="share",
+    ),
+    ToolInfo(
         name="drive_save",
         description="Save a workspace file or folder into the user's Drive (personal long-term file space) and return its Drive path.",
         group="share",
@@ -134,11 +139,6 @@ BUILTIN_TOOLS: List[ToolInfo] = [
         group="share",
     ),
     ToolInfo(
-        name="upload_to_minio",
-        description="Upload one workspace image or video to the public MinIO bucket and return its public URL.",
-        group="share",
-    ),
-    ToolInfo(
         name="register_function",
         description="Register a workspace folder (function.json + code) as a Function that runs in a fresh isolated container each time.",
         group="share",
@@ -151,6 +151,11 @@ BUILTIN_TOOLS: List[ToolInfo] = [
     ToolInfo(
         name="list_functions",
         description="List the user's registered Functions.",
+        group="share",
+    ),
+    ToolInfo(
+        name="upload_to_minio",
+        description="Upload one workspace image or video to the public MinIO bucket and return its public URL.",
         group="share",
     ),
     ToolInfo(

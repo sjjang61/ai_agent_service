@@ -41,12 +41,23 @@ async def get_builtin_tools(
         image_tools.append(GenerateVideoTool(user_id=user_id, sandbox_cid=sandbox_cid, conversation_id=conversation_id))
     if object_storage.enabled():
         image_tools.append(UploadToMinioTool(user_id=user_id, sandbox_cid=sandbox_cid))
+    if settings.SPEECH_GENERATION_ENABLED and settings.OPENAI_API_KEY:
+        from app.tools.speech_tools import GenerateSpeechTool
+
+        image_tools.append(GenerateSpeechTool(user_id=user_id, sandbox_cid=sandbox_cid))
     from app.services import drive_storage
 
     if drive_storage.enabled():
         from app.tools.drive_tools import DriveListTool, DriveLoadTool, DriveSaveTool
 
         image_tools += [DriveSaveTool(user_id=user_id, sandbox_cid=sandbox_cid), DriveLoadTool(user_id=user_id, sandbox_cid=sandbox_cid), DriveListTool(user_id=user_id, sandbox_cid=sandbox_cid)]
+
+    from app.services import function_service as _fsvc
+
+    if settings.FUNCTION_ENABLED and _fsvc.storage_ready():
+        from app.tools.function_tools import InvokeFunctionTool, ListFunctionsTool, RegisterFunctionTool
+
+        image_tools += [RegisterFunctionTool(user_id=user_id, sandbox_cid=sandbox_cid), InvokeFunctionTool(user_id=user_id, sandbox_cid=sandbox_cid), ListFunctionsTool(user_id=user_id, sandbox_cid=sandbox_cid)]
 
     return image_tools + [
         WebSearchTool(),

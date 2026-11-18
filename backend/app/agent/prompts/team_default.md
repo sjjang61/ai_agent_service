@@ -10,7 +10,7 @@
 
 ---
 
-skill 도구(load_skill, register_skill), create_widget, generate_image/generate_video/upload_to_minio(이미지·동영상 생성과 공개 업로드), drive_save/drive_load/drive_list(사용자 Drive 에 저장·불러오기·목록), MCP 도구(load_mcp_tool, call_mcp_tool, run_mcp_code), todo/narrate/form_ask_user, cli_browser_agent(브라우저 상호작용), browser_parallel(여러 사이트 동시 브라우저 작업)은 직접 사용하세요. skill 의 스크립트 실행이 필요하면 CoderAgent 에게, 파일 구조 파악은 ExplorerAgent 에게 위임하세요.
+skill 도구(load_skill, register_skill), create_widget, generate_image/generate_video/upload_to_minio(이미지·동영상 생성과 공개 업로드), generate_speech(글을 음성으로 읽기, 기본 marin·선택 cedar), drive_save/drive_load/drive_list(사용자 Drive 에 저장·불러오기·목록), register_function/invoke_function/list_functions(코드를 함수로 등록·실행·목록), MCP 도구(load_mcp_tool, call_mcp_tool, run_mcp_code), todo/narrate/form_ask_user, cli_browser_agent(브라우저 상호작용), browser_parallel(여러 사이트 동시 브라우저 작업)은 직접 사용하세요. skill 의 스크립트 실행이 필요하면 CoderAgent 에게, 파일 구조 파악은 ExplorerAgent 에게 위임하세요.
 
 ---
 

@@ -295,6 +295,20 @@ class Settings(BaseSettings):
     SCHEDULER_MIN_INTERVAL_HOURS: int = 1  # '매 N시간' 반복의 최소 간격
     SCHEDULER_DEFAULT_TIMEZONE: str = "Asia/Seoul"
 
+    # 음성 생성(generate_speech): OpenAI Realtime 모델로 텍스트를 읽어 sandbox 에 WAV 로 저장한다 (공개 업로드는 하지 않는다)
+    SPEECH_GENERATION_ENABLED: bool = True  # OPENAI_API_KEY 가 있어야 실제로 켜진다
+    SPEECH_PROVIDER: Literal["realtime", "speech_api"] = "realtime"  # speech_api(/v1/audio/speech)는 모델이 2027-01-06 에 종료되므로 임시 예비용이다
+    OPENAI_SPEECH_MODEL: str = "gpt-realtime-2.1-mini"  # realtime 방식 모델
+    OPENAI_SPEECH_API_MODEL: str = "gpt-4o-mini-tts"  # speech_api 방식 모델 (종료 예정)
+    SPEECH_FORMAT: Literal["mp3", "wav"] = "mp3"  # 저장 형식 (mp3 는 ffmpeg 필요, 없으면 wav 로 대신 저장)
+    SPEECH_DEFAULT_VOICE: str = "marin"  # 목소리를 고르지 않으면 이 목소리로 바로 만든다
+    SPEECH_VOICES: str = "marin,cedar"  # 선택할 수 있는 목소리(쉼표 구분). realtime 이 받는 값: alloy ash ballad coral echo sage shimmer verse marin cedar
+    SPEECH_MAX_CHARS: int = 3000  # 한 번에 읽을 수 있는 글자 수 (비용 상한)
+    SPEECH_CHUNK_CHARS: int = 500  # 긴 글은 문장 경계에서 이만큼씩 나눠 읽는다 (모델이 중간에 바꾸는 일을 줄인다)
+    SPEECH_PREVIEW_CHARS: int = 140  # 목소리 미리듣기에 쓰는 앞부분 글자 수
+    SPEECH_DAILY_LIMIT: int = 30  # 사용자당 하루 생성 횟수 (0 이면 제한 없음, 서버 재시작 시 초기화)
+    SPEECH_TIMEOUT_SECONDS: int = 120  # 한 덩어리를 만드는 최대 시간
+
     # Drive: 사용자별 개인 산출물 공간 (MinIO 비공개 버킷 + DB 폴더 트리). MINIO_ENDPOINT 등 인증은 위 MinIO 설정을 쓴다
     DRIVE_ENABLED: bool = True  # MinIO 가 설정되어 있어야 실제로 켜진다
     MINIO_DRIVE_BUCKET: str = "agent-drive"  # 비공개 버킷 (익명 정책을 걸지 않는다). 공개 버킷(MINIO_PUBLIC_BUCKET)과 섞지 말 것
@@ -309,20 +323,6 @@ class Settings(BaseSettings):
     DRIVE_UPLOADS_PER_MIN: int = 120  # 사용자당 분당 업로드 요청 수 (0 이면 제한 없음)
     DRIVE_AUTO_SAVE_DEFAULT: bool = False  # 에이전트 산출물 자동 저장의 기본값 (사용자가 바꿀 수 있게 되기 전까지는 항상 수동)
 
-    # 대화 공유 (로그인 없이 읽는 링크)
-    SHARE_EXPIRE_DAYS: int = 0  # 0 이면 해제할 때까지 유효. 양수면 공유(갱신)한 날부터 이 일수 뒤 링크가 끊긴다
-    SHARE_MAX_MESSAGES: int = 500  # 한 번에 공유할 수 있는 최대 메시지 수 (최근 것부터)
-    SHARE_RATE_PER_MIN: int = 60  # 공유 링크 조회 제한: IP 당 분당 (0 이면 제한 없음)
-
-    # CORS
-    CORS_ORIGINS: list[str] = [
-        "http://localhost:5173",
-        "http://localhost:3000",
-        "http://localhost:80",
-    ]
-
-    # 위키 지식 그래프: 저장·수정·병합한 문서를 백그라운드에서 자동으로 지식화(개체·관계 추출)
-    WIKI_GRAPH_AUTO: bool = True
     # Functions (Lambda 형 실행): zip 패키지를 실행할 때마다 새 격리 컨테이너에서 돌리고 폐기한다. 꺼져 있는 것이 기본이다
     FUNCTION_ENABLED: bool = False
     FUNCTION_ALLOWED_EMAILS: str = ""  # 쉼표로 구분한 사용 허용 이메일. '*' 는 모든 로그인 사용자. 관리자(ADMIN_EMAILS)는 항상 허용
@@ -349,6 +349,20 @@ class Settings(BaseSettings):
     FUNCTION_TRIGGERS_MAX_PER_USER: int = 20  # 사용자당 예약·웹훅 트리거 수
     FUNCTION_WEBHOOK_RATE_PER_MIN: int = 60  # 웹훅 호출 제한: 토큰당·IP 당 분당 (0 이면 제한 없음)
 
+    # 대화 공유 (로그인 없이 읽는 링크)
+    SHARE_EXPIRE_DAYS: int = 0  # 0 이면 해제할 때까지 유효. 양수면 공유(갱신)한 날부터 이 일수 뒤 링크가 끊긴다
+    SHARE_MAX_MESSAGES: int = 500  # 한 번에 공유할 수 있는 최대 메시지 수 (최근 것부터)
+    SHARE_RATE_PER_MIN: int = 60  # 공유 링크 조회 제한: IP 당 분당 (0 이면 제한 없음)
+
+    # CORS
+    CORS_ORIGINS: list[str] = [
+        "http://localhost:5173",
+        "http://localhost:3000",
+        "http://localhost:80",
+    ]
+
+    # 위키 지식 그래프: 저장·수정·병합한 문서를 백그라운드에서 자동으로 지식화(개체·관계 추출)
+    WIKI_GRAPH_AUTO: bool = True
 
     class Config:
         env_file = str(_ENV_FILE)
