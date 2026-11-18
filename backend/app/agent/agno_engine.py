@@ -289,8 +289,14 @@ def _tool_origin(tool, ev=None) -> dict:
     return out
 
 
+def _tool_duration_ms(tool) -> Optional[int]:
+    """Agno 가 잰 도구 실행 시간(ms). 병렬 호출은 이벤트가 늦게 도착해 도착 시각으로는 시간을 알 수 없으므로 이 값을 우선한다."""
+    d = getattr(getattr(tool, "metrics", None), "duration", None)
+    return int(d * 1000) if isinstance(d, (int, float)) and d >= 0 else None
+
+
 def _tool_call_event(tool, ev=None) -> dict:
-    return {"type": "tool_call", "tool": tool.tool_name or "", "input": tool.tool_args or {}, **_tool_origin(tool, ev)}
+    return {"type": "tool_call", "tool": tool.tool_name or "", "input": tool.tool_args or {}, "ts": int(time.time() * 1000), **_tool_origin(tool, ev)}
 
 
 def _tool_result_event(tool, error: Optional[str] = None, ev=None) -> dict:
@@ -300,6 +306,8 @@ def _tool_result_event(tool, error: Optional[str] = None, ev=None) -> dict:
         "tool": tool.tool_name or "",
         "output": output[:MAX_TOOL_OUTPUT],
         "success": not (error or tool.tool_call_error or output.startswith(("[MCP Error]", "[Tool Error]"))),
+        "ts": int(time.time() * 1000),
+        **({"duration_ms": d} if (d := _tool_duration_ms(tool)) is not None else {}),
         **_tool_origin(tool, ev),
     }
 

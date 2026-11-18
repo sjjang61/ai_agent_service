@@ -144,6 +144,8 @@ export function useAgentStream(conversationId: string) {
                   output: event.output,
                   callId: event.call_id,
                   agent: event.agent,
+                  ts: event.ts,
+                  durationMs: event.duration_ms,
                   timestamp: new Date().toISOString(),
                 })
                 // 위젯·할 일·질문 폼은 응답 말풍선 안에 바로 그리기 위해 메시지에도 스텝을 붙인다

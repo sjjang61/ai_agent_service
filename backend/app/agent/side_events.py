@@ -5,6 +5,7 @@ stream_team 이 팀 이벤트와 도착 순서대로 합쳐서 같은 스트림(
 대화방(session_id) 단위이고, 열린 통로가 없으면(예약 실행 등) emit 은 아무 일도 하지 않는다.
 """
 import asyncio
+import time
 from contextlib import nullcontext
 from typing import AsyncIterator, Awaitable, Callable, ContextManager, Optional
 
@@ -25,6 +26,7 @@ def close_channel(session_id: str, q: asyncio.Queue) -> None:
 def emit(session_id: str, event: dict) -> None:
     q = _queues.get(session_id)
     if q is not None and session_id:
+        event.setdefault("ts", int(time.time() * 1000))  # 작업 시간 계산용 (이 이벤트가 실제로 일어난 시각, ms)
         q.put_nowait(event)
 
 

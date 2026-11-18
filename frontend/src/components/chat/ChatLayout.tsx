@@ -39,6 +39,8 @@ export default function ChatLayout() {
     output: s.output,
     callId: s.call_id, // 저장된 이력도 실시간과 같은 방식으로 호출·결과를 짝짓고 팀원 작업을 묶는다
     agent: s.agent,
+    ts: s.ts,
+    durationMs: s.duration_ms,
     timestamp: lastAssistant?.created_at ?? '',
   }))
   const panelSteps = liveSteps.length > 0 ? liveSteps : savedSteps

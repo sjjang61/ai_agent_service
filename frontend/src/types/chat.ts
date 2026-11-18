@@ -25,6 +25,8 @@ export interface AgentStepData {
   call_id?: string
   /** 팀원이 한 호출이면 그 팀원 이름 */
   agent?: string
+  ts?: number
+  duration_ms?: number
 }
 
 export interface Attachment {

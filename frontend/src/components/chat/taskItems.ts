@@ -63,6 +63,43 @@ export interface TaskItem {
   childKind?: 'same' | 'delegate'
 }
 
+/**
+ * 작업 하나의 소요 시간(ms). 서버가 잰 실행 시간을 우선하고, 없으면 호출·결과 이벤트의 시각 차이를 쓴다.
+ * 하위 작업이 있는 묶음은 자기 시간이 없으면 첫 하위 작업 시작부터 마지막 하위 작업 끝까지로 본다. 알 수 없으면 undefined.
+ */
+export function durationOf(item: TaskItem): number | undefined {
+  if (item.result?.durationMs !== undefined) return item.result.durationMs
+  const a = item.call?.ts
+  const b = item.result?.ts
+  const own = a !== undefined && b !== undefined && b >= a ? b - a : undefined
+  const kids = item.children ?? []
+  const starts = kids.map((k) => k.call?.ts ?? k.result?.ts).filter((x): x is number => x !== undefined)
+  const ends = kids.map((k) => k.result?.ts ?? k.call?.ts).filter((x): x is number => x !== undefined)
+  const span = starts.length && ends.length ? Math.max(...ends) - Math.min(...starts) : undefined
+  // 병렬 호출은 호출·결과 이벤트가 작업이 끝난 뒤 함께 도착해 시각 차이가 ~0 이다: 하위 작업이 더 오래 걸렸다면 그 구간을 쓴다
+  if (own !== undefined && span !== undefined) return Math.max(own, span)
+  return own ?? span
+}
+
+/** 여러 작업의 합산 시간(ms). 하나라도 알면 아는 것만 더한다. 하나도 모르면 undefined */
+export function totalDuration(items: TaskItem[]): number | undefined {
+  const ds = items.map(durationOf).filter((d): d is number => d !== undefined)
+  return ds.length ? ds.reduce((a, b) => a + b, 0) : undefined
+}
+
+/** 0.4초 / 12초 / 1분 05초 */
+export function formatDuration(ms: number): string {
+  if (ms < 1000) return `${Math.max(0.1, Math.round(ms / 100) / 10)}초`
+  const s = ms / 1000
+  if (s < 10) return `${Math.round(s * 10) / 10}초`
+  if (s < 60) return `${Math.round(s)}초`
+  const m = Math.floor(s / 60)
+  return `${m}분 ${String(Math.round(s - m * 60)).padStart(2, '0')}초`
+}
+
+/** 오래 걸린 작업을 눈에 띄게: 10초 이상 강조, 30초 이상 경고색 */
+export const slowClass = (ms: number) => (ms >= 30000 ? 'text-accent-red font-medium' : ms >= 10000 ? 'text-content-primary font-medium' : 'text-content-muted')
+
 const clip = (s: string, n = 90) => {
   const t = s.replace(/\s+/g, ' ').trim()
   return t.length > n ? t.slice(0, n) + '…' : t
@@ -122,6 +159,7 @@ export function summarizeInput(tool: string | undefined, input: unknown): string
     case 'create_widget':
       return clip(str('title'))
     case 'browser_action': {
+      if (str('desc')) return clip(str('desc'), 120) // 서버가 만든 읽기 쉬운 설명 (예: 클릭 · “검색” 버튼)
       const target = str('url') || str('text') || (typeof o.ref === 'number' ? `요소 ${o.ref}` : '') || str('key') || str('direction')
       return clip([str('action'), target].filter(Boolean).join(' · '))
     }
@@ -237,6 +275,9 @@ export function buildTaskItems(steps: AgentStep[]): TaskItem[] {
   return groupTaskItems(nestDelegates(buildFlatItems(steps)))
 }
 
+/** 서버가 todo 상태 변경을 즉시 알리는 결과의 call_id 접두사 (backend TodoTool._emit_plan_hint) */
+const PLAN_HINT_PREFIX = 'plan_hint_'
+
 function buildFlatItems(steps: AgentStep[]): TaskItem[] {
   const items: TaskItem[] = []
   const pending: TaskItem[] = []
@@ -254,6 +295,7 @@ function buildFlatItems(steps: AgentStep[]): TaskItem[] {
       items.push(item)
       pending.push(item)
     } else if (s.type === 'tool_result') {
+      if (s.callId?.startsWith(PLAN_HINT_PREFIX)) continue // 계획 상태 알림(서버가 작업보다 먼저 보낸다): 목록에는 넣지 않고 activePlanStepAt 만 쓴다
       let idx = -1
       // call_id 가 있으면 정확히 짝짓고 (같은 도구가 동시에 여러 번 돌 수 있다), 없으면 같은 도구의 가장 최근 호출과 짝짓는다
       if (s.callId) idx = pending.findIndex((p) => p.call?.callId === s.callId)
@@ -275,9 +317,6 @@ function buildFlatItems(steps: AgentStep[]): TaskItem[] {
           key: s.id,
           kind: 'tool',
           tool: s.tool,
-/** 서버가 todo 상태 변경을 즉시 알리는 결과의 call_id 접두사 (backend TodoTool._emit_plan_hint) */
-const PLAN_HINT_PREFIX = 'plan_hint_'
-
           label: TASK_LABELS[s.tool ?? ''] ?? s.tool ?? '도구',
           summary: clip(s.output ?? ''),
           status: FAILED.test(s.output ?? '') ? 'failed' : 'done',
@@ -295,7 +334,6 @@ const key = (s: string) => s.toLowerCase().replace(/[^a-z0-9가-힣]/g, '')
 
 /**
  * 팀원이 한 도구 호출(agent 가 붙은 호출)을 그 팀원에게 위임한 작업(delegate_task_to_member) 아래로 옮긴다.
-      if (s.callId?.startsWith(PLAN_HINT_PREFIX)) continue // 계획 상태 알림(서버가 작업보다 먼저 보낸다): 목록에는 넣지 않고 activePlanStepAt 만 쓴다
  * 팀원 이름은 위임 입력의 member_id 와 대소문자·기호를 무시하고 맞춘다. 맞는 위임이 없으면 진행 중인 위임에 붙이고, 그것도 없으면 그대로 둔다.
  */
 const BROWSER_PARENTS = new Set(['cli_browser_agent', 'browser_parallel'])

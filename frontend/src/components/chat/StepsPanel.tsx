@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { AlertCircle, CheckCircle2, ChevronRight, Circle, Loader2 } from 'lucide-react'
 import type { AgentStep, SelectedStepDetail } from '../../types/agent'
 import { useAgentStore } from '../../store/agentStore'
-import { buildPlanBuckets, buildTaskItems, currentTask, groupUnit, settleTaskItems, type TaskItem } from './taskItems'
+import { buildPlanBuckets, buildTaskItems, currentTask, durationOf, formatDuration, groupUnit, settleTaskItems, slowClass, totalDuration, type TaskItem } from './taskItems'
 import { extractLatestTodos, settleTodos, type PlanOutcome, type TodoItem } from './TodoCard'
 import BrowserShots, { parseBrowserRun } from './BrowserShots'
 
@@ -14,6 +14,12 @@ function ToolChip({ tool }: { tool?: string }) {
       {tool}
     </span>
   )
+}
+
+/** 작업 소요 시간 (오래 걸린 작업은 강조). 알 수 없거나 아직 진행 중이면 표시하지 않는다 */
+function Duration({ ms, title = '소요 시간' }: { ms?: number; title?: string }) {
+  if (ms === undefined) return null
+  return <span className={`flex-shrink-0 tabular-nums text-[11px] ${slowClass(ms)}`} title={title}>{formatDuration(ms)}</span>
 }
 
 /** 브라우저 작업이면 방문한 화면의 미리보기 줄 */
@@ -64,8 +70,9 @@ function ChildRow({ item, showLabel = false }: { item: TaskItem; showLabel?: boo
             {item.summary && <span className="block truncate text-content-muted">{item.summary}</span>}
           </span>
         ) : (
-          <span className={`truncate ${item.status === 'failed' ? 'text-accent-red' : 'text-content-secondary'}`} title={item.summary}>{item.summary || item.label}</span>
+          <span className={`min-w-0 flex-1 truncate ${item.status === 'failed' ? 'text-accent-red' : 'text-content-secondary'}`} title={item.summary}>{item.summary || item.label}</span>
         )}
+        {item.status !== 'running' && <Duration ms={durationOf(item)} />}
       </button>
       <ShotsStrip item={item} />
     </li>
@@ -101,8 +108,10 @@ function GroupRow({ item }: { item: TaskItem }) {
         </span>
         {running && <span className="flex-shrink-0 text-[11px] px-2 py-0.5 rounded-full bg-accent-primary/20 text-accent-primary">진행 중</span>}
         {failed && <span className="flex-shrink-0 text-[11px] px-2 py-0.5 rounded-full bg-accent-red/15 text-accent-red">일부 실패</span>}
+        {!running && <Duration ms={durationOf(item)} />}
         <ChevronRight size={13} className={`flex-shrink-0 text-content-muted transition-transform ${open ? 'rotate-90' : ''}`} aria-hidden />
       </button>
+      <ShotsStrip item={item} />{/* 브라우저 작업: 접혀 있어도 방문한 화면의 미리보기를 보여 준다 */}
       {open && (
         <ul className="px-2 pb-2 space-y-0.5 border-t border-border/60 pt-1.5 mx-1">
           {ownDetail && (
@@ -111,7 +120,6 @@ function GroupRow({ item }: { item: TaskItem }) {
                 onClick={() => setSelectedStep(selectedStep?.id === ownDetail.id ? null : ownDetail)}
                 className="w-full flex items-center gap-2 px-2 py-1.5 rounded-[var(--radius-md)] text-left border-none cursor-pointer text-xs bg-transparent hover:bg-surface-hover text-content-tertiary"
               >
-      <ShotsStrip item={item} />{/* 브라우저 작업: 접혀 있어도 방문한 화면의 미리보기를 보여 준다 */}
                 <ChevronRight size={12} className="flex-shrink-0" /> 위임 내용·결과 보기
               </button>
             </li>
@@ -174,6 +182,7 @@ function TaskRow({ item }: { item: TaskItem }) {
       </span>
       {running && <span className="flex-shrink-0 text-[11px] px-2 py-0.5 rounded-full bg-accent-primary/20 text-accent-primary">진행 중</span>}
       {failed && <span className="flex-shrink-0 text-[11px] px-2 py-0.5 rounded-full bg-accent-red/15 text-accent-red">실패</span>}
+      {!running && <Duration ms={durationOf(item)} />}
       <ChevronRight size={13} className="flex-shrink-0 text-content-muted" aria-hidden />
     </button>
     <ShotsStrip item={item} />
@@ -242,6 +251,7 @@ function PlanTree({ todos, running, pre, byStep }: { todos: TodoItem[]; running:
                   {t.content}
                 </span>
                 {kids.length > 0 && <span className="flex-shrink-0 text-[11px] text-content-muted">작업 {kids.length}</span>}
+                {kids.length > 0 && !(active && running) && <Duration ms={totalDuration(kids)} title="이 단계 작업 소요 시간 합계" />}
                 {active && running && <span className="flex-shrink-0 text-[11px] px-2 py-0.5 rounded-full bg-accent-primary/20 text-accent-primary">진행 중</span>}
                 {kids.length > 0 && <ChevronRight size={12} className={`mt-1 flex-shrink-0 text-content-muted transition-transform ${open ? 'rotate-90' : ''}`} aria-hidden />}
               </button>

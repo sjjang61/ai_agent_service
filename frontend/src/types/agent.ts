@@ -30,6 +30,10 @@ export interface AgentStreamEvent {
   call_id?: string
   /** 팀원이 한 호출이면 그 팀원 이름 (위임 작업 아래에 묶는다) */
   agent?: string
+  /** 이벤트가 일어난 시각(ms) */
+  ts?: number
+  /** 도구 실행 시간(ms, 서버가 잰 값) */
+  duration_ms?: number
 }
 
 export interface AgentStep {
@@ -41,6 +45,9 @@ export interface AgentStep {
   output?: string
   callId?: string
   agent?: string
+  /** 이벤트가 일어난 시각(ms) / 도구 실행 시간(ms): 작업별 소요 시간 계산용 */
+  ts?: number
+  durationMs?: number
   timestamp: string
 }
 
