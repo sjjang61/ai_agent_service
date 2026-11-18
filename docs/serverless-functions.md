@@ -1,6 +1,6 @@
 # Functions (Lambda 형 실행) 상세 스펙 · 진행 계획 · 리뷰
 
-> 상태: **설계 초안 (미구현)**. 6장의 결정 필요 항목에 답하면 확정한다.
+> 상태: **P0~P3 구현 완료 (10장 참고)**. 6장의 결정은 모두 권고안대로 확정해 진행했다.
 > 관련 문서: [sandbox-isolation.md](sandbox-isolation.md), [deploy-architecture.md](deploy-architecture.md)
 
 ## 1. 목적과 범위
@@ -242,3 +242,46 @@ FUNCTION_ALLOW_NETWORK=false            # 서버 전체에서 egress 허용 여�
 | Q5 | 누가 쓰는가: 모든 사용자 / 관리자·허용 사용자만 | 허용 사용자 플래그(관리자 지정)로 시작, 쿼터 필수 |
 | Q6 | 실행 서버: 현재 백엔드와 같은 호스트에서 시작해도 되는가 | 가능. 단 5.1-3 에 따라 분리 가능한 구조로 |
 | Q7 | 실행 결과 보존 기간 | 30일 |
+
+## 10. 구현 결과 (2026-11-17)
+
+### 10.1 구현한 것
+
+| 범위 | 내용 |
+|---|---|
+| 런타임 이미지 | `infra/functions/` — `Dockerfile.python`(203MB)·`Dockerfile.bun`(307MB), 진입 스크립트 `entry.sh`, 부트스트랩 `bootstrap.py`/`bootstrap.mjs`, `build.sh`. 개발용 sandbox 이미지(3.3GB)의 약 1/10 |
+| 실행기 | `services/function_runtime.py` — `RuntimeBackend` 인터페이스 + `DockerRuntime`. 요청마다 새 컨테이너를 만들어 실행하고 **항상 제거** |
+| 패키지 | `services/function_package.py` — zip 검증·정규화(실행용 tar.gz 로 재생성), `function.json` 검증, 에이전트용 tar→zip |
+| 서비스 | `function_service.py`(등록·버전·별칭·시크릿·호출·쿼터·취소·이력·정리), `function_dispatcher.py`(DB 선점 디스패처·동시성·취소·재시작 복구·예약 루프), `function_trigger_service.py`(예약·웹훅) |
+| DB | `functions`, `function_versions`, `function_aliases`, `function_secrets`(Fernet), `function_runs`(감사 로그 겸용), `function_triggers` — 마이그레이션 `za1b2c3d4e5f` |
+| API | `/api/functions`(함수·버전·별칭·시크릿·호출·트리거), `/api/runs`(이력·로그·취소), `/api/fn-triggers`, `/api/fn-hooks/{token}`(웹훅, 로그인 없음), `/api/admin/functions`(관리자 중지·해제) |
+| UI | Workflow 메뉴(`/workflow`): 함수·실행 이력·트리거 탭, 함수 상세(테스트 실행, 버전·별칭, 시크릿, 트리거, 최근 실행), 실행 상세(상태·시각·입력·결과·오류·로그·취소) |
+| 에이전트 | 도구 `register_function`(sandbox 폴더 → 함수, 같은 이름은 새 버전) · `invoke_function` · `list_functions`, 프롬프트 안내 |
+
+### 10.2 스펙에서 달라진 점
+
+- **패키지·이벤트 전달은 stdin 프로토콜**이다(`PKG <n>` + tar, `EVT <n>` + JSON). 루트 파일시스템을 읽기 전용으로 두면 컨테이너에 파일을 미리 넣을 수 없어서이고, 결과는 실행마다 새로 만든 **토큰이 붙은 마커 줄**(`__FN_RESULT_<token>__`)로 돌려받는다(위조된 마커는 무시).
+- **패키지는 tmpfs(메모리)에 풀린다.** `exec` 옵션으로 `.so`·실행 파일을 쓸 수 있게 하고, 컨테이너 메모리 한도를 `memory_mb + tmpfs + 64MB` 로 잡는다.
+- 패키지는 등록할 때 **검증한 항목만 새 tar.gz 로 다시 만들어** 저장한다(원본 zip 은 저장하지 않고 sha256 만 남긴다). 컨테이너 안으로 안전하지 않은 경로·링크가 들어갈 수 없다.
+- 함수는 **Drive 의 zip 을 골라 등록**한다(내 컴퓨터에서 올리면 Drive 의 `/Functions` 에 저장한 뒤 등록). 등록 시 내용을 복사해 고정한다.
+- **로그는 실행이 끝나야 볼 수 있다**(실행 중 스트리밍은 없다). 웹훅·API 는 `wait=true` 로 결과를 기다릴 수 있다.
+- **재시도 정책은 구현하지 않았다**(항상 at-most-once). API 의 `idempotency_key` 로 같은 요청의 중복 실행만 막는다.
+- 사용 허용은 환경변수 목록(`FUNCTION_ALLOWED_EMAILS`)이고, 관리자 중지 스위치는 **API 만** 있다(관리자 화면 없음).
+- `function.json` 의 `allow_network` 는 받아들이지만 **서버 설정이 항상 차단**한다(`FUNCTION_ALLOW_NETWORK=false`, UI 에도 "네트워크 차단" 고정 표시).
+
+### 10.3 검증한 것
+
+- 단위·API 테스트 **107개**(실행기 파서 9, 패키지 검증 31, 서비스·디스패처 26, API 17, 트리거 16, 도구 8): 악성 zip(경로 탈출·심볼릭 링크·암호·압축 폭탄·헤더 크기 위조), 쿼터·동시성·선점 경합, 취소, 재시작 복구, 예약 유예·자동 중지, 웹훅 토큰(해시 저장·재발급·404 통일·한도), 소유자 격리.
+- **P0 PoC(실제 Docker, 27항목)**: 콜드 스타트(컨테이너 생성+시작+패키지 전달) **중앙값 약 140ms**, python 함수 1회 전체 **약 0.6초**. uid 1000, 루트 쓰기 차단, 외부 IP·DNS·`host.docker.internal` 차단, docker.sock 없음, CapEff=0, no-new-privileges, 호스트 마운트 없음, fork bomb 은 pids 한도(126개)에서 멈춤, 메모리 초과 OOM 처리, 무한 루프 타임아웃, 취소, 로그 폭주(1MB 로 잘림, 결과는 유지), 2MB 결과 거부, 250KB 이벤트, 위조 마커 무시, 시크릿 마스킹, bun(TypeScript), **끝난 뒤 남은 컨테이너 0개**.
+- **P1 인수(실제 MySQL·MinIO·Docker·디스패처, 18항목)**: Drive zip 등록 → 동기 호출 → 결과·로그, 별칭 v1·latest v2, 사용자당 동시 2개 한도(5건 모두 성공, 동시 컨테이너 최대 2), 서버 재시작 복구와 고아 컨테이너 정리, 보관 기간 지난 함수 영구 삭제(패키지 객체 제거).
+- **실제 브라우저(Chromium)**: 함수 등록(잘못된 이름·잘못된 zip 오류 포함)·테스트 실행·시크릿(값이 화면에 없음)·새 버전·별칭·실행 중 취소·이력 필터·삭제, **웹훅 생성(주소는 한 번만 표시)·로그인 없는 호출·재발급(이전 토큰 404)**, 예약 생성·켜기/끄기·유효성 오류·**예약이 시각이 되면 자동 실행(약 50초)**, 한 번 예약의 자동 종료, 트리거 탭.
+
+테스트로 잡은 결함(수정 완료): 결과가 한도를 넘는 줄바꿈 없는 긴 줄을 파서가 깨진 결과로 처리, **파이썬 `writestr` 로 만든 zip 의 정상 파일을 "일반 파일이 아님"으로 거부**, 헤더 크기를 속인 zip 이 `BadZipFile` 로 새어 500 이 되던 것, 도구가 권한 확인 전에 이름 조회·sandbox 읽기를 하던 것.
+
+### 10.4 검증하지 못한 것 / 남은 일
+
+- 에이전트 도구 3종은 **실제 에이전트 실행으로 확인하지 못했다**(가짜 sandbox 매니저로 서비스 계층만).
+- **여러 서버 프로세스**에서의 동작과 부하(동시 수십 건), 장애 주입은 하지 않았다. 선점은 한 실행이 두 번 시작되지 않도록 보장하지만(테스트함), **동시 실행 한도(사용자당·전체)는 프로세스가 여럿이면 근사치**다(각자 현재 실행 수를 읽고 가져가므로 순간적으로 한도를 조금 넘을 수 있다). 재시작 복구는 같은 호스트 기준이다.
+- 라이트 테마·모바일 폭의 Workflow 화면, 관리자 중지 UI.
+- 미구현(후속): 네트워크 허용 목록(P4), 의존성 빌드 단계, warm pool, 별도 러너 호스트·K8s, 실행 중 로그 스트리밍, 재시도, 함수 연결(P5), 사용자별 CPU 시간 쿼터.
+- **켜는 방법**: `infra/functions/build.sh` 로 런타임 이미지를 만들고, `.env` 에 `FUNCTION_ENABLED=true` 와 `FUNCTION_ALLOWED_EMAILS` 를 넣은 뒤 백엔드를 재시작한다(`.env` 는 `--reload` 가 감시하지 않는다). 새 테이블은 시작 시 자동 생성된다.
