@@ -7,8 +7,9 @@ from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.services.drive_service import DriveError
+from app.services.function_service import FunctionError
 
-from app.api import admin, apps, store, auth, browser, calendar, channels, connectors, chat, documents, drive, files, mcp, memory, sandbox, agents, schedules, shares, skills, spaces, tools, wiki, ws
+from app.api import admin, apps, store, auth, browser, calendar, channels, connectors, chat, documents, drive, files, functions, mcp, memory, sandbox, agents, schedules, shares, skills, spaces, tools, wiki, ws
 from app.db.session import init_db
 from app.config import settings
 
@@ -100,6 +101,16 @@ async def lifespan(app: FastAPI):
         from app.services.drive_maintenance import run_drive_maintenance
 
         drive_task = asyncio.create_task(run_drive_maintenance())  # 보관 기간이 지난 휴지통 정리
+    fn_tasks = []
+    if settings.FUNCTION_ENABLED:
+        from app.services import function_service as _fsvc
+
+        if _fsvc.storage_ready():
+            from app.services.function_dispatcher import get_dispatcher, run_function_maintenance, run_function_scheduler
+
+            fn_tasks = [asyncio.create_task(get_dispatcher().run_forever()), asyncio.create_task(run_function_maintenance()), asyncio.create_task(run_function_scheduler())]
+        else:
+            logging.getLogger(__name__).warning("[functions] FUNCTION_ENABLED 이지만 MinIO 가 설정되지 않아 시작하지 않습니다")
     channels = None
     if settings.CHANNELS_ENABLED:
         from app.channels.gateway import run_channels
@@ -113,6 +124,8 @@ async def lifespan(app: FastAPI):
     scheduler.cancel()
     if drive_task:
         drive_task.cancel()
+    for t in fn_tasks:
+        t.cancel()
     if channels:
         channels.cancel()
     await VectorStoreManager.cleanup()
@@ -120,6 +133,12 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(title="AI Agent Platform", version="0.1.0", lifespan=lifespan)
+
+
+@app.exception_handler(FunctionError)
+async def _function_error(_request, exc: FunctionError):
+    """Functions 서비스의 사용자용 오류를 {detail} 형식으로 돌려준다."""
+    return JSONResponse(status_code=exc.status, content={"detail": exc.message})
 
 
 @app.exception_handler(DriveError)
@@ -141,6 +160,11 @@ app.include_router(chat.router, prefix="/api/chat", tags=["chat"])
 app.include_router(shares.router, prefix="/api/chat", tags=["share"])
 app.include_router(shares.public_router, prefix="/api/shared", tags=["share"])
 app.include_router(drive.router, prefix="/api/drive", tags=["drive"])
+app.include_router(functions.router, prefix="/api/functions", tags=["functions"])
+app.include_router(functions.runs_router, prefix="/api/runs", tags=["functions"])
+app.include_router(functions.admin_router, prefix="/api/admin/functions", tags=["functions"])
+app.include_router(functions.triggers_router, prefix="/api/fn-triggers", tags=["functions"])
+app.include_router(functions.hooks_router, prefix="/api/fn-hooks", tags=["functions"])
 app.include_router(documents.router, prefix="/api", tags=["documents"])
 app.include_router(mcp.router, prefix="/api/mcp", tags=["mcp"])
 app.include_router(calendar.router, prefix="/api/calendar", tags=["calendar"])

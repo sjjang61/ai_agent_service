@@ -1,0 +1,7 @@
+# Function 런타임 (Python 3.12): 개발용 sandbox 이미지(브라우저·도구 포함)보다 훨씬 작고 공격면이 좁다.
+FROM python:3.12-slim
+RUN useradd -m -u 1000 fn && mkdir -p /opt/fn /var/task
+COPY entry.sh bootstrap.py /opt/fn/
+RUN chmod 755 /opt/fn/entry.sh && chmod 644 /opt/fn/bootstrap.py
+WORKDIR /var/task
+ENTRYPOINT ["/opt/fn/entry.sh", "python", "-u", "/opt/fn/bootstrap.py"]

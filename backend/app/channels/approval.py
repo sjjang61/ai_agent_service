@@ -10,6 +10,7 @@ RISKY_TOOLS = {
     "call_mcp_tool", "run_mcp_code", "cli_browser_agent", "browser_action", "manage_schedule", "write_file", "edit_file",
     "generate_image", "generate_video", "upload_to_minio",  # 비용·공개 업로드
     "deploy_web_app",  # 외부에 열리는 포트로 앱을 공개
+    "register_function", "invoke_function",  # 사용자 코드를 등록·실행한다 (격리된 새 컨테이너, 네트워크 차단이지만 자원을 쓴다)
 }
 
 # approver(tool_name, summary) -> True(허용) / False(거부)

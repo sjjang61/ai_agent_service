@@ -323,6 +323,32 @@ class Settings(BaseSettings):
 
     # 위키 지식 그래프: 저장·수정·병합한 문서를 백그라운드에서 자동으로 지식화(개체·관계 추출)
     WIKI_GRAPH_AUTO: bool = True
+    # Functions (Lambda 형 실행): zip 패키지를 실행할 때마다 새 격리 컨테이너에서 돌리고 폐기한다. 꺼져 있는 것이 기본이다
+    FUNCTION_ENABLED: bool = False
+    FUNCTION_ALLOWED_EMAILS: str = ""  # 쉼표로 구분한 사용 허용 이메일. '*' 는 모든 로그인 사용자. 관리자(ADMIN_EMAILS)는 항상 허용
+    FUNCTION_RUNTIME_IMAGE_PYTHON: str = "ai-agent-fn-python:latest"  # infra/functions/build.sh 로 만든다
+    FUNCTION_RUNTIME_IMAGE_BUN: str = "ai-agent-fn-bun:latest"
+    FUNCTION_ALLOW_NETWORK: bool = False  # 서버 전체 상한: false 면 함수의 allow_network 설정과 무관하게 항상 네트워크 차단
+    FUNCTION_MAX_CONCURRENT_PER_USER: int = 3
+    FUNCTION_MAX_CONCURRENT_GLOBAL: int = 20
+    FUNCTION_QUEUE_MAX_PER_USER: int = 20
+    FUNCTION_RUNS_PER_DAY_PER_USER: int = 500
+    FUNCTION_PACKAGE_MAX_MB: int = 50  # zip 크기
+    FUNCTION_UNPACKED_MAX_MB: int = 250  # 풀었을 때 총 크기 (압축 폭탄 방지)
+    FUNCTION_PACKAGE_MAX_FILES: int = 10000
+    FUNCTION_EVENT_MAX_KB: int = 256
+    FUNCTION_RESULT_MAX_KB: int = 1024
+    FUNCTION_LOG_MAX_KB: int = 1024
+    FUNCTION_TIMEOUT_DEFAULT: int = 30
+    FUNCTION_TIMEOUT_MAX: int = 900
+    FUNCTION_MEMORY_DEFAULT_MB: int = 256
+    FUNCTION_MEMORY_MAX_MB: int = 1024
+    FUNCTION_SYNC_WAIT_SECONDS: int = 30  # 동기 실행이 결과를 기다리는 최대 시간. 넘으면 run_id 로 전환한다
+    FUNCTION_RUN_RETENTION_DAYS: int = 30  # 실행 이력·로그 보존 일수 (0 이면 자동 삭제 안 함)
+    FUNCTION_VERSIONS_MAX: int = 50  # 함수 하나에 둘 수 있는 버전 수
+    FUNCTION_TRIGGERS_MAX_PER_USER: int = 20  # 사용자당 예약·웹훅 트리거 수
+    FUNCTION_WEBHOOK_RATE_PER_MIN: int = 60  # 웹훅 호출 제한: 토큰당·IP 당 분당 (0 이면 제한 없음)
+
 
     class Config:
         env_file = str(_ENV_FILE)

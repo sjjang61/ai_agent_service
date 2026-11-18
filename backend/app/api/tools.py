@@ -139,6 +139,21 @@ BUILTIN_TOOLS: List[ToolInfo] = [
         group="share",
     ),
     ToolInfo(
+        name="register_function",
+        description="Register a workspace folder (function.json + code) as a Function that runs in a fresh isolated container each time.",
+        group="share",
+    ),
+    ToolInfo(
+        name="invoke_function",
+        description="Run a registered Function once and return its result and log tail.",
+        group="share",
+    ),
+    ToolInfo(
+        name="list_functions",
+        description="List the user's registered Functions.",
+        group="share",
+    ),
+    ToolInfo(
         name="deploy_web_app",
         description="Deploy a web app built in the workspace (static build output or a server app with .scripts/start.sh) and get a browser URL on its own port; sleeps when idle and wakes on request.",
         group="share",

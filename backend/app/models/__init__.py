@@ -44,3 +44,4 @@ from app.models.wiki_entry import WikiEdge
 from app.models.published_app import PublishedApp, AppReport
 from app.models.shared_conversation import SharedConversation
 from app.models.drive import DriveNode, DriveUsage
+from app.models.function import Function, FunctionVersion, FunctionAlias, FunctionSecret, FunctionRun, FunctionTrigger

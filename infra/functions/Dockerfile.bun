@@ -1,0 +1,7 @@
+# Function 런타임 (Bun: JS/TS)
+FROM oven/bun:1-slim
+RUN (id 1000 >/dev/null 2>&1 || useradd -m -u 1000 fn) && mkdir -p /opt/fn /var/task
+COPY entry.sh bootstrap.mjs /opt/fn/
+RUN chmod 755 /opt/fn/entry.sh && chmod 644 /opt/fn/bootstrap.mjs
+WORKDIR /var/task
+ENTRYPOINT ["/opt/fn/entry.sh", "bun", "run", "/opt/fn/bootstrap.mjs"]

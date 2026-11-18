@@ -36,7 +36,7 @@ MCP_TOOLS = {"load_mcp_tool", "call_mcp_tool", "run_mcp_code"}
 INTERACTION_TOOLS = {"todo", "narrate", "form_ask_user", "cli_browser_agent", "browser_parallel", "manage_schedule"}
 # Google Workspace 커넥터 도구 (사용자가 연결한 경우에만 만들어진다)
 CONNECTOR_TOOLS = {"google_gmail", "google_calendar", "google_drive", "google_docs", "google_sheets", "google_slides"}
-LEADER_TOOLS = {"load_skill", "register_skill", "memory_tool", "read_image", "create_widget", "search_documents", "search_wiki", "generate_image", "generate_video", "upload_to_minio", "drive_save", "drive_load", "drive_list", "deploy_web_app", "manage_web_app"} | MCP_TOOLS | INTERACTION_TOOLS | CONNECTOR_TOOLS
+LEADER_TOOLS = {"load_skill", "register_skill", "memory_tool", "read_image", "create_widget", "search_documents", "search_wiki", "generate_image", "generate_video", "upload_to_minio", "generate_speech", "drive_save", "drive_load", "drive_list", "register_function", "invoke_function", "list_functions", "deploy_web_app", "manage_web_app"} | MCP_TOOLS | INTERACTION_TOOLS | CONNECTOR_TOOLS
 LEGACY_TOOLS = {"file_manager", "shell_executor"}
 # Team 에서는 위임이 delegate_task_to_member 로 이미 제공되므로 call_sub_agent 는 제외한다
 TEAM_EXCLUDED = {"call_sub_agent"}
