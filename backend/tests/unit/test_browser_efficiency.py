@@ -1224,3 +1224,126 @@ def test_progress_screenshots_use_quality_70_but_live_frames_keep_55():
     assert bt.SHOT_QUALITY == 70
     live = src[src.index('if cmd == "frame":'):src.index('if cmd == "mouse":')]
     assert 'c.get("quality") or 55' in live  # 라이브 화면 전송은 대역폭을 위해 그대로
+
+
+# ---- 로컬 브라우저 스크린샷: 페이지 원래 폭으로 캡처 (앱은 zoom 으로 축소해 보여 준다) ----
+class _CdpFake:
+    """CDP 호출을 기록하는 가짜 (LocalBrowser._send / _eval 대체)."""
+
+    def __init__(self, metrics, dpr=1.0):
+        self.metrics = metrics
+        self.dpr = dpr
+        self.sent = []
+
+    async def send(self, method, params=None, timeout=30.0):
+        self.sent.append((method, params))
+        if method == "Page.getLayoutMetrics":
+            if isinstance(self.metrics, Exception):
+                raise self.metrics
+            return self.metrics
+        return {"data": "QUJD"}
+
+    async def ev(self, expression, timeout=15.0):
+        if "devicePixelRatio" in expression:
+            return self.dpr
+        return "https://x.com/" if "href" in expression else "T"
+
+
+def _lb(monkeypatch, metrics, dpr=1.0):
+    import app.services.local_browser as lb
+
+    fake = _CdpFake(metrics, dpr)
+    b = lb.LocalBrowser("http://127.0.0.1:9222")
+    monkeypatch.setattr(b, "_send", fake.send)
+    monkeypatch.setattr(b, "_eval", fake.ev)
+    return b, fake
+
+
+def _metrics(css_w, css_h, zoom, page_x=0, page_y=0):
+    return {"cssVisualViewport": {"clientWidth": css_w, "clientHeight": css_h, "pageX": page_x, "pageY": page_y},
+            "visualViewport": {"zoom": zoom}}
+
+
+async def _clip(b, fake):
+    res = await b._dispatch("frame", {"quality": 70})
+    assert res["ok"] and res["img"] == "QUJD"
+    cap = next(p for m, p in fake.sent if m == "Page.captureScreenshot")
+    assert cap["format"] == "jpeg" and cap["quality"] == 70
+    return cap.get("clip")
+
+
+@pytest.mark.asyncio
+async def test_clip_uses_zoomed_visible_area_not_css_size(monkeypatch):
+    # 앱 창 709px 에 1280px 페이지를 zoom 0.554 로 축소, 화면 배율 1 (사용자의 기본 캡처가 709px 이던 환경)
+    b, fake = _lb(monkeypatch, _metrics(1280, 1588, 0.554), dpr=0.554)
+    clip = await _clip(b, fake)
+    assert round(clip["width"]) == 709 and round(clip["height"]) == 880  # 보이는 영역(CSS 1280 이 아니다: 그러면 배경만 넓어진다)
+    assert round(clip["width"] * clip["scale"]) == 1280  # 결과 가로가 페이지 원래 폭
+    assert 1.7 < clip["scale"] < 1.9 and clip["x"] == 0 and clip["y"] == 0
+
+
+@pytest.mark.asyncio
+async def test_clip_does_not_shrink_below_default_on_retina(monkeypatch):
+    # 화면 배율 2: 기본 캡처가 이미 1388px 이라 더 작게(1280) 만들지 않는다 (scale 1)
+    b, fake = _lb(monkeypatch, _metrics(1252.7, 1537.9, 0.554), dpr=1.108)
+    clip = await _clip(b, fake)
+    assert clip["scale"] == 1.0 and round(clip["width"]) == 694 and round(clip["height"]) == 852
+
+
+@pytest.mark.asyncio
+async def test_clip_scroll_offset_is_converted_to_the_same_unit(monkeypatch):
+    b, fake = _lb(monkeypatch, _metrics(1280, 1588, 0.5, page_x=0, page_y=1500), dpr=0.5)
+    clip = await _clip(b, fake)
+    assert clip["y"] == 750 and clip["x"] == 0  # 문서 위치 1500 CSS px × zoom 0.5
+
+
+@pytest.mark.asyncio
+async def test_clip_is_capped_for_very_large_views_and_without_zoom(monkeypatch):
+    b, fake = _lb(monkeypatch, _metrics(3200, 1800, 1.0), dpr=1.0)  # 줌 없음, 매우 큰 창
+    clip = await _clip(b, fake)
+    assert clip["scale"] == 0.5 and clip["width"] * clip["scale"] == 1600  # 가로 상한 1600px
+    b2, fake2 = _lb(monkeypatch, _metrics(1280, 800, 1.0), dpr=1.0)  # 줌 없음: 기본과 같은 크기
+    assert (await _clip(b2, fake2))["scale"] == 1.0
+    b3, fake3 = _lb(monkeypatch, _metrics(1280, 8000, 1.0), dpr=1.0)  # 세로 상한 3000px
+    assert round((await _clip(b3, fake3))["height"] * (await _clip(b3, fake3))["scale"]) == 3000
+
+
+@pytest.mark.asyncio
+async def test_clip_falls_back_to_default_capture_when_unmeasurable(monkeypatch):
+    import app.services.local_browser as lb
+
+    b, fake = _lb(monkeypatch, lb.LocalBrowserError("지원 안 함"))
+    assert await _clip(b, fake) is None
+    b2, fake2 = _lb(monkeypatch, {"cssVisualViewport": {"clientWidth": 0, "clientHeight": 0}})
+    assert await _clip(b2, fake2) is None
+
+
+@pytest.mark.asyncio
+async def test_local_shot_does_not_stall_the_task_when_capture_hangs(monkeypatch):
+    saved = []
+
+    async def hanging(user_id, payload, **kw):
+        if payload["cmd"] == "frame":
+            await asyncio.sleep(60)  # 창이 숨겨져 캡처가 응답하지 않는 상황
+        return {"ok": True, "url": PAGE, "title": "T", "elements": _els(2), "text": "\n".join(f"줄 {i}" for i in range(20)), "sy": 0}
+
+    monkeypatch.setattr(bt, "browser_call", hanging)
+    monkeypatch.setattr(bt, "SHOT_CAPTURE_TIMEOUT", 0.2)
+
+    async def save(*a, **k):
+        saved.append(1)
+        return True
+
+    monkeypatch.setattr(bt, "save_local_shot", save)
+    import app.services.local_browser as lb
+    monkeypatch.setattr(lb, "route_for", lambda *a, **k: _coro(object()))
+
+    async def no_policy(self):
+        return False
+
+    monkeypatch.setattr(bt.BrowserActionTool, "_needs_policy", no_policy)
+    t = bt.BrowserActionTool(user_id="u1", run_tag="r1")
+    started = asyncio.get_running_loop().time()
+    out = await t._arun("click", ref=1)
+    assert out.startswith("URL:") or "화면 변화" in out  # 동작 결과는 정상으로 돌아온다
+    assert asyncio.get_running_loop().time() - started < 3 and saved == []  # 스크린샷은 포기하고 작업은 지연되지 않았다

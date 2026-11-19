@@ -531,6 +531,7 @@ def looks_like_captcha(res: dict) -> bool:
     return bool(_CAPTCHA_TEXT.search(str(res.get("text", ""))[:1500] + " " + str(res.get("title", ""))))
 
 
+SHOT_CAPTURE_TIMEOUT = 8.0  # 로컬 브라우저 화면 캡처를 기다리는 최대 시간(초)
 SHOT_QUALITY = 70  # 작업 진행 스크린샷의 JPEG 품질 (sandbox 데몬의 shot() 과 같은 값)
 SHOT_ACTIONS = ("goto", "click", "press", "back", "select", "scroll")  # 화면이 바뀌는 동작 (type 은 submit 일 때만)
 
@@ -1011,8 +1012,12 @@ class BrowserActionTool(BaseTool):
             basis = self._cur_basis
             if basis is not None and any(r == self.run_tag and same_screen(b, basis) for r, b in self._shot_bases):
                 return  # 이 작업에서 최근에 남긴 3장 중 하나와 같은 화면이다 (회전 배너·커서 같은 작은 차이는 같은 화면): 중복을 남기지 않는다
-            fr = await browser_call(self.user_id, {"cmd": "frame", "quality": SHOT_QUALITY}, timeout=20, sandbox_cid=self.sandbox_cid,
-                                    use_profile=self.use_profile, session_id=self.session_id)
+            # 브라우저 창이 숨겨져 있으면 캡처가 응답하지 않는다: 스크린샷은 부가 기능이라 짧게 기다리고 포기한다 (작업을 지연시키지 않는다)
+            fr = await asyncio.wait_for(
+                browser_call(self.user_id, {"cmd": "frame", "quality": SHOT_QUALITY}, timeout=20, sandbox_cid=self.sandbox_cid,
+                             use_profile=self.use_profile, session_id=self.session_id),
+                SHOT_CAPTURE_TIMEOUT,
+            )
             if fr.get("ok") and fr.get("img"):
                 h = (self.run_tag, hash(fr["img"]))
                 if self._shot_hash == h:

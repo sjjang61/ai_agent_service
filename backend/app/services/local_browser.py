@@ -374,7 +374,11 @@ class LocalBrowser:
         if cmd == "shot":  # sandbox 데몬과 같은 명령. 로컬 브라우저의 화면 저장은 도구(서버) 쪽이 frame 으로 한다
             return {"ok": True}
         if cmd == "frame":  # 현재 화면 JPEG (서버가 사용자의 sandbox 스크린샷 저장소에 남긴다)
-            res = await self._send("Page.captureScreenshot", {"format": "jpeg", "quality": int(c.get("quality") or 55)})
+            params: dict = {"format": "jpeg", "quality": int(c.get("quality") or 55)}
+            clip = await self._page_clip()
+            if clip:
+                params["clip"] = clip
+            res = await self._send("Page.captureScreenshot", params)
             return {"ok": True, "img": res["data"], "url": await self._eval("location.href"), "title": await self._eval("document.title")}
         if cmd == "screenshot":
             import base64
@@ -392,6 +396,35 @@ class LocalBrowser:
             return {"ok": True}  # 사용자의 브라우저는 닫지 않는다
         return {"ok": False, "error": "unknown cmd"}
 
+
+    SHOT_MAX_WIDTH = 1600   # 스크린샷 가로 상한(px)
+    SHOT_MAX_HEIGHT = 3000  # 스크린샷 세로 상한(px)
+
+    async def _page_clip(self) -> Optional[dict]:
+        """현재 보이는 영역을 페이지의 원래 폭(CSS 픽셀, 보통 1280px)으로 선명하게 캡처하기 위한 clip.
+
+        앱의 브라우저는 페이지를 1280px 폭으로 배치한 뒤 창에 맞춰 축소(zoom, 예: 0.554)해 보여 준다. 기본 캡처는 그 축소된 화면 픽셀을
+        그대로 저장해(예: 709px) 작은 글자가 뭉개진다. 이를 키우려면 clip 의 scale 을 올려야 하는데, 주의할 점이 있다:
+        clip 의 좌표·크기 단위는 '축소 전 화면 단위'(= CSS 픽셀 × zoom)이지 CSS 픽셀이 아니다. CSS 크기(1280)로 지정하면 실제 보이는
+        영역(약 700)을 넘어 내용은 그대로이고 배경만 넓어진다. 그래서 보이는 영역을 zoom 으로 환산해 지정한다.
+        scale 은 결과 가로가 CSS 폭(페이지 원래 폭)이 되도록 정하되, 기본 캡처보다 작아지지 않게(Retina 처럼 이미 크면 그대로) 하고 상한을 둔다.
+        스크롤 위치(pageX/pageY)도 같은 단위로 환산한다. 측정이 안 되면 None(기본 캡처)."""
+        try:
+            m = await self._send("Page.getLayoutMetrics")
+            vp = m.get("cssVisualViewport") or m.get("visualViewport") or {}
+            css_w, css_h = float(vp.get("clientWidth") or 0), float(vp.get("clientHeight") or 0)
+            if css_w < 2 or css_h < 2:
+                return None
+            zoom = float((m.get("visualViewport") or {}).get("zoom") or 1) or 1.0
+            dpr = float(await self._eval("window.devicePixelRatio") or zoom)
+            dsf = max(dpr / zoom, 0.5)  # 화면 배율(Retina 2 등). devicePixelRatio = zoom × 화면 배율
+            w, h = css_w * zoom, css_h * zoom  # 보이는 영역 (clip 단위)
+            base_w, base_h = w * dsf, h * dsf  # 기본 캡처의 결과 크기(px)
+            target_w = min(max(css_w, base_w), self.SHOT_MAX_WIDTH)
+            scale = min(target_w / base_w, self.SHOT_MAX_HEIGHT / base_h)
+            return {"x": float(vp.get("pageX") or 0) * zoom, "y": float(vp.get("pageY") or 0) * zoom, "width": w, "height": h, "scale": scale}
+        except (LocalBrowserError, TypeError, ValueError):
+            return None
 
     async def reset_tabs(self) -> None:
         """앱의 브라우저 탭을 모두 닫고 새 탭 하나로 시작한다 (새 요청의 시작). 이 연결도 새 탭에 다시 붙는다."""
