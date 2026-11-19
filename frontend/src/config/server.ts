@@ -81,6 +81,11 @@ declare global {
       browser?: {
         /** 데스크톱 앱 브라우저의 '스크린샷 첨부' 버튼: 현재 화면 PNG(base64). 해제 함수를 돌려준다 */
         onScreenshot?: (cb: (shot: { name: string; data: string }) => void) => () => void
+        /** 작업 진행창 위치: right 면 [채팅][브라우저][작업 진행]. 웹 UI 가 브라우저 자리를 비워 두고 그 위치를 알려 준다 */
+        setPanelSide?: (side: 'left' | 'right') => Promise<void>
+        setSlot?: (rect: { x: number; width: number }) => void
+        /** 브라우저 영역 상태(보이는지, 너비)가 바뀔 때마다 받는다. 해제 함수를 돌려준다 */
+        onLayout?: (cb: (s: { shown: boolean; paneW: number; side: 'left' | 'right' }) => void) => () => void
       }
       chrome?: {
         check: () => Promise<DesktopChromeCheck>

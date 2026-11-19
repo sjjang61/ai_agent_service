@@ -16,7 +16,9 @@ import DocumentsPanel from '../documents/DocumentsPanel'
 import { useDocuments } from '../../hooks/useDocuments'
 import { useRunWatchdog } from '../../hooks/useRunWatchdog'
 import { useEffect, useRef, useState } from 'react'
-import { AppWindow, FileText, FolderOpen, ListChecks, Loader2, Share2 } from 'lucide-react'
+import { AppWindow, ArrowLeftRight, FileText, FolderOpen, ListChecks, Loader2, Share2 } from 'lucide-react'
+import BrowserSlot from '../layout/BrowserSlot'
+import { isDesktopShell, useDesktopLayoutStore, useDesktopLayoutSync } from '../../store/desktopLayoutStore'
 import ShareDialog from './ShareDialog'
 import type { AgentStep } from '../../types/agent'
 import { useChatStore } from '../../store/chatStore'
@@ -92,12 +94,70 @@ export default function ChatLayout() {
   const { data: documents = [] } = useDocuments(currentConversationId)
   const docsProcessing = documents.some((d) => d.status === 'processing')
   const [shareOpen, setShareOpen] = useState(false)
+  // 데스크톱 앱: 작업 진행창을 브라우저의 왼쪽(기본) 또는 오른쪽에 둔다. 오른쪽이면 브라우저 자리를 비워 두고 그 오른쪽에 패널을 놓는다.
+  useDesktopLayoutSync()
+  const desktop = isDesktopShell()
+  const { side: panelSide, browserShown, paneW, setSide } = useDesktopLayoutStore()
+  const slotMode = desktop && panelSide === 'right' && browserShown && paneW > 0
+  const sideToggle = desktop ? (
+    <button
+      onClick={() => setSide(panelSide === 'right' ? 'left' : 'right')}
+      aria-label={panelSide === 'right' ? '작업 진행창을 브라우저 왼쪽으로 이동' : '작업 진행창을 브라우저 오른쪽으로 이동'}
+      title={panelSide === 'right' ? '브라우저 왼쪽으로 이동' : '브라우저 오른쪽으로 이동'}
+      className="flex items-center gap-1 text-[11px] px-1.5 py-1 rounded-[var(--radius-md)] border border-border bg-surface-primary text-content-secondary hover:text-content-primary hover:bg-surface-hover transition-colors cursor-pointer"
+    >
+      <ArrowLeftRight size={12} />
+      {panelSide === 'right' ? '왼쪽으로' : '오른쪽으로'}
+    </button>
+  ) : null
   const headerBtn = (active: boolean) =>
     `flex items-center gap-1.5 px-2.5 py-1.5 rounded-[var(--radius-md)] text-xs border transition-colors cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed ${
       active
         ? 'bg-accent-primary border-accent-primary text-white'
         : 'bg-surface-secondary border-border text-content-secondary hover:text-content-primary hover:bg-surface-hover'
     }`
+
+  // 우측 패널들 (단계 상세가 열려 있으면 그쪽이 우선)
+  const detailPanel = selectedStep ? <SandboxDetailPanel /> : null
+  const stepsPanel =
+    !selectedStep && rightPanel === 'steps' && currentConversationId ? (
+      <RightPanel
+        title="작업 진행"
+        subtitle={running ? '에이전트가 작업하고 있습니다' : '마지막 작업의 진행 내역'}
+        icon={<ListChecks size={15} />}
+        onClose={closePanel}
+        inline={slotMode}
+        headerExtra={sideToggle}
+      >
+        <StepsPanel steps={panelSteps} running={running} outcome={planOutcome(lastAssistant?.content, running)} />
+      </RightPanel>
+    ) : null
+  const otherPanels = (
+    <>
+      {!selectedStep && rightPanel === 'app' && deployedApp && (
+        <RightPanel wide title={deployedApp.name} subtitle="배포된 앱 미리보기" icon={<AppWindow size={15} />} onClose={closePanel}>
+          <AppPreviewPanel key={deployedApp.appId} name={deployedApp.name} launch={() => appsApi.launch(deployedApp.appId)} logs={() => appsApi.logs(deployedApp.appId).then((r) => r.data.logs)} />
+        </RightPanel>
+      )}
+      {!selectedStep && rightPanel === 'artifacts' && (
+        <RightPanel
+          title="Sandbox Artifacts"
+          subtitle={currentConversation?.space_id ? '공용 sandbox (스페이스 대화)' : '이 대화 전용 sandbox'}
+          icon={<FolderOpen size={15} />}
+          onClose={closePanel}
+        >
+          <div className="px-4 py-4">
+            <ArtifactsPanel compact refreshTick={workspaceRefreshTick} conversationId={currentConversationId} />
+          </div>
+        </RightPanel>
+      )}
+      {!selectedStep && rightPanel === 'documents' && currentConversationId && (
+        <RightPanel title="문서 (RAG)" subtitle="이 대화에서 검색해 참고할 문서" icon={<FileText size={15} />} onClose={closePanel}>
+          <DocumentsPanel conversationId={currentConversationId} />
+        </RightPanel>
+      )}
+    </>
+  )
 
   return (
     <div className="flex h-screen bg-surface-primary overflow-hidden">
@@ -196,36 +256,20 @@ export default function ChatLayout() {
       </main>
       {shareOpen && currentConversationId && <ShareDialog conversationId={currentConversationId} onClose={() => setShareOpen(false)} />}
 
-      {/* Right Detail Panel - Step Details */}
-      {selectedStep && <SandboxDetailPanel />}
-
-      {/* Right Panels (단계 상세가 열려 있으면 그쪽이 우선) */}
-      {!selectedStep && rightPanel === 'steps' && currentConversationId && (
-        <RightPanel title="작업 진행" subtitle={running ? '에이전트가 작업하고 있습니다' : '마지막 작업의 진행 내역'} icon={<ListChecks size={15} />} onClose={closePanel}>
-          <StepsPanel steps={panelSteps} running={running} outcome={planOutcome(lastAssistant?.content, running)} />
-        </RightPanel>
-      )}
-      {!selectedStep && rightPanel === 'app' && deployedApp && (
-        <RightPanel wide title={deployedApp.name} subtitle="배포된 앱 미리보기" icon={<AppWindow size={15} />} onClose={closePanel}>
-          <AppPreviewPanel key={deployedApp.appId} name={deployedApp.name} launch={() => appsApi.launch(deployedApp.appId)} logs={() => appsApi.logs(deployedApp.appId).then((r) => r.data.logs)} />
-        </RightPanel>
-      )}
-      {!selectedStep && rightPanel === 'artifacts' && (
-        <RightPanel
-          title="Sandbox Artifacts"
-          subtitle={currentConversation?.space_id ? '공용 sandbox (스페이스 대화)' : '이 대화 전용 sandbox'}
-          icon={<FolderOpen size={15} />}
-          onClose={closePanel}
-        >
-          <div className="px-4 py-4">
-            <ArtifactsPanel compact refreshTick={workspaceRefreshTick} conversationId={currentConversationId} />
-          </div>
-        </RightPanel>
-      )}
-      {!selectedStep && rightPanel === 'documents' && currentConversationId && (
-        <RightPanel title="문서 (RAG)" subtitle="이 대화에서 검색해 참고할 문서" icon={<FileText size={15} />} onClose={closePanel}>
-          <DocumentsPanel conversationId={currentConversationId} />
-        </RightPanel>
+      {/* 단계 상세·작업 진행 패널: 브라우저 오른쪽 배치(slotMode)일 때는 브라우저 자리 뒤에, 아니면 기존 위치(채팅 바로 오른쪽)에 둔다 */}
+      {slotMode ? (
+        <>
+          {otherPanels}
+          <BrowserSlot width={paneW} />
+          {detailPanel}
+          {stepsPanel}
+        </>
+      ) : (
+        <>
+          {detailPanel}
+          {stepsPanel}
+          {otherPanels}
+        </>
       )}
     </div>
   )
