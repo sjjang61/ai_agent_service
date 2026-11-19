@@ -62,6 +62,17 @@ def split_no_alert(text: str) -> tuple[str, bool]:
     return text, False
 
 
+def maybe_suggest_followups(task: ScheduledTask, message_id: str, answer: str, status: str, no_alert: bool) -> bool:
+    """성공한 실행의 결과 답변에 일반 채팅 답변처럼 이어서 물어볼 만한 질문 2개를 붙인다 (백그라운드로 만들어 메시지에 저장).
+    사용자에게 보이지 않을 실행(조건에 해당하지 않아 알리지 않은 것)·실패·취소는 비용만 들어서 만들지 않는다. 붙이기를 시작했으면 True."""
+    if status != "succeeded" or no_alert or not answer.strip() or not settings.ENABLE_FOLLOWUP_SUGGESTIONS:
+        return False
+    from app.services.followup_service import schedule_attach
+
+    schedule_attach(message_id, task.prompt or "", answer)
+    return True
+
+
 def should_notify(task: ScheduledTask, status: str, no_alert: bool, trigger: str = "schedule") -> bool:
     """이번 실행 결과를 알림으로 올릴지. 실패는 방식과 무관하게 항상 알리고, 수동 실행은 사용자가 직접 본다."""
     if status != "succeeded" or trigger != "schedule":
@@ -221,7 +232,8 @@ async def execute_run(run_id: str) -> None:
                 content = full_response + ("\n\n" if full_response else "") + CANCEL_NOTE
             else:
                 content = (full_response + "\n\n" if full_response else "") + f"⚠️ 예약 실행 실패: {error}"
-            await ChatService.save_message(conv_id, "assistant", content, db, agent_steps=agent_steps)
+            saved = await ChatService.save_message(conv_id, "assistant", content, db, agent_steps=agent_steps)
+            maybe_suggest_followups(task, saved.id, full_response, status, no_alert)
             run.summary = _summarize(full_response if full_response else (error or ""))
         except Exception as e:  # noqa: BLE001 — 어떤 경우에도 run 이 'running' 으로 남지 않게 한다
             logger.exception("[scheduler] run 처리 실패 run=%s", run_id)

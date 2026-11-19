@@ -45,3 +45,36 @@ async def suggest_followups(question: str, answer: str) -> list[str]:
     except Exception as e:  # noqa: BLE001
         logger.warning("[followup] 추천 질문 생성 실패: %s", e)
         return []
+
+
+_pending: set = set()  # 끝나기 전에 수거되지 않도록 참조를 잡아 둔다
+
+
+async def attach_suggestions(message_id: str, question: str, answer: str) -> list[str]:
+    """추천 질문을 만들어 메시지의 메타데이터(suggestions)에 저장한다. 응답 스트림이 없는 경우(예약 실행 등)에 쓴다:
+    사용자가 나중에 그 대화를 열면 일반 채팅 답변처럼 마지막 답변 아래에 추천 질문 2개가 보인다. 실패해도 조용히 넘어간다."""
+    items = await suggest_followups(question, answer)
+    if not items:
+        return []
+    try:
+        from app.db.session import AsyncSessionLocal
+        from app.models.message import Message
+
+        async with AsyncSessionLocal() as db:
+            msg = await db.get(Message, message_id)
+            if msg is None:
+                return []
+            msg.metadata_ = {**(msg.metadata_ or {}), "suggestions": items}
+            await db.commit()
+        return items
+    except Exception as e:  # noqa: BLE001
+        logger.warning("[followup] 추천 질문 저장 실패: %s", e)
+        return []
+
+
+def schedule_attach(message_id: str, question: str, answer: str) -> "asyncio.Task":
+    """attach_suggestions 를 백그라운드로 실행한다 (실행 결과 저장과 알림을 기다리게 하지 않는다)."""
+    task = asyncio.create_task(attach_suggestions(message_id, question, answer))
+    _pending.add(task)
+    task.add_done_callback(_pending.discard)
+    return task
