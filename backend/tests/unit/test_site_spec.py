@@ -163,12 +163,12 @@ async def test_draft_seed_sites_are_listed_for_analysis_but_not_given_to_the_age
     from sqlalchemy import select
 
     rows = {r.name: r for r in (await db.execute(select(SiteProfile))).scalars().all()}
-    for name, vert in (("스카이스캐너", "flight"), ("네이버 항공권", "flight"), ("아고다 · 항공권", "flight"), ("아고다 · 호텔", "hotel"),
-                       ("네이버 메일", "mail"), ("다음 메일", "mail"), ("Gmail", "mail"), ("네이버 플레이스", "restaurant"), ("캐치테이블", "restaurant"),
-                       ("네이버 가격비교", "shopping"), ("CGV", "movie"), ("메가박스", "movie"), ("롯데시네마", "movie")):
-        assert rows[name].status == "draft" and rows[name].vertical == vert and rows[name].verified_at is None
-    assert site_tips.for_url("https://www.skyscanner.co.kr/transport/flights/") is None  # 분석을 마쳐 검증됨으로 저장하기 전까지는 주지 않는다
-    assert site_tips.for_url("https://flight.naver.com") is None or site_tips.for_url("https://flight.naver.com").name != "네이버 항공권"
+    for t in site_tips.file_tips():  # md 시드의 상태(verified/draft)가 DB 로 그대로 들어간다. 초안은 시드돼도 검증됨으로 바뀌지 않는다
+        assert rows[t.name].status == t.status and (rows[t.name].vertical or "") == t.vertical, t.name  # 분야가 없는 사이트는 DB 에서 None, md 에서는 ''
+        if t.status == "draft":
+            assert rows[t.name].verified_at is None
+            assert t.name not in {x.name for d in t.domains for x in site_tips.tips_for_url(f"https://www.{d}/")}  # 분석을 마쳐 검증됨으로 저장하기 전까지는 주지 않는다
+    assert any(t.status == "draft" for t in site_tips.file_tips())  # (초안이 하나도 없으면 이 테스트가 아무것도 확인하지 못한다)
 
 
 def test_mail_and_restaurant_verticals_keep_reads_separate_from_state_changes():
@@ -193,11 +193,13 @@ def test_mail_and_restaurant_verticals_keep_reads_separate_from_state_changes():
 
 def test_naver_shopping_draft_starts_from_the_search_url_the_user_gave():
     t = next(x for x in site_tips.file_tips() if x.name == "네이버 가격비교")
-    assert t.status == "draft" and t.vertical == "shopping" and t.domains == ("shopping.naver.com",)
+    assert t.vertical == "shopping" and t.domains == ("shopping.naver.com",)
     assert t.spec["entry"][0]["url"] == "https://search.shopping.naver.com/search/all?query={query}" and t.spec["inputs"]["query"]["param"] == "query"
-    assert site_tips.for_url("https://search.shopping.naver.com/search/all?query=a").name != "네이버 가격비교"  # 초안은 에이전트에게 주지 않는다 (더 넓은 naver.com 요령으로 넘어간다)
+    if t.status == "draft":  # 초안은 에이전트에게 주지 않는다
+        found = site_tips.for_url("https://search.shopping.naver.com/search/all?query=a")
+        assert found is None or found.name != "네이버 가격비교"
     movies = {x.name for x in site_tips.file_tips() if x.vertical == "movie"}
-    assert movies == {"CGV", "메가박스", "롯데시네마"} and all(x.status == "draft" for x in site_tips.file_tips() if x.vertical == "movie")
+    assert movies == {"CGV", "메가박스", "롯데시네마"}
 
 
 # ── 사이트 비활성화(사용 안 함): 에이전트가 그 사이트에 접속하지 않는다 ───────────────

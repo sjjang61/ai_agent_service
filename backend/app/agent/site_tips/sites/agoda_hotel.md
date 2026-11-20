@@ -4,5 +4,6 @@ domains: agoda.com
 vertical: hotel
 aliases: 아고다, agoda
 status: draft
-verified:
+verified: 
 ---
+

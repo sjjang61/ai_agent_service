@@ -23,7 +23,7 @@ def test_every_tip_file_is_well_formed_and_domains_are_unique():
             key = (d, t.vertical)  # 같은 도메인은 분야가 다를 때만 겹칠 수 있다 (아고다 · 항공권 / 아고다 · 호텔)
             assert key not in seen, f"도메인 중복: {d} ({seen[key]} / {t.name})"
             seen[key] = t.name
-        assert "{" not in t.body  # 자리표시자는 '검색어' 문구를 쓴다 (포맷 문자열 오해 방지)
+        # 본문에도 주소 템플릿의 {입력키} 자리표시자가 있을 수 있다 (구조화 spec 과 같은 표기). 에이전트 지침에는 그대로 전달된다.
 
 
 def test_prompt_no_longer_embeds_site_specific_facts():
@@ -191,8 +191,9 @@ async def test_seed_fills_missing_only_and_refresh_serves_db_content(clean_cache
 
 def test_without_cache_files_are_used(clean_cache):
     assert site_tips.all_tips() == tuple(t for t in site_tips.file_tips() if t.status != "draft") and site_tips.all_verticals() == site_tips.file_verticals()
-    assert {t.name for t in site_tips.file_tips() if t.status == "draft"} >= {"스카이스캐너", "네이버 항공권", "아고다 · 항공권", "아고다 · 호텔"}  # 분석 전 자리만 만든 사이트
-    assert site_tips.for_url("https://flight.naver.com") is None or site_tips.for_url("https://flight.naver.com").name != "네이버 항공권"  # 초안은 에이전트에게 주지 않는다
+    for t in site_tips.file_tips():  # 분석 전(draft) 사이트는 어느 주소로도 에이전트에게 주어지지 않는다
+        if t.status == "draft":
+            assert t.name not in {x.name for d in t.domains for x in site_tips.tips_for_url(f"https://www.{d}/")}, t.name
 
 
 def test_for_url_prefers_the_more_specific_domain(clean_cache):
