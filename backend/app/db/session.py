@@ -26,7 +26,7 @@ async def get_session_context():
 
 
 async def init_db():
-    from app.models import user, conversation, message, mcp_config, tool_execution, sandbox, skill, plugin, memory, scheduled_task, space, agent  # noqa
+    from app.models import user, conversation, message, mcp_config, tool_execution, sandbox, skill, plugin, memory, scheduled_task, space, agent, site_profile  # noqa
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
         await conn.run_sync(_ensure_memory_columns)
@@ -41,6 +41,7 @@ async def init_db():
         await conn.run_sync(_ensure_skill_category)
         await conn.run_sync(_ensure_published_app_columns)
         await conn.run_sync(_ensure_schedule_notify_columns)
+        await conn.run_sync(_ensure_site_spec_columns)
 
 
 def _ensure_memory_columns(sync_conn) -> None:
@@ -194,6 +195,22 @@ def _ensure_schedule_notify_columns(sync_conn) -> None:
         },
         "task_runs": {"notify": "BOOLEAN NOT NULL DEFAULT 1"},
     }
+    for table, adds in plan.items():
+        if table not in insp.get_table_names():
+            continue
+        cols = {c["name"] for c in insp.get_columns(table)}
+        for name, ddl in adds.items():
+            if name not in cols:
+                sync_conn.execute(text(f"ALTER TABLE {table} ADD COLUMN {name} {ddl}"))
+
+
+def _ensure_site_spec_columns(sync_conn) -> None:
+    """웹사이트 분석의 구조화 컬럼 보강. 기존 행은 spec 이 비어 있고(NULL), 시드 행은 시작할 때 md 의 spec 으로 채워진다."""
+    from sqlalchemy import inspect, text
+
+    insp = inspect(sync_conn)
+    plan = {"site_verticals": {"spec": "JSON NULL"}, "site_profiles": {"spec": "JSON NULL"},
+            "site_analysis_runs": {"draft_spec": "JSON NULL", "inputs": "JSON NULL", "captcha_handoff": "BOOLEAN NOT NULL DEFAULT 0", "clean_session": "BOOLEAN NOT NULL DEFAULT 0"}}
     for table, adds in plan.items():
         if table not in insp.get_table_names():
             continue

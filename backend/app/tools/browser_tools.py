@@ -760,6 +760,7 @@ class BrowserActionTool(BaseTool):
     session_label: str = ""
     tips_shown: set = Field(default_factory=set)  # 이미 안내한 사이트 요령 (이름). 처음 방문하는 사이트에서만 한 번 덧붙인다
     login_enabled: bool = False
+    captcha_handoff: bool = False  # login_enabled 가 아니어도(쓰기 승인은 계속 막은 채) CAPTCHA 만은 사용자에게 넘겨 해결을 기다린다 (사이트 분석)
     clock: Any = None
     run_tag: str = ""  # 한 번의 브라우저 작업(cli_browser_agent 호출) 식별자. 스크린샷을 이 작업에 묶는다
     last_elements: list = []  # 가장 최근 snapshot 의 요소 (승인 판정에 쓴다)
@@ -987,7 +988,7 @@ class BrowserActionTool(BaseTool):
                     self.last_elements, self.last_url = [], ""
                     return f"Error: {denied}. 이전 페이지로 되돌렸습니다."
             note = ""
-            if self.login_enabled and self.conversation_id and looks_like_captcha(res):
+            if (self.login_enabled or self.captcha_handoff) and self.conversation_id and looks_like_captcha(res):
                 await self._record_shot("captcha")  # CAPTCHA 가 나타난 화면
                 res, note = await self._let_user_solve(res)
             unchanged = self._unchanged_note(action, res)

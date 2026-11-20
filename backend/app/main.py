@@ -9,6 +9,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.services.drive_service import DriveError
 from app.services.function_service import FunctionError
 
+from app.api import site_profiles
 from app.api import admin, apps, store, auth, browser, calendar, channels, connectors, chat, documents, drive, files, functions, mcp, memory, sandbox, agents, schedules, shares, skills, spaces, tools, wiki, ws
 from app.db.session import init_db
 from app.config import settings
@@ -74,6 +75,16 @@ async def lifespan(app: FastAPI):
         await load_db_prices()
     except Exception:
         logging.getLogger(__name__).exception("[pricing] 갱신 단가 로드 실패 (기본 단가표를 사용합니다)")
+
+    from app.services import site_profile_service
+
+    await site_profile_service.init()  # 사이트 요령(분야 지침 + 사이트별 특성): md 시드 → DB → 런타임 캐시
+    try:  # 재시작으로 끊긴 사이트 분석 실행을 닫는다
+        from app.services import site_analysis_service
+
+        await site_analysis_service.mark_interrupted()
+    except Exception:
+        logging.getLogger(__name__).exception("[site_analysis] 중단된 실행 정리 실패")
 
     # Chroma 벡터 스토어 초기화
     from app.core.vector_store import VectorStoreManager
@@ -182,6 +193,7 @@ app.include_router(schedules.router, prefix="/api/schedules", tags=["schedules"]
 app.include_router(channels.router, prefix="/api/channels", tags=["channels"])
 app.include_router(connectors.router, prefix="/api/connectors", tags=["connectors"])
 app.include_router(browser.router, prefix="/api/browser", tags=["browser"])
+app.include_router(site_profiles.router, prefix="/api/site-profiles", tags=["site-profiles"])
 app.include_router(browser.ws_router, prefix="/ws")
 app.include_router(ws.router, prefix="/ws", tags=["ws"])
 

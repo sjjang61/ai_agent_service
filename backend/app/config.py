@@ -236,6 +236,8 @@ class Settings(BaseSettings):
     # 브라우저 에이전트 안전 정책
     # local: 로컬 브라우저(사용자 PC 세션)일 때만 쓰기 동작 승인 / all: sandbox 브라우저에도 적용 / off: 승인 없음
     BROWSER_BLOCK_PAYMENT: bool = True          # 결제·주문 확정 동작은 승인과 무관하게 실행하지 않는다 (결제 직전까지만 진행)
+    SITE_ANALYSIS_TIMEOUT_SECONDS: int = 600    # 웹사이트 분석·재현 검증 한 번의 제한 시간 (사용자 대기 제외 없음)
+    SITE_ANALYSIS_MAX_STEPS: int = 40           # 분석·검증에서 에이전트가 부를 수 있는 도구 호출 수
     BROWSER_APPROVAL_MODE: Literal["local", "all", "off"] = "local"
     BROWSER_APPROVAL_TIMEOUT_SECONDS: int = 300
     BROWSER_BLOCKED_DOMAINS: list[str] = []    # 이 도메인(하위 포함)으로는 이동하지 않는다

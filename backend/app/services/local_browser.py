@@ -7,6 +7,7 @@ Playwright 의 connect_over_cdp 는 Electron 에서 초기화가 멈추므로 �
 조작할 페이지는 Electron 이 알려 주는 targetId(info 서버: CDP 포트 + 1)로 고른다 (UI 창과 구분하기 위함).
 """
 import asyncio
+from contextvars import ContextVar
 import ipaddress
 import json
 import os
@@ -466,10 +467,18 @@ def get_local_browser() -> Optional[LocalBrowser]:
     return _instance
 
 
+# 이 태스크(와 그 하위 태스크)의 브라우저 작업은 로컬 브라우저를 쓰지 않고 sandbox 로 보낸다 (내 로그인·이전 검색 상태가 섞이지 않는 깨끗한 실행, 사이트 분석 옵션)
+_force_sandbox: ContextVar[bool] = ContextVar("force_sandbox", default=False)
+
+
+def force_sandbox() -> None:
+    _force_sandbox.set(True)
+
+
 async def route_for(user_id: str, sid: str = "") -> Optional[LocalBrowser]:
     """이 사용자의 브라우저 작업을 로컬 브라우저로 보낼 수 있으면 그 인스턴스를, 아니면 None(→ sandbox).
     sid 가 있으면 open_session_for 로 만든 병렬 세션 전용 연결을 돌려준다."""
-    if user_id != settings.LOCAL_BROWSER_USER_ID:
+    if user_id != settings.LOCAL_BROWSER_USER_ID or _force_sandbox.get():
         return None
     if sid:
         lb = _sessions.get(sid)

@@ -57,6 +57,8 @@ LLM 에 보내는 모든 프롬프트는 이 폴더의 `.md` 파일입니다. �
 | `wiki_merge.md` | 기존 위키 문서에 새 내용을 합쳐 다시 정리 | `services/wiki_draft.py` |
 | `summary_request.md` | 대화 롤링 요약 | `services/conversation_summary.py` |
 | `image_analysis.md` | `read_image` 의 기본 분석 질문 | `tools/workspace_tools.py` |
+| `site_analysis.md` | 웹사이트 분석: 사이트를 직접 써 보고 사용 설명서 초안(구조 `<구조>` + 예외 `<요령>`)을 만든다 `{{name}}` `{{vertical}}` `{{start_url}}` `{{scenario}}` `{{inputs}}` `{{samples}}` `{{flow}}` `{{checklist}}` `{{current_spec}}` `{{current}}` | `services/site_analysis_service.py` |
+| `site_verify.md` | 사이트 설명서 재현 검증: 샘플 입력값으로 표준 단계를 수행하고 단계별 판정(`<검증>`)을 보고 `{{name}}` `{{start_url}}` `{{scenario}}` `{{samples}}` `{{flow}}` | `services/site_analysis_service.py` |
 | `scheduled_run.md` | 예약 실행 때 사용자 메시지 앞에 붙는 머리말 | `services/task_runner.py` |
 | `attachment_note.md` | 첨부 파일·폴더 위치 안내 (사용자 메시지 뒤에 붙음) | `services/attachment_service.py` |
 | `reference_context.md` `reference_item.md` `reference_note.md` | 질문에 붙인 스페이스 페이지·이전 대화(참조 자료) 블록, 지난 턴의 참조 제목 한 줄 | `services/reference_service.py` |
