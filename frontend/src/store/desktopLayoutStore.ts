@@ -1,9 +1,10 @@
 import { useEffect } from 'react'
 import { create } from 'zustand'
 
-/** 데스크톱 앱에서 작업 진행창(우측 패널)이 브라우저의 왼쪽/오른쪽 어디에 있는지 (기본: 오른쪽). 웹 브라우저에서는 쓰지 않는다. */
+/** 데스크톱 앱에서 작업 진행창(우측 패널)이 브라우저의 왼쪽/오른쪽 어디에 있는지 (기본: 왼쪽). 웹 브라우저에서는 쓰지 않는다. */
 export type PanelSide = 'left' | 'right'
-const KEY = 'steps-panel-side'
+// 기본 위치를 왼쪽으로 정하면서 키를 바꿔, 이전에 저장된 값(오른쪽)이 남아 기본값을 가리지 않게 한다
+const KEY = 'steps-panel-side-v2'
 
 /** 기본은 왼쪽 ([채팅][작업 진행][브라우저]). 사용자가 오른쪽을 고른 경우에만 오른쪽이다. */
 const readSide = (): PanelSide => {

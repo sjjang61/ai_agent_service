@@ -79,6 +79,10 @@ declare global {
   interface Window {
     desktop?: {
       browser?: {
+        /** 앱 브라우저를 보이게 하고 화면을 나누는 비율(0.2~0.8)을 정한다 */
+        setSplit?: (ratio: number) => Promise<void>
+        /** 앱 브라우저에서 http(s) 주소를 연다 */
+        navigate?: (url: string) => Promise<void>
         /** 데스크톱 앱 브라우저의 '스크린샷 첨부' 버튼: 현재 화면 PNG(base64). 해제 함수를 돌려준다 */
         onScreenshot?: (cb: (shot: { name: string; data: string }) => void) => () => void
         /** 작업 진행창 위치: right 면 [채팅][브라우저][작업 진행]. 웹 UI 가 브라우저 자리를 비워 두고 그 위치를 알려 준다 */

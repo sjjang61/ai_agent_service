@@ -4,7 +4,7 @@ import MessageList from './MessageList'
 import InputBar from './InputBar'
 import StepsPanel from './StepsPanel'
 import { buildTaskItems } from './taskItems'
-import { planOutcome } from './TodoCard'
+import { extractLatestTodos, planOutcome } from './TodoCard'
 import SandboxDetailPanel from '../sandbox/SandboxDetailPanel'
 import ArtifactsPanel from '../sandbox/ArtifactsPanel'
 import WelcomeScreen from './WelcomeScreen'
@@ -99,6 +99,8 @@ export default function ChatLayout() {
   const desktop = isDesktopShell()
   const { side: panelSide, browserShown, paneW, setSide } = useDesktopLayoutStore()
   const slotMode = desktop && panelSide === 'right' && browserShown && paneW > 0
+  // 브라우저가 떠 있는데 작업 계획(todo)이 없으면 작업 진행창은 열지 않는다 (브라우저 옆 자리를 비워 브라우저를 넓게 쓴다)
+  const hidePlanlessSteps = desktop && browserShown && !(extractLatestTodos(panelSteps)?.length)
   const sideToggle = desktop ? (
     <button
       onClick={() => setSide(panelSide === 'right' ? 'left' : 'right')}
@@ -120,7 +122,7 @@ export default function ChatLayout() {
   // 우측 패널들 (단계 상세가 열려 있으면 그쪽이 우선)
   const detailPanel = selectedStep ? <SandboxDetailPanel /> : null
   const stepsPanel =
-    !selectedStep && rightPanel === 'steps' && currentConversationId ? (
+    !selectedStep && rightPanel === 'steps' && currentConversationId && !hidePlanlessSteps ? (
       <RightPanel
         title="작업 진행"
         subtitle={running ? '에이전트가 작업하고 있습니다' : '마지막 작업의 진행 내역'}

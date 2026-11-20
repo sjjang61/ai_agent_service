@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
-import { Plus } from 'lucide-react'
+import { ChevronDown, ChevronRight, Plus } from 'lucide-react'
 import { siteProfilesApi, type SiteProfiles } from '../api/siteProfiles'
 import SettingsPage from '../components/skills/SettingsPage'
 import { T } from '../components/skills/typography'
@@ -13,6 +13,7 @@ type Selection = { kind: 'site'; id: string } | { kind: 'vertical'; key: string 
 
 export default function SiteProfilesPage() {
   const [sel, setSel] = useState<Selection>(null)
+  const [open, setOpen] = useState<Record<string, boolean>>({}) // 분야별 펼침 (기본: 접힘)
   const { data, isLoading } = useQuery<SiteProfiles>({
     queryKey: ['site-profiles'],
     queryFn: async () => (await siteProfilesApi.list()).data,
@@ -20,6 +21,10 @@ export default function SiteProfilesPage() {
   const verticals = data?.verticals ?? []
   const sites = data?.sites ?? []
   const noVertical = sites.filter((s) => !s.vertical || !verticals.some((v) => v.key === s.vertical))
+
+  const selVertical = sel?.kind === 'vertical' ? sel.key : sel?.kind === 'site' ? sites.find((x) => x.id === sel.id)?.vertical : sel?.kind === 'new-site' ? sel.vertical : null
+  const isOpen = (key: string) => open[key] ?? selVertical === key // 고른 항목이 속한 분야는 처음부터 펼쳐 둔다
+  const toggle = (key: string) => setOpen((o) => ({ ...o, [key]: !isOpen(key) }))
 
   const off = (key: string) => sites.filter((s) => s.vertical === key && !s.enabled).length
   const rowCls = (on: boolean) =>
@@ -63,22 +68,39 @@ export default function SiteProfilesPage() {
           {isLoading && <p className={T.itemDesc}>불러오는 중…</p>}
           {verticals.map((v) => (
             <div key={v.key} className="space-y-0.5">
-              <button onClick={() => setSel({ kind: 'vertical', key: v.key })} className={rowCls(sel?.kind === 'vertical' && sel.key === v.key)}>
+              <button onClick={() => { setSel({ kind: 'vertical', key: v.key }); setOpen((o) => ({ ...o, [v.key]: true })) }} className={rowCls(sel?.kind === 'vertical' && sel.key === v.key)}>
+                <span
+                  role="button"
+                  aria-label={isOpen(v.key) ? '접기' : '펼치기'}
+                  aria-expanded={isOpen(v.key)}
+                  onClick={(e) => { e.stopPropagation(); toggle(v.key) }}
+                  className="flex-shrink-0 text-content-tertiary hover:text-content-primary"
+                >
+                  {isOpen(v.key) ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+                </span>
                 <span className="truncate flex-1 font-medium text-content-primary">{v.name}</span>
                 <span className="text-xs text-content-tertiary" title={off(v.key) ? `사용 안 함 ${off(v.key)}개 포함` : undefined}>
                   {v.site_count}{off(v.key) > 0 && <span className="text-red-500"> (끔 {off(v.key)})</span>}
                 </span>
               </button>
-              {siteRows(sites.filter((s) => s.vertical === v.key))}
-              <button onClick={() => setSel({ kind: 'new-site', vertical: v.key })} className="pl-6 pr-3 py-1 text-xs text-content-tertiary hover:text-content-primary border-none bg-transparent cursor-pointer text-left">
-                + 이 분야에 사이트 추가
-              </button>
+              {isOpen(v.key) && (
+                <>
+                  {siteRows(sites.filter((s) => s.vertical === v.key))}
+                  <button onClick={() => setSel({ kind: 'new-site', vertical: v.key })} className="pl-6 pr-3 py-1 text-xs text-content-tertiary hover:text-content-primary border-none bg-transparent cursor-pointer text-left">
+                    + 이 분야에 사이트 추가
+                  </button>
+                </>
+              )}
             </div>
           ))}
           {noVertical.length > 0 && (
             <div className="space-y-0.5">
-              <div className="px-3 py-1.5 text-[13px] font-medium text-content-primary">분야 없음</div>
-              {siteRows(noVertical)}
+              <button onClick={() => toggle('')} className={rowCls(false)}>
+                {isOpen('') ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+                <span className="truncate flex-1 font-medium text-content-primary">분야 없음</span>
+                <span className="text-xs text-content-tertiary">{noVertical.length}</span>
+              </button>
+              {isOpen('') && siteRows(noVertical)}
             </div>
           )}
           {data && <p className="text-xs text-content-tertiary px-1">확인한 지 {data.stale_days}일이 지나면 ‘오래됨’으로 표시합니다. 오래된 요령도 에이전트에게는 계속 제공됩니다.</p>}
