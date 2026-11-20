@@ -517,7 +517,8 @@ async def run_with_budget(coro, budget: float, clock: WaitClock):
 _CAPTCHA_URL = re.compile(r"captcha|/px/|recaptcha|hcaptcha|challenge-platform|/cdn-cgi/challenge", re.I)
 _CAPTCHA_TEXT = re.compile(
     r"are you a (person|human) or a robot|press (&|and) hold|press and hold|verify (that )?you('re| are) (a )?human|"
-    r"i'?m not a robot|prove you('re| are) (a )?human|로봇이 아닙니다|사람인지 확인|보안 문자|캡차|자동 입력 방지|버튼을 (길게|꾹) ?누",
+    r"i'?m not a robot|prove you('re| are) (a )?human|로봇이 아닙니다|사람인지 확인|보안 문자|캡차|자동 입력 방지|버튼을 (길게|꾹) ?누|"
+    r"봇 확인 절차|봇의 동작과 유사|봇이 아님을|사용자 활동 검토",
     re.I,
 )
 

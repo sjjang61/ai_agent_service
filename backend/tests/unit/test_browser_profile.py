@@ -56,7 +56,10 @@ def test_looks_like_captcha():
     assert looks_like_captcha({"ok": True, "url": "https://www.skyscanner.co.kr/sttc/px/captcha-v2/index.html?url=x", "text": ""})
     assert looks_like_captcha({"ok": True, "url": "https://x.com/", "text": "Are you a person or a robot?\nPress & Hold"})
     assert looks_like_captcha({"ok": True, "url": "https://x.com/", "text": "자동 입력 방지 문자를 입력하세요"})
+    # 지마켓의 봇 확인 안내 (주소는 평범하고 문구만 있다)
+    assert looks_like_captcha({"ok": True, "url": "https://www.gmarket.co.kr/", "title": "G마켓", "text": "사용자 활동 검토 요청 및 안내 고객님의 사이트 내 활동이 봇의 동작과 유사해 보입니다. 현재 간단한 봇 확인 절차가 진행되고 있습니다."})
     assert not looks_like_captcha({"ok": True, "url": "https://x.com/search", "text": "항공권 검색 결과 " * 50})
+    assert not looks_like_captcha({"ok": True, "url": "https://x.com/", "text": "챗봇 상담을 시작하세요. 로봇 청소기 최저가 비교"})  # 일반 페이지의 '봇' 은 걸리지 않는다
     assert not looks_like_captcha({"ok": False, "error": "captcha"})
 
 
