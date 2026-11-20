@@ -3,7 +3,7 @@
 눌러 볼 수 있는 요소에 data-agent-ref 번호를 매겨 목록으로 돌려준다. 수집 대상:
 - 시맨틱 요소: a/button/input/select/textarea/summary, role=button·link·checkbox·tab·menuitem*·option·radio·switch·combobox·treeitem, onclick
 - 시맨틱 표시는 없지만 눌리는 요소(커서가 pointer 인 작은 div/li/span 등): 커스텀 드롭다운의 항목이 대표적이다
-요소가 상한을 넘으면 열려 있는 팝업(listbox·dialog·menu·모달·드롭다운) 안의 요소 → 지금 화면에 보이는 요소 → 나머지 순으로 담는다: 팝업은 DOM 맨 끝에 붙는 일이 많아 잘리기 쉽다.
+요소가 상한을 넘으면 열려 있는 팝업(listbox·dialog·menu·모달·드롭다운)·방금 새로 나타난 요소 → 지금 화면의 버튼·입력칸 등 → 지금 화면의 링크 → 지금 화면의 커서만 pointer 인 일반 요소 → 나머지 순으로 담는다: 팝업은 DOM 맨 끝에 붙는 일이 많아 잘리기 쉽고, 목록 화면에서는 줄마다 반복되는 요소가 상한을 채워 조작 요소나 메일 제목 링크가 잘리기 쉽다.
 본문에서 취소선이 그어진 글자(이전 가격 등)는 ~~글자~~ 로 표시한다.
 이름이 없는 요소에는 무엇인지 알 수 있는 단서(label ← 아이콘 제목·연결 라벨, tid ← data-testid 류, ctx ← 가까운 짧은 영역의 글자, cls ← 의미 있는 class 단어)를 붙인다.
 """
@@ -33,12 +33,27 @@ SNAP_JS = r"""(() => {
   for (const el of extra) if (!extra.some(a => a !== el && a.contains(el))) { cands.push(el); seen.add(el); }
 
   cands.sort((a, b) => a === b ? 0 : (a.compareDocumentPosition(b) & 4 ? -1 : 1));   // 문서 순서
+  // 직전 수집 이후 새로 나타난 요소(방금 눌러서 열린 패널·메뉴): 소수일 때만 팝업처럼 앞에 두고, 이후 3번의 수집까지 유지한다
+  // (누른 직후의 결과와 그다음 snapshot 에서 같은 요소가 보이도록). 화면 전체가 바뀐 경우(이동)에는 모두 새것이라 쓰지 않는다
+  const prev = window.__agentSeen; const ttl = window.__agentFresh || new Map();
+  for (const [el, t] of [...ttl]) { if (!el.isConnected || t <= 1) ttl.delete(el); else ttl.set(el, t - 1); }
+  if (prev) {
+    const added = cands.filter(el => !prev.has(el));
+    if (added.length <= 40) for (const el of added) ttl.set(el, 3);
+  }
+  const fresh = new Set(cands.filter(el => ttl.has(el)));
+  window.__agentSeen = new WeakSet(cands); window.__agentFresh = ttl;
   let picked = cands;
-  if (cands.length > MAX) {   // 상한을 넘으면 열린 팝업 안의 요소 → 지금 화면에 보이는 요소 → 나머지 순으로 담는다
-    const isPop = new Set(cands.filter(el => el.closest(overlaySel)));
+  if (cands.length > MAX) {   // 상한을 넘으면 열린 팝업·방금 나타난 요소 → 지금 화면의 버튼·입력칸 등 → 지금 화면의 링크 → 일반 요소 → 나머지 순으로 담는다.
+    const isPop = new Set(cands.filter(el => el.closest(overlaySel) || fresh.has(el)));
     const onScreen = (el) => { const r = el.getBoundingClientRect(); return r.bottom > 0 && r.top < window.innerHeight; };
-    const view = new Set(cands.filter(el => !isPop.has(el) && onScreen(el)));
-    picked = cands.filter(el => isPop.has(el)).concat(cands.filter(el => view.has(el)), cands.filter(el => !isPop.has(el) && !view.has(el))).slice(0, MAX);
+    const view = cands.filter(el => !isPop.has(el) && onScreen(el));
+    // 이름 없는 체크박스(목록 줄마다 하나씩 있는 선택 칸)와 시맨틱 표시 없이 커서만 pointer 인 일반 요소(div·span·li 등)는 수십~수백 개일 수 있어서 맨 뒤로 둔다
+    const bare = (el) => el.tagName === 'INPUT' && el.type === 'checkbox' && !el.getAttribute('aria-label') && !el.title && !(el.labels && el.labels.length);
+    const generic = (el) => !['A', 'BUTTON', 'INPUT', 'SELECT', 'TEXTAREA', 'SUMMARY'].includes(el.tagName) && !el.getAttribute('role') && !el.hasAttribute('onclick');
+    const rank = (el) => (bare(el) || generic(el)) ? 2 : el.tagName === 'A' ? 1 : 0;
+    const g = [0, 1, 2].map(r => new Set(view.filter(el => rank(el) === r)));
+    picked = cands.filter(el => isPop.has(el)).concat(cands.filter(el => g[0].has(el)), cands.filter(el => g[1].has(el)), cands.filter(el => g[2].has(el)), cands.filter(el => !isPop.has(el) && !view.includes(el))).slice(0, MAX);
     picked.sort((a, b) => a === b ? 0 : (a.compareDocumentPosition(b) & 4 ? -1 : 1));   // 번호는 문서 순서로 다시 매긴다
   }
 

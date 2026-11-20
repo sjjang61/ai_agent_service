@@ -290,7 +290,7 @@ def test_daemon_shoots_on_screen_changes_and_events():
     assert "shot(" in sel  # select 도 남긴다
     scr = src[src.index('if cmd == "scroll"'):src.index('if cmd == "wait"')]
     assert "shot(" in scr  # scroll 도 남긴다
-    assert bt.DAEMON_VERSION == 14 and "VERSION = 9333, 900, 14" in src
+    assert bt.DAEMON_VERSION == 15 and "VERSION = 9333, 900, 15" in src
 
 
 class _LocalFake:
@@ -1347,3 +1347,13 @@ async def test_local_shot_does_not_stall_the_task_when_capture_hangs(monkeypatch
     out = await t._arun("click", ref=1)
     assert out.startswith("URL:") or "화면 변화" in out  # 동작 결과는 정상으로 돌아온다
     assert asyncio.get_running_loop().time() - started < 3 and saved == []  # 스크린샷은 포기하고 작업은 지연되지 않았다
+
+
+def test_snapshot_over_cap_keeps_controls_and_new_elements_before_links():
+    """링크가 수백 개인 목록 화면에서도 조작 요소(버튼·입력칸)와 방금 열린 패널의 요소가 상한에 밀려 잘리지 않는다."""
+    from app.services.browser_snapshot import SNAP_JS
+
+    assert "window.__agentSeen" in SNAP_JS and "added.length <= 40" in SNAP_JS  # 방금 나타난 요소는 소수일 때만 앞에 둔다
+    assert "const rank" in SNAP_JS and "el.tagName === 'A' ? 1 : 0" in SNAP_JS  # 화면 안에서는 버튼·입력칸 → 링크 → 일반 요소 순
+    order = SNAP_JS.index("cands.filter(el => isPop.has(el))")
+    assert order < SNAP_JS.index("g[0].has(el)") < SNAP_JS.index("g[1].has(el)") < SNAP_JS.index("g[2].has(el)")
