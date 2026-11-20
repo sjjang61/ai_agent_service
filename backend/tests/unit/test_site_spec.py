@@ -163,7 +163,38 @@ async def test_draft_seed_sites_are_listed_for_analysis_but_not_given_to_the_age
     from sqlalchemy import select
 
     rows = {r.name: r for r in (await db.execute(select(SiteProfile))).scalars().all()}
-    for name, vert in (("스카이스캐너", "flight"), ("네이버 항공권", "flight"), ("아고다 · 항공권", "flight"), ("아고다 · 호텔", "hotel")):
+    for name, vert in (("스카이스캐너", "flight"), ("네이버 항공권", "flight"), ("아고다 · 항공권", "flight"), ("아고다 · 호텔", "hotel"),
+                       ("네이버 메일", "mail"), ("다음 메일", "mail"), ("Gmail", "mail"), ("네이버 플레이스", "restaurant"), ("캐치테이블", "restaurant"),
+                       ("네이버 가격비교", "shopping"), ("CGV", "movie"), ("메가박스", "movie"), ("롯데시네마", "movie")):
         assert rows[name].status == "draft" and rows[name].vertical == vert and rows[name].verified_at is None
     assert site_tips.for_url("https://www.skyscanner.co.kr/transport/flights/") is None  # 분석을 마쳐 검증됨으로 저장하기 전까지는 주지 않는다
     assert site_tips.for_url("https://flight.naver.com") is None or site_tips.for_url("https://flight.naver.com").name != "네이버 항공권"
+
+
+def test_mail_and_restaurant_verticals_keep_reads_separate_from_state_changes():
+    mail, rest = site_tips.vertical("mail"), site_tips.vertical("restaurant")
+    # 메일: 발송·삭제 등은 쓰기 단계(분석·검증에서 시험하지 않는다), 영구 삭제는 항상 막는다, 메일 본문은 신뢰할 수 없는 데이터로 다룬다
+    assert [s["key"] for s in mail.spec["flow"] if s["write"]] == ["act"] and "영구 삭제" in mail.stop_words
+    assert "신뢰할 수 없는 데이터" in mail.body and "개인정보" in mail.checklist  # 분석 중 메일 내용을 기록하지 않는다
+    # 식당 예약: 예약자 정보 입력은 쓰기 단계, 예약 확정·예약금 결제는 막는다
+    assert [s["key"] for s in rest.spec["flow"] if s["write"]] == ["form"] and {"예약 확정", "예약금 결제"} <= set(rest.stop_words)
+    # 키워드는 서로, 그리고 다른 분야와 겹치지 않는다 (겹치면 한 작업에 엉뚱한 분야 지침이 붙는다)
+    owners: dict = {}
+    for v in site_tips.file_verticals():
+        for k in v.keywords:
+            assert k not in owners, f"키워드 겹침: {k} ({owners[k]} / {v.key})"
+            owners[k] = v.key
+    assert {t.name for t in site_tips.file_tips() if t.vertical == "mail"} == {"네이버 메일", "다음 메일", "Gmail"}
+    assert {t.name for t in site_tips.file_tips() if t.vertical == "restaurant"} == {"네이버 플레이스", "캐치테이블"}
+    # 작업 문장으로 분야가 골라진다
+    assert [v.key for v in site_tips.match_verticals("받은편지함에서 안 읽은 메일 확인해줘")] == ["mail"]
+    assert [v.key for v in site_tips.match_verticals("강남 식당 예약 가능한 시간 알려줘")] == ["restaurant"]
+
+
+def test_naver_shopping_draft_starts_from_the_search_url_the_user_gave():
+    t = next(x for x in site_tips.file_tips() if x.name == "네이버 가격비교")
+    assert t.status == "draft" and t.vertical == "shopping" and t.domains == ("shopping.naver.com",)
+    assert t.spec["entry"][0]["url"] == "https://search.shopping.naver.com/search/all?query={query}" and t.spec["inputs"]["query"]["param"] == "query"
+    assert site_tips.for_url("https://search.shopping.naver.com/search/all?query=a").name != "네이버 가격비교"  # 초안은 에이전트에게 주지 않는다 (더 넓은 naver.com 요령으로 넘어간다)
+    movies = {x.name for x in site_tips.file_tips() if x.vertical == "movie"}
+    assert movies == {"CGV", "메가박스", "롯데시네마"} and all(x.status == "draft" for x in site_tips.file_tips() if x.vertical == "movie")

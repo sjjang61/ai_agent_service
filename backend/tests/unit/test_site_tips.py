@@ -110,7 +110,7 @@ def test_every_vertical_file_is_well_formed_and_sites_reference_existing_vertica
     assert len({v.key for v in verts}) == len(verts)
     for v in verts:
         assert v.key == v.key.lower() and v.name and v.keywords and v.body and v.checklist, v.key
-        assert "결제" in v.body, f"{v.key}: 결제 직전에 멈춘다는 지침이 있어야 한다"
+        assert any(w in v.body for w in ("결제", "발송")), f"{v.key}: 결제(메일은 발송) 직전에 멈춘다는 지침이 있어야 한다"
         assert site_tips.CHECKLIST_HEADING not in v.body  # 체크리스트는 에이전트 지침에 섞이지 않는다
     for t in site_tips.file_tips():
         assert not t.vertical or t.vertical in {v.key for v in verts}, f"{t.name}: 없는 분야 {t.vertical}"
