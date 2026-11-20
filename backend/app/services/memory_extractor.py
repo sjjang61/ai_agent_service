@@ -28,6 +28,18 @@ _SECRET_RE = re.compile(
     re.IGNORECASE,
 )
 _KEY_RE = re.compile(r"[^a-z0-9_]+")
+_REQUEST_END_RE = re.compile(r"(해\s?줘|해\s?주세요|해\s?줄래|만들어\s?줘|만들어\s?주세요|알려\s?줘|알려\s?주세요)[.!?\s]*$")
+
+
+def restates_request(value: str, user_message: str) -> bool:
+    """단기 메모리 값이 사용자의 요청 문장을 그대로 옮긴 것인지. 요청은 대화 기록에 이미 있어 저장할 필요가 없다."""
+    v = re.sub(r"\s+", "", value)
+    u = re.sub(r"\s+", "", user_message)
+    if not v:
+        return False
+    if v in u or (len(u) >= 8 and u in v):
+        return True
+    return bool(_REQUEST_END_RE.search(value.strip()))
 
 
 def _content_text(content) -> str:
@@ -140,6 +152,8 @@ class MemoryExtractor:
 
         saved: List[dict] = []
         for it in items:
+            if it["type"] == "short" and restates_request(it["value"], user_message):
+                continue  # 요청 문장을 옮겨 적은 단기 메모리는 불필요하다
             try:
                 action = await MemoryExtractor._store(user_id, conversation_id, it, db)
             except Exception as e:

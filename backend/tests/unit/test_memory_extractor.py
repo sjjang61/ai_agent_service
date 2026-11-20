@@ -81,3 +81,12 @@ def test_expiry_from_edges():
     t = date(2026, 11, 6)
     assert expiry_from("2026-11-06", t) is not None and expiry_from("2026-11-06", t) != "past"   # 오늘까지는 유효
     assert expiry_from("2026-11-05", t) == "past" and expiry_from("", t) is None
+
+
+def test_restates_request_filters_task_echo():
+    from app.services.memory_extractor import restates_request
+
+    msg = "web-app-initializer 스킬을 이용해서, 뿌요뿌요 게임을 만들어줘."
+    assert restates_request("web-app-initializer 스킬을 이용해서, 뿌요뿌요 게임을 만들어줘. ", msg)
+    assert restates_request("뿌요뿌요 게임을 만들어줘", "다른 말")           # 요청형 어미
+    assert not restates_request("게임은 canvas 로 만들기로 결정", msg)
