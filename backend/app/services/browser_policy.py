@@ -29,6 +29,43 @@ RISKY_LABEL = re.compile(
 # 이 주소 경로에서의 Enter·제출은 주문/결제 단계일 수 있어 확인한다
 RISKY_PATH = re.compile(r"checkout|/order|payment|/pay\b|/cart|basket|결제|주문|장바구니", re.I)
 
+# 결제를 확정하는 동작의 라벨·주소. 승인(ASK_ALWAYS)과 달리 사용자가 승인해도 실행하지 않는다: 이 에이전트는 결제 직전까지만 진행하고 멈춘다.
+PAYMENT_LABEL = re.compile(
+    r"결제\s*하기|결제\s*진행|결제\s*하러|지금\s*결제|바로\s*결제|최종\s*결제|결제\s*완료|결제\s*요청|\d[\d,]*\s*원\s*결제|무통장\s*입금\s*(신청|하기)|"
+    r"pay\s*now|pay\s*(and|&)\s*(book|reserve|order)|place\s*(your\s*)?order|complete\s*(my\s*)?(purchase|order|payment|booking)|"
+    r"confirm\s*(and\s*)?(pay|purchase|booking)|book\s*(now\s*)?(and|&)\s*pay",
+    re.I,
+)
+PAYMENT_URL = re.compile(r"/(payments?|pay|checkout/(pay|payment)|order/pay|pay[-_]?(sheet|process|complete))(/|$)", re.I)
+MAX_BUTTON_LABEL = 30  # 이보다 긴 문구는 설명문이라 버튼 라벨로 보지 않는다
+
+
+def payment_stop(payload: dict, elements: list[dict], url: str, words: tuple = (), url_words: tuple = ()) -> Optional[str]:
+    """결제·주문 확정으로 이어지는 동작이면 에이전트에게 돌려줄 중단 안내를, 아니면 None.
+    words/url_words 는 분야(쇼핑·영화·항공·호텔)가 더하는 '누르지 않을 라벨'과 '이동하지 않을 주소 문구'."""
+    if not settings.BROWSER_BLOCK_PAYMENT:
+        return None
+    action = payload.get("cmd") or payload.get("action") or ""
+    target = ""
+    if action == "goto":
+        target_url = str(payload.get("url") or "")
+        path = urlparse(target_url).path or ""
+        if PAYMENT_URL.search(path) or any(w and w in target_url.lower() for w in url_words):
+            target = target_url[:120]
+    elif action == "click":
+        el = _element(elements, payload.get("ref"))
+        label = ((el or {}).get("label") or (el or {}).get("value") or (el or {}).get("name") or "").strip()
+        if label and len(label) <= MAX_BUTTON_LABEL and (PAYMENT_LABEL.search(label) or any(w and w in label.lower() for w in words)):
+            target = label
+    elif action == "press" and str(payload.get("key") or "Enter").lower() in ("enter", "return") or (action == "type" and payload.get("submit")):
+        if PAYMENT_URL.search(urlparse(url).path or "") or any(w and w in (url or "").lower() for w in url_words):
+            target = "결제 화면에서의 제출"
+    if not target:
+        return None
+    return (f"[결제 직전] “{target}” 은(는) 결제·주문 확정으로 이어지는 동작이라 실행하지 않았습니다. 이 에이전트는 결제 직전까지만 진행합니다. "
+            "우회하거나 다른 방법으로 결제하지 마세요. 지금까지 확인한 내용(상품·가격·옵션·선택한 항목)과 현재 화면 주소를 최종 보고하고 멈추세요. 결제는 사용자가 직접 진행합니다.")
+
+
 _SENSITIVE_TOKENS = {
     "paypal", "stripe", "checkout", "toss", "tosspayments", "kakaopay", "naverpay", "payco", "pay", "payment", "payments",
     "wallet", "venmo", "alipay",

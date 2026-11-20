@@ -851,19 +851,16 @@ class BrowserActionTool(BaseTool):
             src = brief_src if brief_src else out
             brief = (src or "(중단됨)").split("\n")[0][:200] if not str(src).startswith("URL:") else " · ".join(str(src).split("\n")[:2])[:200]
             side_events.emit(self.conversation_id, {"type": "tool_result", "tool": "browser_action", "output": brief,
-                                                    "success": not str(out).startswith("Error"), "call_id": call_id, "agent": self.agent_label})
+                                                    "success": not str(out).startswith(("Error", "[결제 직전]")), "call_id": call_id, "agent": self.agent_label})
 
     def _with_site_tip(self, out: str) -> str:
-        """처음 방문하는 사이트에 사이트 요령이 있으면 이동 결과 끝에 한 번만 덧붙인다 (시작할 때 놓친 사이트, 링크로 넘어간 사이트)."""
+        """처음 방문하는 사이트에 사이트 요령(과 아직 안내하지 않은 분야 지침)이 있으면 이동 결과 끝에 한 번만 덧붙인다 (시작할 때 놓친 사이트, 링크로 넘어간 사이트)."""
         if not out or str(out).startswith("Error") or not self.last_url:
             return out
         from app.agent import site_tips
 
-        tip = site_tips.for_url(self.last_url)
-        if tip is None or tip.name in self.tips_shown:
-            return out
-        self.tips_shown.add(tip.name)
-        return f"{out}\n\n{tip.block()}"
+        text = site_tips.jit_text(self.last_url, self.tips_shown)
+        return f"{out}\n\n{text}" if text else out
 
     async def _select_custom(self, trigger: dict, option: str) -> str:
         """<select> 가 아닌 드롭다운에서 항목을 고른다: 여는 버튼을 누르고 → 화면을 다시 읽고 → 새로 나타난 항목 중 이름이 맞는 것을 누른다.
@@ -871,7 +868,7 @@ class BrowserActionTool(BaseTool):
         ref = trigger.get("ref")
         before = {target_identity(e) for e in self.last_elements}
         opened = await self._arun_action("click", ref=ref)
-        if opened.startswith(("Error", "[사용자가", "[건너뜀]")):
+        if opened.startswith(("Error", "[사용자가", "[건너뜀]", "[결제 직전]")):
             return opened
         seen = await self._arun_action("snapshot")
         if seen.startswith("Error"):
@@ -953,6 +950,7 @@ class BrowserActionTool(BaseTool):
     async def _act(self, action: str, url: Optional[str] = None, ref: Optional[int] = None, text: Optional[str] = None,
                    key: Optional[str] = None, direction: Optional[str] = None, submit: bool = False,
                    seconds: Optional[float] = None) -> str:
+        from app.agent import site_tips
         from app.services import browser_policy as policy
 
         payload = {"cmd": action, "url": url, "ref": ref, "text": text, "key": key,
@@ -962,6 +960,11 @@ class BrowserActionTool(BaseTool):
                 denied = policy.domain_denied(url)
                 if denied:
                     return f"Error: {denied}"
+            words, url_words = site_tips.stop_rules(self.last_url, self.tips_shown)
+            stop = policy.payment_stop({k: v for k, v in payload.items() if v is not None}, self.last_elements, self.last_url, words, url_words)
+            if stop:
+                await self._record_shot("payment")  # 멈춘 화면
+                return stop
             if await self._needs_policy():
                 blocked_msg = await self._approve({k: v for k, v in payload.items() if v is not None})
                 if blocked_msg:
@@ -1103,7 +1106,7 @@ class BrowserActionTool(BaseTool):
             if st.action in ("type", "select", "click") and ref is None:
                 name = f" label={st.label!r}"
                 seen = await self._arun_action("snapshot")  # 직전 단계로 화면이 바뀌었을 수 있으니 새로 읽는다
-                if seen.startswith("Error") or seen.startswith("[사용자가"):
+                if seen.startswith(("Error", "[사용자가", "[결제 직전]")):
                     out, failed = seen, True
                 else:
                     ref, why = resolve_label(self.last_elements, st.label or "", st.nth)
@@ -1115,7 +1118,7 @@ class BrowserActionTool(BaseTool):
                     name += f" → ref {ref}"
             else:
                 out = await self._arun_action(st.action, None, ref, st.text, st.key, st.direction, st.submit, st.seconds)
-            failed = out.startswith("Error") or out.startswith("[사용자가") or "[CAPTCHA" in out[:200]
+            failed = out.startswith(("Error", "[사용자가", "[결제 직전]")) or "[CAPTCHA" in out[:200]
             log.append(f"{i}. {st.action}{name}" + (" → 실패" if failed else " → 완료"))
             if failed:
                 log.append(f"중단: {len(steps) - i}단계는 실행하지 않았습니다.")
@@ -1350,12 +1353,12 @@ class CliBrowserAgentTool(BaseTool):
             clock.session_id, clock.session_label = self.session_id, self.session_label
             from app.agent import site_tips
 
-            start_tips = site_tips.match_task(task, start_url)  # 작업에 해당하는 사이트의 요령만 지침에 붙인다
+            start_blocks, start_shown = site_tips.start_blocks(task, start_url)  # 작업에 해당하는 분야 지침과 사이트 요령만 지침에 붙인다
             browser_tool = BrowserActionTool(
                 user_id=self.user_id, sandbox_cid=self.sandbox_cid, use_profile=profile, run_tag=run,
                 conversation_id=self.conversation_id, login_enabled=self.login_enabled, clock=clock,
                 session_id=self.session_id, session_label=self.session_label,
-                tips_shown={t.name for t in start_tips},
+                tips_shown=set(start_shown),
             )
             login_tool = RequestUserLoginTool(user_id=self.user_id, conversation_id=self.conversation_id, enabled=self.login_enabled, clock=clock)
             agent = Agent(
@@ -1363,7 +1366,7 @@ class CliBrowserAgentTool(BaseTool):
                 model=build_agno_model(self.llm_provider or settings.LLM_TYPE, self.model),
                 tools=[to_agno_function(browser_tool), to_agno_function(login_tool)],
                 tool_call_limit=settings.BROWSER_MAX_STEPS,
-                instructions=BROWSER_INSTRUCTIONS + [t.block(hint=False) for t in start_tips],
+                instructions=BROWSER_INSTRUCTIONS + start_blocks,
                 compress_tool_results=True,
                 compression_manager=_make_compression_manager(),
             )

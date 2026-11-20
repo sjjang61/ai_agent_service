@@ -168,3 +168,53 @@ def test_links_never_need_approval_even_if_text_has_risky_words():
     assert c(1) == bp.AUTO and c(2) == bp.AUTO
     assert c(3) == bp.ASK_ALWAYS  # 짧은 버튼 라벨의 위험 단어는 그대로
     assert c(4) == bp.AUTO  # 긴 설명문 끝에 단어가 있는 경우는 앞부분만 본다
+
+
+# ── 결제 직전 중단 ───────────────────────────────────────────
+def test_payment_stop_blocks_final_payment_actions_regardless_of_approval():
+    pay = [
+        {"ref": 1, "tag": "button", "label": "결제하기"},
+        {"ref": 2, "tag": "a", "label": "Pay now"},  # 링크 모양의 결제 버튼도 막는다
+        {"ref": 3, "tag": "button", "label": "장바구니 담기"},
+        {"ref": 4, "tag": "button", "label": "검색"},
+        {"ref": 5, "tag": "button", "label": "구매하기"},
+        {"ref": 6, "tag": "p", "label": "안내: 결제하기 버튼을 누르면 약관에 동의한 것으로 봅니다. " * 2},
+    ]
+    stop = lambda payload, url="https://shop.test/cart", **kw: bp.payment_stop(payload, pay, url, **kw)
+    assert "[결제 직전]" in stop({"cmd": "click", "ref": 1}) and "[결제 직전]" in stop({"cmd": "click", "ref": 2})
+    assert stop({"cmd": "click", "ref": 3}) is None and stop({"cmd": "click", "ref": 4}) is None  # 장바구니·검색은 막지 않는다
+    assert stop({"cmd": "click", "ref": 5}) is None  # 분야가 더하지 않으면 막지 않는다
+    assert stop({"cmd": "click", "ref": 5}, words=("구매하기",)) is not None  # 쇼핑 분야의 stop_words
+    assert stop({"cmd": "click", "ref": 6}) is None  # 긴 설명문은 버튼 라벨이 아니다
+    assert stop({"cmd": "goto", "url": "https://shop.test/order/pay/123"}) is not None
+    assert stop({"cmd": "goto", "url": "https://shop.test/payments"}) is not None
+    assert stop({"cmd": "goto", "url": "https://shop.test/payroll-info"}) is None
+    assert stop({"cmd": "press", "key": "Enter"}, url="https://shop.test/checkout/payment") is not None
+    assert stop({"cmd": "press", "key": "Enter"}) is None
+    assert stop({"cmd": "goto", "url": "https://x.test/reserve?step=confirm"}, url_words=("step=confirm",)) is not None
+
+
+def test_payment_stop_can_be_turned_off(monkeypatch):
+    monkeypatch.setattr(settings, "BROWSER_BLOCK_PAYMENT", False)
+    assert bp.payment_stop({"cmd": "click", "ref": 4}, EL, "https://x.test/") is None
+
+
+def test_browser_action_does_not_press_payment_button_even_when_approval_is_off(monkeypatch):
+    from app.tools import browser_tools as bt
+
+    calls = []
+
+    async def fake_call(user_id, payload, **kw):
+        calls.append(payload["cmd"])
+        return {"ok": True, "url": "https://shop.test/cart", "title": "t", "elements": EL, "text": ""}
+
+    monkeypatch.setattr(bt, "browser_call", fake_call)
+    monkeypatch.setattr(settings, "BROWSER_APPROVAL_MODE", "off")
+
+    async def run():
+        tool = BrowserActionTool(user_id="u1", conversation_id="c-pay")
+        tool.last_elements, tool.last_url = EL, "https://shop.test/cart"
+        return await tool._arun_action("click", ref=4)
+
+    out = asyncio.run(run())
+    assert out.startswith("[결제 직전]") and "click" not in calls  # 브라우저로 클릭이 나가지 않았다

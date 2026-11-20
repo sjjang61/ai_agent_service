@@ -1,6 +1,7 @@
 ---
 name: 에누리
 domains: enuri.com
+vertical: shopping
 aliases: 에누리
 verified: 2026-11-09
 ---

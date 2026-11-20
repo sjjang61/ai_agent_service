@@ -1,15 +1,29 @@
-"""사이트별 요령 로더. 요령 본문은 app/agent/site_tips/*.md (형식은 그 폴더의 README.md) 에 있다.
+"""사이트 요령 로더: 분야(vertical) 공통 지침 + 사이트별 요령.
 
-시작할 때는 작업에 해당하는 사이트만(match_task), 이동할 때는 처음 방문하는 도메인의 것만(for_url) 골라 쓴다.
+원본은 DB(site_verticals, site_profiles)이고, DB 에서 읽어 온 내용을 메모리 캐시(set_cache)에 둔다. 캐시가 비어 있으면(서버 시작 전, 테스트,
+DB 오류) 저장소의 md 파일(app/agent/site_tips/verticals/*.md, sites/*.md. 형식은 그 폴더의 README.md)을 쓴다. 파일은 시드 겸 기본값이다.
+
+시작할 때는 작업에 해당하는 사이트·분야만(start_blocks), 이동할 때는 처음 방문하는 사이트의 것만(jit_text) 골라 쓴다.
+브라우저 도구가 동기 코드라 읽기 함수는 모두 동기이고, DB 는 services/site_profile_service.py 가 읽어 캐시에 채운다.
 """
+import json
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from functools import lru_cache
 from pathlib import Path
+from typing import Optional
 from urllib.parse import urlparse
+
+from app.agent import site_spec
 
 TIPS_DIR = Path(__file__).parent / "site_tips"
 _URL = re.compile(r"https?://[^\s)>\]\"']+", re.I)
+CHECKLIST_HEADING = "## 분석 체크리스트"
+_SPEC_FENCE = re.compile(r"```spec[ \t]*\n(.*?)\n```[ \t]*\n?", re.S)
+
+
+def _csv(s: Optional[str]) -> tuple[str, ...]:
+    return tuple(x.strip().lower() for x in (s or "").split(",") if x.strip())
 
 
 @dataclass(frozen=True)
@@ -19,14 +33,39 @@ class SiteTip:
     aliases: tuple[str, ...]
     verified: str
     body: str
+    vertical: str = ""
+    spec: dict = field(default_factory=dict)
+    status: str = "verified"  # draft(분석 대기)는 에이전트에게 주지 않는다
 
-    def block(self, hint: bool = True) -> str:
+    def block(self, hint: bool = True, vspec: Optional[dict] = None) -> str:
         head = f"[사이트 요령 · {self.name} · 확인 {self.verified}]"
         tail = "\n(요령과 화면이 다르면 화면을 우선하세요.)" if hint else ""
-        return f"{head}\n{self.body}{tail}"
+        if vspec is None:
+            v = vertical(self.vertical) if self.vertical else None
+            vspec = v.spec if v else None
+        parts = [site_spec.render_site(self.spec, vspec), self.body]
+        return f"{head}\n" + "\n\n".join(p for p in parts if p) + tail
 
 
-def _parse(path: Path) -> SiteTip:
+@dataclass(frozen=True)
+class Vertical:
+    key: str
+    name: str
+    keywords: tuple[str, ...]
+    stop_words: tuple[str, ...]
+    stop_urls: tuple[str, ...]
+    body: str
+    checklist: str = ""
+    spec: dict = field(default_factory=dict)
+
+    def block(self) -> str:
+        sites = [t.name for t in all_tips() if t.vertical == self.key]
+        tail = f"\n요령이 있는 사이트: {', '.join(sites)}" if sites else ""
+        parts = [site_spec.render_vertical(self.spec), self.body]
+        return f"[분야 지침 · {self.name}]\n" + "\n\n".join(p for p in parts if p) + tail
+
+
+def _frontmatter(path: Path) -> tuple[dict, str]:
     raw = path.read_text(encoding="utf-8")
     m = re.match(r"---\s*\n(.*?)\n---\s*\n(.*)\Z", raw, re.S)
     if not m:
@@ -36,14 +75,83 @@ def _parse(path: Path) -> SiteTip:
         if ":" in line and not line.lstrip().startswith("#"):
             k, v = line.split(":", 1)
             meta[k.strip()] = v.split(" #")[0].strip()
-    split = lambda s: tuple(x.strip().lower() for x in (s or "").split(",") if x.strip())
-    return SiteTip(name=meta.get("name", ""), domains=split(meta.get("domains")), aliases=split(meta.get("aliases")),
-                   verified=meta.get("verified", ""), body=m.group(2).strip())
+    return meta, m.group(2).strip()
+
+
+def split_checklist(body: str) -> tuple[str, str]:
+    """분야 md 본문을 (지침, 분석 체크리스트)로 나눈다."""
+    head, sep, tail = body.partition(CHECKLIST_HEADING)
+    return head.strip(), (tail.strip() if sep else "")
+
+
+def split_spec(body: str, clean) -> tuple[str, dict]:
+    """md 본문에서 ```spec 블록(JSON)을 떼어 (나머지 본문, 정리된 spec)로. 형식이 틀리면 ValueError."""
+    m = _SPEC_FENCE.search(body)
+    if not m:
+        return body.strip(), {}
+    try:
+        return (body[: m.start()] + body[m.end():]).strip(), clean(json.loads(m.group(1)))
+    except (json.JSONDecodeError, site_spec.SpecError) as e:
+        raise ValueError(f"spec 블록이 올바르지 않습니다: {e}")
+
+
+def parse_site_file(path: Path) -> SiteTip:
+    meta, body = _frontmatter(path)
+    try:
+        body, spec = split_spec(body, site_spec.clean_site)
+    except ValueError as e:
+        raise ValueError(f"{path.name}: {e}")
+    return SiteTip(name=meta.get("name", ""), domains=_csv(meta.get("domains")), aliases=_csv(meta.get("aliases")),
+                   verified=meta.get("verified", ""), body=body, vertical=meta.get("vertical", "").strip().lower(), spec=spec,
+                   status=meta.get("status", "verified").strip().lower() or "verified")
+
+
+def parse_vertical_file(path: Path) -> Vertical:
+    meta, body = _frontmatter(path)
+    try:
+        body, spec = split_spec(body, site_spec.clean_vertical)
+    except ValueError as e:
+        raise ValueError(f"{path.name}: {e}")
+    guide, checklist = split_checklist(body)
+    return Vertical(key=meta.get("key", "").strip().lower(), name=meta.get("name", ""), keywords=_csv(meta.get("keywords")),
+                    stop_words=_csv(meta.get("stop_words")), stop_urls=_csv(meta.get("stop_urls")), body=guide, checklist=checklist, spec=spec)
 
 
 @lru_cache(maxsize=1)
+def file_tips() -> tuple[SiteTip, ...]:
+    return tuple(parse_site_file(p) for p in sorted((TIPS_DIR / "sites").glob("*.md")))
+
+
+@lru_cache(maxsize=1)
+def file_verticals() -> tuple[Vertical, ...]:
+    return tuple(parse_vertical_file(p) for p in sorted((TIPS_DIR / "verticals").glob("*.md")))
+
+
+# DB 에서 읽어 온 내용. None 이면 파일을 쓴다.
+_cache: Optional[tuple[tuple[Vertical, ...], tuple[SiteTip, ...]]] = None
+
+
+def set_cache(verticals, tips) -> None:
+    global _cache
+    _cache = (tuple(verticals), tuple(tips))
+
+
+def clear_cache() -> None:
+    global _cache
+    _cache = None
+
+
 def all_tips() -> tuple[SiteTip, ...]:
-    return tuple(_parse(p) for p in sorted(TIPS_DIR.glob("*.md")) if p.name != "README.md")
+    return _cache[1] if _cache is not None else tuple(t for t in file_tips() if t.status != "draft")
+
+
+def all_verticals() -> tuple[Vertical, ...]:
+    return _cache[0] if _cache is not None else file_verticals()
+
+
+def vertical(key: str) -> Optional[Vertical]:
+    key = (key or "").strip().lower()
+    return next((v for v in all_verticals() if v.key == key), None)
 
 
 def _host(url: str) -> str:
@@ -54,21 +162,107 @@ def _host_matches(host: str, domain: str) -> bool:
     return bool(host) and (host == domain or host.endswith("." + domain))
 
 
-def for_url(url: str) -> SiteTip | None:
-    """이 주소의 사이트 요령 (하위 도메인 포함). 없으면 None."""
+def tips_for_url(url: str) -> list[SiteTip]:
+    """이 주소의 사이트 요령들 (하위 도메인 포함). 가장 구체적인 도메인이 이긴다 (flight.naver.com 이 naver.com 보다 먼저).
+    한 사이트가 여러 분야를 가지면(아고다 · 항공권/호텔) 같은 도메인의 요령이 여럿 나온다. 없으면 빈 목록."""
     host = _host(url)
+    best_len, out = 0, []
     for t in all_tips():
-        if any(_host_matches(host, d) for d in t.domains):
-            return t
-    return None
+        n = max((len(d) for d in t.domains if _host_matches(host, d)), default=0)
+        if n > best_len:
+            best_len, out = n, [t]
+        elif n and n == best_len:
+            out.append(t)
+    return out
+
+
+def _path_head(url: str) -> str:
+    return (urlparse(url).path.strip("/").split("/")[0] if url else "").lower()
+
+
+def _spec_urls(t: SiteTip) -> list[str]:
+    s = t.spec or {}
+    return [x.get("url", "") for k in ("entry", "menus", "flow") for x in s.get(k, [])]
+
+
+def pick(url: str, shown: Optional[set] = None) -> list[SiteTip]:
+    """주소에 해당하는 요령 중 지금 쓸 것. 같은 도메인에 분야가 다른 요령이 여럿이면
+    (1) 주소의 첫 경로(/flights, /hotels)가 그 요령의 진입·메뉴·단계 주소와 같은 것, (2) 이미 안내한 분야의 것, 순으로 좁히고, 그래도 못 정하면 모두 준다.
+    경로를 먼저 보는 이유: 호텔로 시작한 작업이 같은 사이트의 항공권 화면으로 이동하면 그 화면의 요령을 줘야 하기 때문이다."""
+    cands = tips_for_url(url)
+    if len(cands) <= 1:
+        return cands
+    head = _path_head(url)
+    by_path = [t for t in cands if head and any(_path_head(u) == head for u in _spec_urls(t))]
+    if by_path:
+        return by_path
+    seen = {s[1:] for s in (shown or ()) if isinstance(s, str) and s.startswith("@")}
+    return [t for t in cands if t.vertical in seen] or cands
+
+
+def for_url(url: str, prefer: Optional[set] = None) -> SiteTip | None:
+    """이 주소의 사이트 요령 하나 (분야가 여럿이면 prefer 분야 키가 있는 것을 먼저). 없으면 None."""
+    cands = tips_for_url(url)
+    return next((t for t in cands if prefer and t.vertical in prefer), cands[0] if cands else None)
 
 
 def match_task(task: str, start_url: str | None = None) -> list[SiteTip]:
-    """작업에 해당하는 사이트 요령: 시작 URL·작업 문장 속 주소의 도메인, 또는 사이트 이름(aliases)이 나오는 것."""
+    """작업에 해당하는 사이트 요령: 시작 URL·작업 문장 속 주소의 도메인, 또는 사이트 이름(aliases)이 나오는 것.
+    같은 도메인에 분야가 다른 요령이 여럿이면(아고다 · 항공권/호텔) 작업 문장의 분야 키워드로 좁히고, 키워드가 없으면 모두 준다."""
     text = (task or "").lower()
     hosts = {_host(u) for u in _URL.findall(text)} | ({_host(start_url)} if start_url else set())
     out = []
     for t in all_tips():
         if any(_host_matches(h, d) for h in hosts for d in t.domains) or any(d in text for d in t.domains) or any(a in text for a in t.aliases):
             out.append(t)
-    return out
+    wanted = {v.key for v in all_verticals() if any(k in text for k in v.keywords)}
+    narrowed = []
+    for t in out:
+        group = [o for o in out if o is not t and set(o.domains) & set(t.domains)]
+        in_group = [o for o in group + [t] if o.vertical in wanted]
+        narrowed.append(t) if (not group or not in_group or t.vertical in wanted) else None
+    return narrowed
+
+
+def match_verticals(task: str, tips: Optional[list] = None) -> list[Vertical]:
+    """작업에 해당하는 분야: 해당 사이트의 분야, 또는 작업 문장에 분야 키워드가 나오는 것."""
+    text = (task or "").lower()
+    keys = {t.vertical for t in (tips or []) if t.vertical}
+    return [v for v in all_verticals() if v.key in keys or any(k in text for k in v.keywords)]
+
+
+def start_blocks(task: str, start_url: str | None = None) -> tuple[list[str], set[str]]:
+    """시작 지침에 붙일 블록(분야 지침 먼저, 사이트 요령 다음)과, 이미 안내한 것의 표시(사이트 이름, '@분야키')."""
+    tips = match_task(task, start_url)
+    verticals = match_verticals(task, tips)
+    blocks = [v.block() for v in verticals] + [t.block(hint=False) for t in tips]
+    return blocks, {t.name for t in tips} | {f"@{v.key}" for v in verticals}
+
+
+def jit_text(url: str, shown: set) -> str:
+    """처음 방문하는 사이트의 요령(와 아직 안내하지 않은 분야 지침). 이미 안내했거나 없으면 빈 문자열. shown 에 안내한 것을 기록한다."""
+    parts = []
+    for tip in pick(url, shown):
+        if tip.name in shown:
+            continue
+        shown.add(tip.name)
+        v = vertical(tip.vertical) if tip.vertical else None
+        if v is not None and f"@{v.key}" not in shown:
+            shown.add(f"@{v.key}")
+            parts.append(v.block())
+        parts.append(tip.block())
+    return "\n\n".join(parts)
+
+
+def stop_rules(url: str, shown: set) -> tuple[tuple[str, ...], tuple[str, ...]]:
+    """지금 작업에 적용되는 분야의 '누르지 않을 라벨'과 '이동하지 않을 주소 문구'. shown 은 안내한 분야('@키') 표시.
+    막는 규칙이라 같은 도메인의 모든 분야 것을 적용한다 (어느 분야인지 못 정해도 안전한 쪽)."""
+    keys = {s[1:] for s in shown if isinstance(s, str) and s.startswith("@")}
+    keys |= {t.vertical for t in tips_for_url(url) if t.vertical} if url else set()
+    words: list[str] = []
+    urls: list[str] = []
+    for v in all_verticals():
+        if v.key in keys:
+            words += v.stop_words
+            urls += v.stop_urls
+    return tuple(dict.fromkeys(words)), tuple(dict.fromkeys(urls))
