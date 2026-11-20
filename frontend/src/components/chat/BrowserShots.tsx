@@ -48,11 +48,16 @@ interface Props {
   running: boolean
   /** sm: 진행 목록 안의 한 줄 미리보기, md: 상세 패널의 격자 */
   size?: 'sm' | 'md'
+  /** 채팅 밖(웹사이트 분석 화면 등)에서 쓸 때: 대화 id 와 '실행 중' 여부를 직접 준다 (비우면 채팅 상태를 따른다) */
+  conversationId?: string | null
+  live?: boolean
 }
 
-export default function BrowserShots({ run, running, size = 'md' }: Props) {
-  const conversationId = useChatStore((s) => s.currentConversationId)
-  const agentRunning = useAgentStore((s) => s.isRunning)
+export default function BrowserShots({ run, running, size = 'md', conversationId: convOverride, live }: Props) {
+  const storeConversationId = useChatStore((s) => s.currentConversationId)
+  const conversationId = convOverride !== undefined ? convOverride : storeConversationId
+  const storeRunning = useAgentStore((s) => s.isRunning)
+  const agentRunning = live !== undefined ? live : storeRunning
   const [open, setOpen] = useState<BrowserShot | null>(null)
   const { data: shots = [] } = useQuery({
     queryKey: ['browser-shots', conversationId, run ?? 'latest'],

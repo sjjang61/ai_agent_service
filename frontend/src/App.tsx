@@ -10,6 +10,7 @@ import AuthPage from './pages/AuthPage'
 import CalendarPage from './pages/CalendarPage'
 import ChannelsPage from './pages/ChannelsPage'
 import BrowserProfilePage from './pages/BrowserProfilePage'
+import SiteProfilesPage from './pages/SiteProfilesPage'
 import GeneralSettingsPage from './pages/GeneralSettingsPage'
 import ChatPage from './pages/ChatPage'
 import MyAppsPage from './pages/MyAppsPage'
@@ -61,6 +62,7 @@ export default function App() {
       <Route path="/sandbox" element={<PrivateRoute><SandboxPage /></PrivateRoute>} />
       <Route path="/channels" element={<PrivateRoute><ChannelsPage /></PrivateRoute>} />
       <Route path="/browser" element={<PrivateRoute><BrowserProfilePage /></PrivateRoute>} />
+      <Route path="/site-profiles" element={<PrivateRoute><SiteProfilesPage /></PrivateRoute>} />
       <Route path="/settings" element={<PrivateRoute><GeneralSettingsPage /></PrivateRoute>} />
       <Route path="/skills" element={<PrivateRoute><SkillsPage /></PrivateRoute>} />
       <Route path="/agents" element={<PrivateRoute><AgentsPage /></PrivateRoute>} />

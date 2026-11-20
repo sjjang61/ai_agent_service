@@ -94,7 +94,7 @@ export default function LoginRequestCard({ conversationId, active }: { conversat
       <div className="mb-3 rounded-[var(--radius-lg)] border border-accent-blue/30 bg-surface-secondary p-4 shadow-sm">
         <div className="flex items-center gap-2 mb-1">
           <LogIn size={16} className="text-accent-blue" />
-          <h4 className="text-sm font-semibold text-content-primary">{data.site} 로그인이 필요합니다{data.session && data.session !== data.site ? <span className="font-normal text-content-tertiary"> · {data.session}</span> : null}</h4>
+          <h4 className="text-sm font-semibold text-content-primary">{data.site} {data.reason?.includes('CAPTCHA') ? '보안 확인(CAPTCHA)을 해결해 주세요' : '로그인이 필요합니다'}{data.session && data.session !== data.site ? <span className="font-normal text-content-tertiary"> · {data.session}</span> : null}</h4>
         </div>
         <p className="text-xs text-content-secondary mb-3">
           {data.reason || '에이전트가 작업을 이어가려면 로그인이 필요합니다.'}{' '}
