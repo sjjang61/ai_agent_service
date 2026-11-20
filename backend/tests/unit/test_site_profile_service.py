@@ -223,3 +223,15 @@ async def test_md_export_keeps_draft_status_and_spec(db, tmp_path):
     ok = await svc.save_site(db, site(), site_id=row.id)  # 검증됨은 status 줄이 없다
     p.write_text(svc.site_md(ok), encoding="utf-8")
     assert "status:" not in p.read_text(encoding="utf-8") and site_tips.parse_site_file(p).status == "verified"
+
+
+@pytest.mark.asyncio
+async def test_seed_renames_naver_place_to_naver_reservation_in_place(db):
+    from sqlalchemy import select as sel
+
+    row = (await db.execute(sel(SiteProfile).where(SiteProfile.name == "네이버 예약"))).scalar_one()
+    row.name = "네이버 플레이스"  # 이전 버전이 시드한 이름
+    await db.commit()
+    await svc.seed_from_files(db)
+    names = {r.name for r in (await db.execute(sel(SiteProfile).where(SiteProfile.vertical == "restaurant"))).scalars().all()}
+    assert "네이버 예약" in names and "네이버 플레이스" not in names  # 행을 재사용해 이름만 바뀐다 (새 행이 하나 더 생기지 않는다)

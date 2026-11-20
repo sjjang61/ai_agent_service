@@ -117,7 +117,7 @@ export function SiteSpecEditor({ value, vertical, onChange }: { value: Partial<S
   const inputLabel = (k: string) => vspec.inputs.find((i) => i.key === k)?.label ?? `${k} (분야에 없음)`
   const flowTitle = (k: string) => vspec.flow.find((s) => s.key === k)?.title ?? `${k} (분야에 없음)`
   const setInput = (k: string, p: Partial<{ how: string; param: string }>) => set({ inputs: { ...spec.inputs, [k]: { how: spec.inputs[k]?.how ?? '', param: spec.inputs[k]?.param ?? '', ...p } } })
-  const setFlow = (k: string, p: Partial<{ how: string; url: string }>) => {
+  const setFlow = (k: string, p: Partial<{ how: string; url: string; skip: boolean }>) => {
     const cur = spec.flow.find((s) => s.key === k)
     set({ flow: cur ? spec.flow.map((s) => (s.key === k ? { ...s, ...p } : s)) : [...spec.flow, { key: k, how: '', url: '', ...p }] })
   }
@@ -163,13 +163,19 @@ export function SiteSpecEditor({ value, vertical, onChange }: { value: Partial<S
           ))}
         </div>
       </Section>
-      <Section title="단계별 이 사이트에서의 동작" hint={vspec.flow.length ? '분야의 표준 단계를 이 사이트에서 어떻게 수행하는가.' : '분야를 고르면 그 분야의 표준 단계가 여기에 나옵니다.'}>
+      <Section title="단계별 이 사이트에서의 동작" hint={vspec.flow.length ? '분야의 표준 단계를 이 사이트에서 어떻게 수행하는가. 사람 확인(CAPTCHA) 때문에 할 수 없는 단계는 "하지 않음"으로 표시하고 사유와 대안을 적으세요.' : '분야를 고르면 그 분야의 표준 단계가 여기에 나옵니다.'}>
         <div className="space-y-1.5">
           {flowKeys.map((k) => (
-            <div key={k} className="grid grid-cols-[110px_1fr_1fr] gap-1.5 items-center">
-              <span className="text-[12.5px] text-content-primary truncate" title={k}>{flowTitle(k)}</span>
-              <input value={spec.flow.find((s) => s.key === k)?.how ?? ''} onChange={(e) => setFlow(k, { how: e.target.value })} placeholder="수행 방법" className={cell} />
-              <input value={spec.flow.find((s) => s.key === k)?.url ?? ''} onChange={(e) => setFlow(k, { url: e.target.value })} placeholder="주소 (선택)" className={`${cell} font-mono`} />
+            <div key={k} className="space-y-1">
+              <div className="grid grid-cols-[110px_1fr_1fr] gap-1.5 items-center">
+                <span className="text-[12.5px] text-content-primary truncate" title={k}>{flowTitle(k)}</span>
+                <input value={spec.flow.find((s) => s.key === k)?.how ?? ''} onChange={(e) => setFlow(k, { how: e.target.value })} placeholder={spec.flow.find((s) => s.key === k)?.skip ? '하지 않는 사유와 대신 할 일' : '수행 방법'} className={cell} />
+                <input value={spec.flow.find((s) => s.key === k)?.url ?? ''} onChange={(e) => setFlow(k, { url: e.target.value })} placeholder="주소 (선택)" className={`${cell} font-mono`} />
+              </div>
+              <label className="flex items-center gap-1.5 pl-[116px] text-xs text-content-secondary cursor-pointer" title="보안 확인(CAPTCHA)처럼 이 사이트에서는 할 수 없는 단계. 에이전트는 이 단계를 하지 않고 적어 둔 대안을 따르며, 재현 검증도 이 단계를 감점하지 않습니다.">
+                <input type="checkbox" checked={!!spec.flow.find((s) => s.key === k)?.skip} onChange={(e) => setFlow(k, { skip: e.target.checked })} />
+                이 사이트에서는 하지 않음
+              </label>
             </div>
           ))}
         </div>

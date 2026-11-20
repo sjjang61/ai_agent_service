@@ -185,19 +185,20 @@ def test_mail_and_restaurant_verticals_keep_reads_separate_from_state_changes():
             assert k not in owners, f"키워드 겹침: {k} ({owners[k]} / {v.key})"
             owners[k] = v.key
     assert {t.name for t in site_tips.file_tips() if t.vertical == "mail"} == {"네이버 메일", "다음 메일", "Gmail"}
-    assert {t.name for t in site_tips.file_tips() if t.vertical == "restaurant"} == {"네이버 플레이스", "캐치테이블"}
+    assert {t.name for t in site_tips.file_tips() if t.vertical == "restaurant"} == {"네이버 예약", "캐치테이블"}
     # 작업 문장으로 분야가 골라진다
     assert [v.key for v in site_tips.match_verticals("받은편지함에서 안 읽은 메일 확인해줘")] == ["mail"]
     assert [v.key for v in site_tips.match_verticals("강남 식당 예약 가능한 시간 알려줘")] == ["restaurant"]
 
 
-def test_naver_shopping_draft_starts_from_the_search_url_the_user_gave():
+def test_naver_shopping_seed_uses_the_working_search_path_and_skips_the_captcha_step():
+    """네이버 쇼핑의 기존 경로(/search/all)는 접속 제한 화면이 나오고, 상품 링크의 판매처 스토어에는 보안 확인이 뜬다 (분석·검증으로 확인)."""
     t = next(x for x in site_tips.file_tips() if x.name == "네이버 가격비교")
     assert t.vertical == "shopping" and t.domains == ("shopping.naver.com",)
-    assert t.spec["entry"][0]["url"] == "https://search.shopping.naver.com/search/all?query={query}" and t.spec["inputs"]["query"]["param"] == "query"
-    if t.status == "draft":  # 초안은 에이전트에게 주지 않는다
-        found = site_tips.for_url("https://search.shopping.naver.com/search/all?query=a")
-        assert found is None or found.name != "네이버 가격비교"
+    assert t.spec["entry"][0]["url"] == "https://search.shopping.naver.com/ns/search?query={query}"  # 막히는 /search/all 이 아니다
+    assert "/search/all" not in t.spec["entry"][0]["url"] and "/search/all" not in " ".join(f.get("url", "") for f in t.spec["flow"])
+    detail = next(f for f in t.spec["flow"] if f["key"] == "detail")
+    assert detail.get("skip") is True and "CAPTCHA" in detail["how"]  # 상세는 하지 않는 단계: 에이전트가 CAPTCHA 에 부딪히지 않게 한다
     movies = {x.name for x in site_tips.file_tips() if x.vertical == "movie"}
     assert movies == {"CGV", "메가박스", "롯데시네마"}
 
@@ -243,3 +244,30 @@ async def test_turning_a_site_off_in_settings_blocks_it_and_turning_it_on_restor
     assert "꺼 볼 사이트" in site_tips.blocked("https://offtest.example.com/x")  # 저장 즉시 반영
     await svc.save_site(db, {"name": row.name, "vertical": "flight", "domains": row.domains, "aliases": "", "body": row.body, "status": "verified", "enabled": True}, site_id=row.id)
     assert site_tips.blocked("https://offtest.example.com/x") is None
+
+
+# ── '이 사이트에서는 하지 않는 단계' (skip) ───────────────────────────────────
+def test_site_flow_can_mark_a_step_as_not_done_on_this_site():
+    vs = site_spec.clean_vertical(VSPEC)
+    out = site_spec.clean_site({"flow": [{"key": "search", "how": "주소로 이동"}, {"key": "book", "how": "보안 확인(CAPTCHA)이 떠서 하지 않는다. 목록 정보로 답한다.", "skip": True},
+                                         {"key": "x", "how": "", "url": "", "skip": False}]})
+    assert out["flow"] == [{"key": "search", "how": "주소로 이동", "url": ""}, {"key": "book", "how": "보안 확인(CAPTCHA)이 떠서 하지 않는다. 목록 정보로 답한다.", "url": "", "skip": True}]  # skip 표시는 있을 때만 키가 생긴다
+    assert site_spec.skipped_keys(out) == {"book"} and site_spec.skipped_keys({}) == set()
+    assert site_spec.clean_site({"flow": [{"key": "book", "skip": True}]})["flow"] == [{"key": "book", "how": "", "url": "", "skip": True}]  # 사유 없이 표시만 해도 남는다
+    text = site_spec.render_site(out, vs)
+    assert "1. 검색: 주소로 이동" in text and "2. 담기: [이 사이트에서는 하지 않는 단계] 보안 확인(CAPTCHA)이 떠서 하지 않는다." in text  # 에이전트에게 그대로 전달된다
+
+
+def test_verification_does_not_penalize_a_step_the_site_marks_as_not_done():
+    from app.services import site_analysis_service as sa
+
+    vflow = [{"key": "search", "title": "검색"}, {"key": "detail", "title": "상세"}, {"key": "cart", "title": "담기", "write": True}]
+    ok = {"success": True, "summary": "s", "issues": [], "steps": [{"key": "search", "status": "reached", "note": ""}, {"key": "detail", "status": "skipped", "note": "CAPTCHA"}]}
+    assert not sa.evaluate(ok, [{"action": "goto"}], 0, 1, vflow)["passed"]  # 설명서가 제외하지 않으면 건너뛴 단계는 감점
+    r = sa.evaluate(ok, [{"action": "goto"}], 0, 1, vflow, {"detail"})
+    assert r["passed"] and [f["status"] for f in r["flow"]] == ["reached", "excluded", "untested"] and r["flow"][1]["note"] == "CAPTCHA"
+    missing = {"success": True, "summary": "s", "issues": [], "steps": [{"key": "search", "status": "reached", "note": ""}]}  # 보고가 아예 없어도 제외된 단계는 감점하지 않는다
+    assert sa.evaluate(missing, [{"action": "goto"}], 0, 1, vflow, {"detail"})["passed"]
+    done = {"success": True, "summary": "s", "issues": [], "steps": [{"key": "search", "status": "reached", "note": ""}, {"key": "detail", "status": "reached", "note": "열림"}]}
+    assert sa.evaluate(done, [{"action": "goto"}], 0, 1, vflow, {"detail"})["flow"][1]["status"] == "reached"  # 되는 날에는 도달한 것으로 인정한다
+    assert not sa.evaluate({**ok, "steps": [{"key": "search", "status": "failed", "note": ""}]}, [{"action": "goto"}], 0, 1, vflow, {"detail"})["passed"]  # 다른 단계가 막히면 여전히 미통과

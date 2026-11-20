@@ -10,7 +10,7 @@ export interface SiteSpec {
   entry: { label: string; url: string }[]
   menus: { name: string; path: string; url: string }[]
   inputs: Record<string, { how: string; param: string }>
-  flow: { key: string; how: string; url: string }[]
+  flow: { key: string; how: string; url: string; skip?: boolean }[]
   stop_point: string
 }
 
@@ -94,7 +94,7 @@ export interface FlowResult {
   key: string
   title: string
   write: boolean
-  status: 'reached' | 'failed' | 'skipped' | 'missing' | 'untested'
+  status: 'reached' | 'failed' | 'skipped' | 'missing' | 'untested' | 'excluded'
   note: string
 }
 

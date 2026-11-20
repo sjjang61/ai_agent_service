@@ -14,6 +14,7 @@ const FLOW_STATUS: Record<FlowResult['status'], { label: string; cls: string }> 
   missing: { label: '보고 없음', cls: 'text-red-500' },
   skipped: { label: '건너뜀', cls: 'text-content-tertiary' },
   untested: { label: '시험 안 함', cls: 'text-content-tertiary' },
+  excluded: { label: '사이트에서 제외', cls: 'text-content-tertiary' },
 }
 
 const specFilled = (s: SiteSpec) => s.entry.length > 0 || s.menus.length > 0 || Object.keys(s.inputs).length > 0 || s.flow.length > 0 || !!s.stop_point

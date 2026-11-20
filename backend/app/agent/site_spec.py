@@ -2,7 +2,7 @@
 
 분야(vertical.spec)   : {inputs: [{key, label, required, format, example}], flow: [{key, title, desc, write}], sample: {입력키: 샘플값}}
 사이트(site.spec)      : {entry: [{label, url}], menus: [{name, path, url}], inputs: {입력키: {how, param}},
-                          flow: [{key, how, url}], stop_point}
+                          flow: [{key, how, url, skip?}], stop_point}   (skip: 이 사이트에서는 하지 않는 단계. how 는 그 사유와 대신 할 일)
 
 clean_* 는 사용자·에이전트가 보낸 값을 검증·정리하고(잘못되면 SpecError), render_* 는 브라우저 에이전트에게 줄 텍스트로 푼다.
 이 모듈은 DB·네트워크를 모른다 (site_tips 와 서비스가 쓴다).
@@ -104,14 +104,17 @@ def clean_site(raw) -> dict:
             inputs[_key(k, "입력 방법")] = {"how": how, "param": param}
     flow, seen = [], set()
     for it in _list(raw.get("flow"), "단계별 동작", MAX_FLOW):
-        how, url = _s(it.get("how"), 600), _url(it.get("url"), "단계")
-        if not how and not url:
+        how, url, skip = _s(it.get("how"), 600), _url(it.get("url"), "단계"), bool(it.get("skip", False))
+        if not how and not url and not skip:
             continue
         key = _key(it.get("key"), "단계")
         if key in seen:
             raise SpecError(f"단계 키가 겹칩니다: {key}")
         seen.add(key)
-        flow.append({"key": key, "how": how, "url": url})
+        item = {"key": key, "how": how, "url": url}
+        if skip:  # 이 사이트에서는 하지 않는 단계 (예: 판매처로 넘어가면 보안 확인이 뜬다). 표시가 있을 때만 키를 둔다 (기존 데이터와 같은 모양 유지)
+            item["skip"] = True
+        flow.append(item)
     stop = _s(raw.get("stop_point"), 300)
     out = {"entry": entry, "menus": menus, "inputs": inputs, "flow": flow, "stop_point": stop}
     return out if (entry or menus or inputs or flow or stop) else {}
@@ -159,7 +162,8 @@ def render_site(spec: Optional[dict], vspec: Optional[dict] = None) -> str:
         items = sorted(spec["flow"], key=lambda s: order.index(s["key"]) if s["key"] in order else len(order))
         lines.append("단계별 이 사이트에서의 동작:")
         for n, s in enumerate(items, 1):
-            lines.append(f"{n}. {titles.get(s['key'], s['key'])}: {s.get('how', '')}" + (f" ({s['url']})" if s.get("url") else ""))
+            mark = "[이 사이트에서는 하지 않는 단계] " if s.get("skip") else ""
+            lines.append(f"{n}. {titles.get(s['key'], s['key'])}: {mark}{s.get('how', '')}" + (f" ({s['url']})" if s.get("url") else ""))
     if spec.get("stop_point"):
         lines.append(f"멈출 지점: {spec['stop_point']}")
     return "\n".join(lines)
@@ -171,3 +175,8 @@ def sample_text(vspec: Optional[dict], override: Optional[dict] = None) -> str:
         return ""
     values = {**(vspec.get("sample") or {}), **{k: v for k, v in (override or {}).items() if str(v).strip()}}
     return "\n".join(f"- {i['label']} ({i['key']}): {values[i['key']]}" for i in vspec.get("inputs", []) if values.get(i["key"]))
+
+
+def skipped_keys(spec: Optional[dict]) -> set:
+    """사이트 설명서가 '이 사이트에서는 하지 않는 단계'로 표시한 표준 단계 키."""
+    return {f["key"] for f in (spec or {}).get("flow", []) if f.get("skip")}

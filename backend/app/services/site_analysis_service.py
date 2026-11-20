@@ -103,13 +103,17 @@ def parse_verdict(text: str) -> Optional[dict]:
     return {"success": data["success"], "summary": str(data.get("summary") or "")[:500], "issues": issues[:10], "steps": steps[:20]}
 
 
-def evaluate_flow(vflow: list, reported: list) -> list:
-    """분야의 표준 단계마다 검증 결과를 붙인다. 상태를 바꾸는 단계(write)는 읽기 전용 검증으로 시험할 수 없으므로 'untested', 보고되지 않은 단계는 'missing'."""
+def evaluate_flow(vflow: list, reported: list, site_skips: Optional[set] = None) -> list:
+    """분야의 표준 단계마다 검증 결과를 붙인다. 상태를 바꾸는 단계(write)는 읽기 전용 검증으로 시험할 수 없으므로 'untested', 보고되지 않은 단계는 'missing'.
+    사이트 설명서가 '하지 않는 단계'로 표시한 단계(site_skips)는 도달하지 않아도 감점하지 않는다 ('excluded'). 그래도 도달했다고 보고하면 그대로 인정한다."""
     got = {r["key"]: r for r in reported}
     out = []
     for st in vflow:
         if st.get("write"):
             out.append({"key": st["key"], "title": st["title"], "write": True, "status": "untested", "note": "상태를 바꾸는 단계라 읽기 전용 검증에서는 시험하지 않습니다"})
+        elif st["key"] in (site_skips or set()) and got.get(st["key"], {}).get("status") != "reached":
+            note = got.get(st["key"], {}).get("note") or "이 사이트에서는 하지 않는 단계로 설명서에 표시되어 있어 시험하지 않았습니다"
+            out.append({"key": st["key"], "title": st["title"], "write": False, "status": "excluded", "note": note})
         elif st["key"] in got:
             out.append({"key": st["key"], "title": st["title"], "write": False, "status": got[st["key"]]["status"], "note": got[st["key"]]["note"]})
         else:
@@ -117,17 +121,17 @@ def evaluate_flow(vflow: list, reported: list) -> list:
     return out
 
 
-def evaluate(verdict: Optional[dict], steps: list, loop_blocks: int, seconds: float, vflow: Optional[list] = None) -> dict:
+def evaluate(verdict: Optional[dict], steps: list, loop_blocks: int, seconds: float, vflow: Optional[list] = None, site_skips: Optional[set] = None) -> dict:
     """재현 검증 결과: 에이전트가 성공을 보고했고, 분야의 읽기 단계가 모두 'reached' 이며, 같은 동작을 반복하다 막힌 일이 많지 않을 때만 통과로 본다.
     판정은 에이전트의 보고에 기대므로 사람이 마지막 화면(스크린샷)을 확인하는 보조 수단이다."""
     n = sum(1 for s in steps if s.get("action"))
     failed = sum(1 for s in steps if s.get("ok") is False)
     base = {"steps": n, "failed_steps": failed, "loop_blocks": loop_blocks, "seconds": round(seconds, 1)}
     if verdict is None:
-        return {**base, "passed": False, "success": False, "flow": evaluate_flow(vflow or [], []),
+        return {**base, "passed": False, "success": False, "flow": evaluate_flow(vflow or [], [], site_skips),
                 "summary": "에이전트가 검증 결과를 보고하지 않았습니다 (단계 수 제한에 걸렸거나 도중에 멈췄을 수 있습니다)", "issues": []}
     issues = list(verdict["issues"])
-    flow = evaluate_flow(vflow or [], verdict.get("steps", []))
+    flow = evaluate_flow(vflow or [], verdict.get("steps", []), site_skips)
     bad = [f for f in flow if f["status"] in ("failed", "skipped", "missing")]
     passed = verdict["success"] and loop_blocks <= MAX_LOOP_BLOCKS_TO_PASS and not bad
     if verdict["success"] and loop_blocks > MAX_LOOP_BLOCKS_TO_PASS:
@@ -363,7 +367,7 @@ async def _execute(run_id: str, current_body: str = "") -> None:
                 else:
                     run.status, run.error = "failed", f"에이전트가 <구조>·<요령> 형식으로 초안을 만들지 못했습니다 ({spec_err}). 답변 원문은 메모에 남깁니다"
             else:
-                run.result = evaluate(parse_verdict(text), steps, tool._loop_blocks, seconds, _vspec(run).get("flow", []))
+                run.result = evaluate(parse_verdict(text), steps, tool._loop_blocks, seconds, _vspec(run).get("flow", []), site_spec.skipped_keys(run.draft_spec))
                 run.status = "succeeded"
         except asyncio.CancelledError:
             run.steps, run.status, run.error = snap(steps), "cancelled", "사용자가 중단했습니다"

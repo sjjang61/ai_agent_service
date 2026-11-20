@@ -33,7 +33,7 @@ async def seed_from_files(db: AsyncSession) -> dict:
                                 stop_urls=_join(v.stop_urls), body=v.body, checklist=v.checklist, spec=v.spec or None, source="seed"))
             added["verticals"] += 1
     # 이름이 바뀐 시드(한 사이트가 여러 분야를 갖게 되며 '아고다' → '아고다 · 항공권'): 화면에서 고치지 않은 행은 제자리에서 이름만 바꾼다
-    renamed = {"아고다": "아고다 · 항공권"}
+    renamed = {"아고다": "아고다 · 항공권", "네이버 플레이스": "네이버 예약"}
     have_names = {r for (r,) in (await db.execute(select(SiteProfile.name))).all()}
     for old, new in renamed.items():
         row = (await db.execute(select(SiteProfile).where(SiteProfile.name == old, SiteProfile.source == "seed"))).scalar_one_or_none()
