@@ -290,7 +290,7 @@ def test_daemon_shoots_on_screen_changes_and_events():
     assert "shot(" in sel  # select 도 남긴다
     scr = src[src.index('if cmd == "scroll"'):src.index('if cmd == "wait"')]
     assert "shot(" in scr  # scroll 도 남긴다
-    assert bt.DAEMON_VERSION == 16 and "VERSION = 9333, 900, 16" in src
+    assert bt.DAEMON_VERSION == 18 and "VERSION = 9333, 900, 18" in src
 
 
 class _LocalFake:
@@ -1364,3 +1364,13 @@ def test_snapshot_text_falls_back_to_visible_text_for_long_pages():
     from app.services.browser_snapshot import SNAP_JS
 
     assert "txt.length > 2800" in SNAP_JS and "createTreeWalker" in SNAP_JS and "window.innerHeight" in SNAP_JS
+
+
+def test_sandbox_daemon_launches_new_headless_chromium():
+    """sandbox 데몬은 new headless(channel=chromium)로 브라우저를 띄운다 (기본 old headless shell 은 일부 사이트가 일반 접속도 막는다)."""
+    assert 'channel="chromium"' in bt.DAEMON_SOURCE and "headless=True" in bt.DAEMON_SOURCE
+
+
+def test_sandbox_daemon_drops_headless_marker_from_user_agent():
+    """User-Agent 의 'HeadlessChrome' 표기만 'Chrome' 으로 바꾼다 (버전·OS 는 브라우저가 알려 준 실제 값)."""
+    assert 'replace("HeadlessChrome", "Chrome")' in bt.DAEMON_SOURCE and '_ctx_args["user_agent"]' in bt.DAEMON_SOURCE

@@ -26,7 +26,7 @@ from app.config import settings
 DAEMON_PATH = "/tmp/_browser_daemon.py"
 STATE_PATH = "/tmp/_browser_state.json"  # 저장된 로그인 상태. 데몬이 읽자마자 지운다
 DAEMON_PORT = 9333
-DAEMON_VERSION = 16
+DAEMON_VERSION = 18
 LOGIN_TIMEOUT_SECONDS = 600
 MAX_USER_REQUESTS = 3  # 한 번의 브라우저 작업에서 사용자에게 같은 해결을 요청하는 최대 횟수 (해결이 반복해서 실패하면 멈춘다)
 
@@ -38,7 +38,7 @@ from http.server import BaseHTTPRequestHandler, HTTPServer
 from urllib.parse import urlparse
 from playwright.sync_api import sync_playwright
 
-PORT, IDLE_SECONDS, VERSION = 9333, 900, 16
+PORT, IDLE_SECONDS, VERSION = 9333, 900, 18
 STATE_PATH = "/tmp/_browser_state.json"
 SHOT_DIR = "/workspace/browser"
 
@@ -74,8 +74,22 @@ def route(r):
     r.continue_()
 
 pw = sync_playwright().start()
-browser = pw.chromium.launch(headless=True, args=["--no-sandbox", "--disable-dev-shm-usage"])
+# channel="chromium": new headless (일반 Chrome 과 같은 코드). 기본값(old headless shell)은 window.chrome 등이 없어 일부 사이트가 일반 접속까지 막는다
+browser = pw.chromium.launch(headless=True, channel="chromium", args=["--no-sandbox", "--disable-dev-shm-usage"])
+def _chrome_ua():
+    """브라우저가 스스로 알려 주는 User-Agent 에서 'HeadlessChrome' 표기만 'Chrome' 으로 바꾼다 (버전·OS 는 실제 값 그대로).
+    헤드리스 표기가 있으면 일부 사이트가 일반 접속까지 거부한다."""
+    try:
+        tmp = browser.new_context()
+        ua = tmp.new_page().evaluate("navigator.userAgent")
+        tmp.close()
+        return ua.replace("HeadlessChrome", "Chrome")
+    except Exception:
+        return None
+
 _ctx_args = dict(viewport={"width": 1280, "height": 800}, locale="ko-KR")
+_ua = _chrome_ua()
+if _ua: _ctx_args["user_agent"] = _ua
 if os.path.exists(STATE_PATH):   # 사용자 로그인 상태(쿠키/localStorage) 복원 후 파일은 바로 지운다
     try:
         ctx = browser.new_context(storage_state=STATE_PATH, **_ctx_args)
