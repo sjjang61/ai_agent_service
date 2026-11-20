@@ -210,3 +210,16 @@ async def test_seed_renames_the_old_single_agoda_row_in_place(db):
     await svc.seed_from_files(db)
     names = {r.name: r.vertical for r in (await db.execute(sel(SiteProfile).where(SiteProfile.domains == "agoda.com"))).scalars().all()}
     assert names == {"아고다 · 항공권": "flight", "아고다 · 호텔": "hotel"}  # 이름만 바뀌고(행 재사용), 없던 호텔 행이 추가된다
+
+
+@pytest.mark.asyncio
+async def test_md_export_keeps_draft_status_and_spec(db, tmp_path):
+    """초안 사이트를 md 로 내보냈다가 시드해도 검증됨으로 바뀌지 않는다."""
+    row = await svc.save_site(db, site(status="draft", verified_at=None, spec={"entry": [{"label": "검색", "url": "https://air.testfly.com/?q={query}"}]}))
+    p = tmp_path / "d.md"
+    p.write_text(svc.site_md(row), encoding="utf-8")
+    t = site_tips.parse_site_file(p)
+    assert t.status == "draft" and t.spec["entry"][0]["url"] == "https://air.testfly.com/?q={query}" and t.verified == ""
+    ok = await svc.save_site(db, site(), site_id=row.id)  # 검증됨은 status 줄이 없다
+    p.write_text(svc.site_md(ok), encoding="utf-8")
+    assert "status:" not in p.read_text(encoding="utf-8") and site_tips.parse_site_file(p).status == "verified"

@@ -161,6 +161,8 @@ def site_md(row: SiteProfile) -> str:
         head.append(f"vertical: {row.vertical}")
     if row.aliases:
         head.append(f"aliases: {row.aliases}")
+    if row.status != "verified":
+        head.append(f"status: {row.status}")  # draft(분석 전)·stale. 생략하면 verified 로 시드되므로 내보낼 때 빠뜨리면 안 된다
     head.append(f"verified: {row.verified_at or ''}")
     return "---\n" + "\n".join(head) + "\n---\n" + _spec_fence(row.spec) + (row.body or "").strip() + "\n"
 
