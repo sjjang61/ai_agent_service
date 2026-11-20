@@ -111,7 +111,7 @@ export default function ChatLayout() {
     </button>
   ) : null
   const headerBtn = (active: boolean) =>
-    `flex items-center gap-1.5 px-2.5 py-1.5 rounded-[var(--radius-md)] text-xs border transition-colors cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed ${
+    `flex items-center gap-1.5 px-2.5 py-1.5 rounded-[var(--radius-md)] text-xs whitespace-nowrap flex-shrink-0 border transition-colors cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed ${
       active
         ? 'bg-accent-primary border-accent-primary text-white'
         : 'bg-surface-secondary border-border text-content-secondary hover:text-content-primary hover:bg-surface-hover'
@@ -179,7 +179,7 @@ export default function ChatLayout() {
         )}
 
         {/* 우측 패널 토글: 작업 진행 · 문서(RAG) · Artifacts */}
-        <div className="absolute top-3 right-4 z-10 flex items-center gap-2">
+        <div className="absolute top-3 right-4 z-10 flex flex-wrap justify-end items-center gap-2 max-w-[calc(100%-2rem)]">
           <button
             onClick={() => setShareOpen(true)}
             disabled={!currentConversationId}
