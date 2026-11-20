@@ -620,6 +620,26 @@ def resolve_label(elements: list, label: str, nth: Optional[int] = None) -> tupl
     return cands[0].get("ref"), ""
 
 
+def convert_ref_steps(steps: list, elements: Optional[list]) -> tuple[list, list[str]]:
+    """앞 단계가 화면을 바꿔서 ref 가 무효가 될 단계를, 처음 읽은 화면에서의 요소 이름(label)으로 바꾼다 (실행 직전에 화면을 다시 읽어 찾는다).
+    이름이 없는 요소(아이콘 버튼 등)는 바꿀 수 없어서 그대로 두고, validate_batch 가 설명과 함께 거부한다. 반환: (새 단계 목록, 안내 문구들)."""
+    out, notes, refs_valid = [], [], True
+    for i, st in enumerate(steps, 1):
+        if st.action in ("type", "select", "click") and st.ref is not None and not refs_valid:
+            el = next((e for e in (elements or []) if e.get("ref") == st.ref), None)
+            name = _el_name(el) if el else ""
+            if name:
+                same = [e for e in elements if e.get("tag") == el.get("tag") and _el_name(e) == name]
+                nth = (same.index(el) + 1) if len(same) > 1 else None
+                st = st.model_copy(update={"ref": None, "label": name, "nth": nth})
+                notes.append(f"{i}번째 단계: 앞 단계로 화면이 바뀔 수 있어 요소 번호 {el.get('ref')} 대신 이름 “{name[:40]}”(으)로 찾아 실행합니다")
+        out.append(st)
+        by_label = st.action in ("type", "select", "click") and st.ref is None
+        if by_label or st.action in ("press", "scroll", "wait", "click") or st.submit:
+            refs_valid = False  # 클릭·제출·키·스크롤·이름 단계 뒤에는 화면이 바뀔 수 있다 (실행하는 단계 자신의 ref 는 직전 화면 기준이라 유효)
+    return out, notes
+
+
 def _step_text(st: "BatchStep", elements: Optional[list]) -> str:
     """일괄 동작의 한 단계를 사람이 읽을 말로 (예: `클릭 “확인” 버튼`)."""
     d = describe_action(st.action, elements or [], ref=st.ref, text=st.text, key=st.key, direction=st.direction,
@@ -649,7 +669,6 @@ def validate_batch(steps: Optional[list], elements: Optional[list] = None) -> Op
         return f"Error: batch 는 최대 {MAX_BATCH_STEPS}단계입니다 ({len(steps)}단계)"
     refs_valid, culprit = True, 0  # culprit: 화면을 바꿀 수 있어 이후 ref 를 무효로 만든 단계
     for i, st in enumerate(steps, 1):
-        last = i == len(steps)
         if st.action in ("type", "select", "click") and st.ref is None and not st.label:
             return _batch_report(
                 steps, elements, f"Error: 일괄 동작을 실행하지 않았습니다 — {i}번째 단계({_step_text(st, elements)})에 대상(ref 또는 label)이 없습니다.",
@@ -665,15 +684,7 @@ def validate_batch(steps: Optional[list], elements: Optional[list] = None) -> Op
                     f"{i}번째 단계 「{_step_text(st, elements)}」는 요소 번호로 지정돼 있는데, 앞의 {culprit}번째 단계 「{_step_text(prev, elements)}」가 화면을 바꿔서 ref 가 무효가 됩니다.",
                     _REF_WHY, f"{i}번째 단계부터는 번호 대신 화면에 보이는 이름(label)으로 지정하세요 (ref 대신 label 을 쓰세요). 또는 일괄 대신 한 단계씩 실행하세요.",
                     {culprit: "화면이 바뀔 수 있는 단계", i: "여기서 중단: 번호가 무효"})
-            if not last and (st.action == "click" or st.submit):
-                kind = "클릭" if st.action == "click" else "제출"
-                return _batch_report(
-                    steps, elements,
-                    f"Error: 일괄 동작을 실행하지 않았습니다 — 요소 번호(ref)로 지정한 {kind}({_step_text(st, elements)})는 마지막 단계에만 쓸 수 있는데 {i}번째(중간) 단계에 있습니다.",
-                    f"{i}번째 단계 「{_step_text(st, elements)}」는 요소 번호로 지정된 {kind}이라 실행하면 화면이 바뀌어서, 뒤의 단계에서 쓸 요소 번호(ref)가 무효가 됩니다 (이후 ref 가 무효).",
-                    _REF_WHY, f"{i}번째 단계를 마지막으로 옮기거나, 중간에 오는 클릭·제출은 번호 대신 이름(label)으로 지정하세요.",
-                    {i: f"화면을 바꾸는 {kind}이 중간에 있음"})
-        if (by_label or st.action in ("press", "scroll", "wait") or st.submit) and refs_valid:
+        if (by_label or st.action in ("press", "scroll", "wait", "click") or st.submit) and refs_valid:
             refs_valid, culprit = False, i
     return None
 
@@ -703,6 +714,18 @@ def _error_brief(text: str, max_elements: int = 40, limit: int = 3500) -> str:
         lines = m.group(1).splitlines()
         out += f"\n\n[최신 요소 목록 · 앞 {min(len(lines), max_elements)}개 / 전체 {len(lines)}개]\n" + "\n".join(lines[:max_elements])
     return out[:limit]
+
+
+def _heal_candidate(old: Optional[dict], old_elements: list, new_elements: list, old_url: str, new_url: str) -> Optional[dict]:
+    """못 찾은 요소와 같은 요소가 최신 화면에 하나로 정해지면 그 요소. 주소(# 제외)가 같고, 정체(태그·이름·링크·맥락)가 하나만 맞을 때만 인정한다.
+    이름·링크·맥락이 모두 없는 요소(모양만 있는 버튼)는 정체를 믿을 수 없어 복구하지 않는다."""
+    if not old or not old_url or not new_url or old_url.split("#")[0] != new_url.split("#")[0]:
+        return None
+    if not any(old.get(k) for k in ("label", "href", "name", "placeholder", "tid")):
+        return None
+    want = target_identity(old, old_elements)
+    hits = [e for e in new_elements if target_identity(e, new_elements) == want]
+    return hits[0] if len(hits) == 1 else None
 
 
 def _ref_missing(error) -> bool:
@@ -795,8 +818,9 @@ def describe_batch(steps: list, elements: list) -> str:
 class BrowserActionInput(BaseModel):
     action: Literal["goto", "snapshot", "click", "type", "select", "press", "scroll", "back", "screenshot", "wait", "batch"] = Field(
         description="goto(url) | snapshot | click(ref) | type(ref,text,submit) | select(ref,text=option) | press(key) | scroll(direction) | back | screenshot(text=name) | wait(seconds) | "
-                    "batch(steps): run several steps in ONE call. Form: steps=[type ref,type ref,select ref,...,click ref] (refs from the SAME snapshot; "
-                    "only the LAST ref-based step may click/submit). Widgets (calendar, counters, tabs): target by visible name instead of ref, e.g. "
+                    "batch(steps): run several steps in ONE call. Form: steps=[type ref,type ref,select ref,...,click ref] (refs from the SAME snapshot). "
+                    "After a step that changes the screen (click, submit, key, scroll) later ref steps are automatically re-targeted by the element's visible name; "
+                    "an element with NO name (icon button) cannot be re-targeted, so put it first or run it as its own call. Widgets (calendar, counters, tabs): target by visible name instead of ref, e.g. "
                     "steps=[{click,label:'가는날'},{click,label:'27'},{click,label:'적용'}]; the page is re-read before each label step."
     )
     steps: Optional[list[BatchStep]] = Field(default=None, description=f"For batch: up to {MAX_BATCH_STEPS} steps run in order; stops at the first error")
@@ -823,6 +847,7 @@ class BrowserActionTool(BaseTool):
     conversation_id: str = ""  # 보안 확인(CAPTCHA) 때 사용자에게 브라우저를 열어 줄 대화방
     session_id: str = ""  # 병렬 실행 시 이 작업 전용 탭 id (비어 있으면 기본 브라우저)
     session_label: str = ""
+    _healing: bool = PrivateAttr(default=False)  # 요소 번호 자동 복구 중 (재귀 방지)
     tips_shown: set = Field(default_factory=set)  # 이미 안내한 사이트 요령 (이름). 처음 방문하는 사이트에서만 한 번 덧붙인다
     login_enabled: bool = False
     ignore_site_block: bool = False  # 사이트 설정에서 꺼진 사이트로의 이동도 허용한다 (그 사이트를 다시 분석할 때)
@@ -1052,7 +1077,7 @@ class BrowserActionTool(BaseTool):
                 await self._record_shot("error")  # 실패한 순간의 화면 (원인 파악용)
             prev_elements, prev_url = self.last_elements, self.last_url
             if not res.get("ok") and ref is not None and action in ("click", "type", "select") and _ref_missing(res.get("error")):
-                return await self._missing_ref_report(ref, str(res.get("error")))
+                return await self._missing_ref_report(ref, str(res.get("error")), action, text=text, key=key, direction=direction, submit=submit, seconds=seconds)
             if res.get("ok") and "elements" in res:
                 self.last_elements, self.last_url = res["elements"], str(res.get("url", ""))
                 if self.last_url and (not self._trail or self._trail[-1][0] != self.last_url):
@@ -1075,7 +1100,7 @@ class BrowserActionTool(BaseTool):
         except Exception as e:
             return f"Error: {type(e).__name__}: {e}"
 
-    async def _missing_ref_report(self, ref: int, error: str) -> str:
+    async def _missing_ref_report(self, ref: int, error: str, action: str = "", **kw) -> str:
         """누를 요소(ref)를 찾지 못했을 때: 무엇을 누르려 했는지, 왜 못 찾았는지, 지금 화면의 최신 요소 목록을 함께 돌려준다.
         번호(ref)는 화면을 읽을 때마다 새로 매겨져서, 그 사이 화면이 바뀌면 같은 번호가 다른 요소이거나 없어진다."""
         old = next((e for e in self.last_elements if e.get("ref") == ref), None)
@@ -1087,8 +1112,20 @@ class BrowserActionTool(BaseTool):
         if not snap.get("ok") or "elements" not in snap:
             return f"Error: {error}"
         new_url = str(snap.get("url", ""))
+        old_elements = self.last_elements
         self.last_elements, self.last_url = snap["elements"], new_url
         self._cur_basis = screen_basis_of(snap)
+        healed = _heal_candidate(old, old_elements, snap["elements"], old_url, new_url)
+        if healed is not None and action and not self._healing:
+            # 같은 화면에서 번호만 바뀐 경우: 같은 요소(정체가 하나로 정해질 때만)를 최신 번호로 한 번 다시 실행한다. 승인·결제 검사는 다시 거친다
+            self._healing = True
+            try:
+                out = await self._act(action, ref=healed.get("ref"), **kw)
+            finally:
+                self._healing = False
+            name = _el_name(old) or "요소"
+            why = "화면이 다시 그려져 요소 번호표가 사라져서 최신 화면을 다시 읽고" if healed.get("ref") == ref else f"요소 번호가 바뀌어 [{ref}] 대신 최신 번호로"
+            return f"[자동 복구] {why} 같은 요소 [{healed.get('ref')}] {old.get('tag', '')} “{name[:40]}”(으)로 다시 실행했습니다.\n{out}"
         lines = [f"Error: {error}"]
         if old is None:
             lines.append(f"[원인] ref {ref} 은(는) 마지막으로 읽은 화면에도 없는 번호입니다. 최신 목록에 나온 번호만 쓸 수 있습니다.")
@@ -1207,10 +1244,12 @@ class BrowserActionTool(BaseTool):
         도메인 차단·승인 정책·CAPTCHA 감지를 거치고, 첫 오류·거부에서 멈춘다. ref 로 지정한 단계는 같은 snapshot 안에서만 쓸 수 있고,
         화면이 바뀌는 단계(달력·카운터 클릭 등)는 label 로 지정해 실행 직전에 화면을 다시 읽어 대상을 찾는다."""
         steps = [BatchStep(**st) if isinstance(st, dict) else st for st in (steps or [])]
-        bad = validate_batch(steps, self.last_elements)
+        shown_elements = self.last_elements  # 단계 설명은 요청을 받은 시점의 화면 기준
+        steps, converted = convert_ref_steps(steps, self.last_elements)
+        bad = validate_batch(steps, shown_elements)
         if bad:
             return bad
-        log: list[str] = []
+        log: list[str] = [f"[자동 변환] {n}" for n in converted]
         out = ""
         for i, st in enumerate(steps, 1):
             ref, name = st.ref, (f" ref={st.ref}" if st.ref is not None else "")

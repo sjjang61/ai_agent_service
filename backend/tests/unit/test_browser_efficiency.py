@@ -1376,10 +1376,7 @@ def test_sandbox_daemon_drops_headless_marker_from_user_agent():
     assert 'replace("HeadlessChrome", "Chrome")' in bt.DAEMON_SOURCE and '_ctx_args["user_agent"]' in bt.DAEMON_SOURCE
 
 
-@pytest.mark.asyncio
-async def test_missing_ref_error_explains_cause_and_includes_fresh_snapshot(monkeypatch):
-    """ref 를 못 찾으면 무엇을 누르려 했는지·왜 못 찾았는지·최신 요소 목록을 함께 돌려준다."""
-    old_page = {"ok": True, "url": PAGE, "title": "T", "elements": [{"ref": 47, "tag": "button", "label": "검색"}, {"ref": 48, "tag": "a", "label": "홈", "href": "/"}], "text": "본문"}
+def _ref_tool(monkeypatch, old_page, handler):
     fake = Fake(old_page)
     monkeypatch.setattr(bt, "browser_call", fake)
 
@@ -1388,21 +1385,60 @@ async def test_missing_ref_error_explains_cause_and_includes_fresh_snapshot(monk
 
     monkeypatch.setattr(bt.BrowserActionTool, "_needs_policy", no_policy)
     t = bt.BrowserActionTool(user_id="u1")
-    await t._arun("snapshot")  # ref 47 = 검색 버튼
+    return t, fake
+
+
+@pytest.mark.asyncio
+async def test_missing_ref_is_auto_healed_when_same_element_is_unique_on_same_page(monkeypatch):
+    """화면은 그대로인데 번호만 바뀐 경우: 같은 요소(정체가 하나)를 최신 번호로 한 번 다시 실행한다."""
+    old_page = {"ok": True, "url": PAGE, "title": "T", "elements": [{"ref": 47, "tag": "button", "label": "검색"}, {"ref": 48, "tag": "a", "label": "홈", "href": "/"}], "text": "본문"}
+    t, _ = _ref_tool(monkeypatch, old_page, None)
+    await t._arun("snapshot")
     new_els = [{"ref": 3, "tag": "button", "label": "검색"}, {"ref": 4, "tag": "a", "label": "홈", "href": "/"}]
-    calls = {"n": 0}
+    clicked = []
 
     async def flaky(user_id, payload, **kw):
         if payload["cmd"] == "click":
+            clicked.append(payload["ref"])
+            return {"ok": False, "error": "ref 47 요소를 찾을 수 없습니다. snapshot 으로 최신 ref 를 확인하세요"} if payload["ref"] == 47 else {"ok": True, "url": PAGE, "title": "T", "elements": new_els, "text": "다음 화면"}
+        return {"ok": True, "url": PAGE, "title": "T", "elements": new_els, "text": "본문"}
+
+    monkeypatch.setattr(bt, "browser_call", flaky)
+    out = await t._arun("click", ref=47)
+    assert clicked == [47, 3]  # 처음 번호로 실패 → 최신 번호로 한 번 다시
+    assert out.startswith("[자동 복구]") and "[47] 대신 최신 번호로 같은 요소 [3] button “검색”" in out and "Error" not in out.split("\n")[0]
+
+
+@pytest.mark.asyncio
+async def test_missing_ref_error_explains_cause_when_it_cannot_be_healed(monkeypatch):
+    """복구할 수 없으면(같은 이름이 여럿·사라짐·화면 이동) 무엇을 누르려 했는지·원인·최신 요소 목록을 함께 돌려준다."""
+    old_page = {"ok": True, "url": PAGE, "title": "T", "elements": [{"ref": 47, "tag": "button", "label": "검색"}, {"ref": 48, "tag": "a", "label": "홈", "href": "/"}], "text": "본문"}
+    t, _ = _ref_tool(monkeypatch, old_page, None)
+    await t._arun("snapshot")
+    new_els = [{"ref": 3, "tag": "a", "label": "홈", "href": "/"}]  # '검색' 버튼이 사라졌다
+    clicked = []
+
+    async def flaky(user_id, payload, **kw):
+        if payload["cmd"] == "click":
+            clicked.append(payload["ref"])
             return {"ok": False, "error": "ref 47 요소를 찾을 수 없습니다. snapshot 으로 최신 ref 를 확인하세요"}
         return {"ok": True, "url": PAGE, "title": "T", "elements": new_els, "text": "본문"}
 
     monkeypatch.setattr(bt, "browser_call", flaky)
     out = await t._arun("click", ref=47)
+    assert clicked == [47]  # 다시 실행하지 않는다
     assert out.splitlines()[0].startswith("Error: ref 47 요소를 찾을 수 없습니다")  # 첫 줄은 기존 문구 그대로
-    assert '[누르려던 요소] [47] button "검색"' in out and "[원인]" in out and "번호가 바뀌었습니다" in out
-    assert "[지금 화면의 같은 이름 요소] [3]" in out and '[3] button "검색"' in out  # 최신 목록 포함
+    assert '[누르려던 요소] [47] button "검색"' in out and "사라졌습니다" in out and '[3] a "홈"' in out  # 최신 목록 포함
     assert t.last_elements == new_els  # 다음 동작은 최신 번호를 쓴다
+
+
+def test_heal_candidate_requires_same_page_unique_identity():
+    old = {"ref": 5, "tag": "button", "label": "확인"}
+    els = [{"ref": 1, "tag": "button", "label": "확인"}]
+    assert bt._heal_candidate(old, [old], els, "https://x.com/a", "https://x.com/a#top")["ref"] == 1
+    assert bt._heal_candidate(old, [old], els, "https://x.com/a", "https://x.com/b") is None  # 화면 이동: 다른 화면의 같은 이름일 수 있다
+    assert bt._heal_candidate(old, [old], els + [{"ref": 2, "tag": "button", "label": "확인"}], "https://x.com/a", "https://x.com/a") is None  # 같은 요소가 여럿이면 정할 수 없다
+    assert bt._heal_candidate({"ref": 5, "tag": "button"}, [{"ref": 5, "tag": "button"}], [{"ref": 1, "tag": "button"}], "https://x.com/a", "https://x.com/a") is None  # 이름도 맥락도 없는 요소
 
 
 def test_ref_missing_detects_local_and_sandbox_errors():
@@ -1429,5 +1465,46 @@ def test_batch_validation_error_explains_problem_reason_and_fix():
         assert part in msg
     assert "← 화면이 바뀔 수 있는 단계" in msg and "← 여기서 중단" in msg and "입력" in msg and "“확인” 버튼" in msg
     mid = bt.validate_batch([S("click", ref=3), S("type", ref=1, text="x")], els)
-    assert "ref 가 무효" in mid and "마지막 단계에만" in mid.splitlines()[0]
-    assert "ref 또는 label" in bt.validate_batch([S("type", text="a")]) 
+    assert "ref 가 무효" in mid  # 중간의 ref 클릭 자체는 허용되고, 그 뒤의 ref 단계만 무효가 된다
+    assert bt.validate_batch([S("type", ref=1, text="x"), S("click", ref=3)], els) is None  # 클릭이 마지막이면 문제없다
+    assert "ref 또는 label" in bt.validate_batch([S("type", text="a")])
+
+
+def test_convert_ref_steps_turns_invalidated_refs_into_labels():
+    els = [{"ref": 1, "tag": "input", "label": "출발지"}, {"ref": 2, "tag": "button", "label": "검색"}, {"ref": 3, "tag": "button", "label": "더보기"}, {"ref": 4, "tag": "button", "label": "더보기"}, {"ref": 5, "tag": "button"}]
+    steps = [S("type", ref=1, text="ICN"), S("click", ref=2), S("click", ref=4), S("click", ref=5)]
+    out, notes = bt.convert_ref_steps(steps, els)
+    assert out[0].ref == 1 and out[1].ref == 2  # 처음 화면 기준으로 유효한 단계(첫 단계, 첫 클릭 자신)는 그대로
+    assert out[2].ref is None and out[2].label == "더보기" and out[2].nth == 2  # 같은 이름이 둘이면 몇 번째인지 보존
+    assert out[3].ref == 5 and len(notes) == 1 and "“더보기”" in notes[0]  # 이름 없는 요소는 바꿀 수 없다
+    assert "ref 가 무효" in bt.validate_batch(out, els)  # 바꿀 수 없는 단계는 설명과 함께 거부된다
+    ok = [out[0], out[1], out[2]]
+    assert bt.validate_batch(ok, els) is None
+
+
+@pytest.mark.asyncio
+async def test_batch_with_ref_after_screen_change_runs_by_label_instead_of_being_rejected(monkeypatch):
+    """클릭 뒤에 이어지는 ref 단계는 거부하지 않고, 이름으로 바꿔 화면을 다시 읽은 뒤 실행한다."""
+    page1 = {"ok": True, "url": PAGE, "title": "T", "elements": [{"ref": 1, "tag": "button", "label": "열기"}, {"ref": 2, "tag": "input", "label": "도시"}], "text": "본문"}
+    page2 = {"ok": True, "url": PAGE, "title": "T", "elements": [{"ref": 7, "tag": "input", "label": "도시"}, {"ref": 8, "tag": "button", "label": "확인"}], "text": "열림"}
+    calls = []
+    state = {"after_click": False}
+
+    async def fake(user_id, payload, **kw):
+        calls.append(payload)
+        if payload["cmd"] == "click" and payload.get("ref") == 1:
+            state["after_click"] = True
+        return dict(page2 if state["after_click"] else page1)
+
+    monkeypatch.setattr(bt, "browser_call", fake)
+
+    async def no_policy(self):
+        return False
+
+    monkeypatch.setattr(bt.BrowserActionTool, "_needs_policy", no_policy)
+    t = bt.BrowserActionTool(user_id="u1")
+    await t._arun("snapshot")
+    out = await t._arun("batch", steps=[{"action": "click", "ref": 1}, {"action": "type", "ref": 2, "text": "서울"}])
+    assert not out.startswith("Error") and "[자동 변환]" in out and "“도시”" in out
+    typed = [c for c in calls if c["cmd"] == "type"]
+    assert len(typed) == 1 and typed[0]["ref"] == 7  # 처음 번호(2)가 아니라 다시 읽은 화면의 번호(7)로 입력했다
