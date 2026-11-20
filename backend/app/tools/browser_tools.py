@@ -620,28 +620,61 @@ def resolve_label(elements: list, label: str, nth: Optional[int] = None) -> tupl
     return cands[0].get("ref"), ""
 
 
-def validate_batch(steps: Optional[list]) -> Optional[str]:
-    """batch 의 steps 가 안전한 형태인지 검사한다. 문제가 있으면 에이전트에게 돌려줄 오류 메시지.
+def _step_text(st: "BatchStep", elements: Optional[list]) -> str:
+    """일괄 동작의 한 단계를 사람이 읽을 말로 (예: `클릭 “확인” 버튼`)."""
+    d = describe_action(st.action, elements or [], ref=st.ref, text=st.text, key=st.key, direction=st.direction,
+                        submit=bool(st.submit), seconds=st.seconds, label=st.label)
+    return d.replace(" · ", " ", 1)
+
+
+def _batch_report(steps: list, elements: Optional[list], headline: str, problem: str, why: str, fix: str, marks: dict) -> str:
+    """일괄 동작 검사 오류를 화면에서도 이해할 수 있게: 첫 줄에 요지, 이어서 문제·이유·조치와 요청된 단계 목록(문제 단계 표시)."""
+    lines = [headline, f"[문제] {problem}", f"[이유] {why}", f"[조치] {fix}", "[요청된 단계]"]
+    for n, st in enumerate(steps, 1):
+        mark = f"   ← {marks[n]}" if n in marks else ""
+        lines.append(f" {n}. {_step_text(st, elements)}{mark}")
+    return "\n".join(lines)
+
+
+_REF_WHY = ("요소 번호(ref)는 화면을 읽은 그 시점에만 유효합니다. 클릭·Enter/제출·스크롤·대기, 그리고 이름(label)으로 지정한 단계는 실행 뒤 화면이 바뀌거나 다시 읽혀서 "
+            "같은 번호가 다른 요소를 가리키거나 없어질 수 있습니다. 그래서 일괄 동작은 시작하기 전에 전체 단계를 검사하고, 문제가 있으면 어떤 단계도 실행하지 않습니다.")
+
+
+def validate_batch(steps: Optional[list], elements: Optional[list] = None) -> Optional[str]:
+    """batch 의 steps 가 안전한 형태인지 검사한다. 문제가 있으면 에이전트(와 작업 진행 화면)에 돌려줄 오류 메시지.
     ref 로 지정한 단계는 같은 snapshot 에서만 유효하다: 화면을 바꾸는 단계(클릭·키·스크롤 등)나 label 단계(화면을 새로 읽는다) 뒤에는 ref 를 쓸 수 없다."""
     if not steps:
         return "Error: batch 에는 steps 가 필요합니다"
     if len(steps) > MAX_BATCH_STEPS:
         return f"Error: batch 는 최대 {MAX_BATCH_STEPS}단계입니다 ({len(steps)}단계)"
-    refs_valid = True
+    refs_valid, culprit = True, 0  # culprit: 화면을 바꿀 수 있어 이후 ref 를 무효로 만든 단계
     for i, st in enumerate(steps, 1):
         last = i == len(steps)
         if st.action in ("type", "select", "click") and st.ref is None and not st.label:
-            return f"Error: {i}번째 단계({st.action})에 ref 또는 label 이 없습니다. 실행하지 않았습니다."
+            return _batch_report(
+                steps, elements, f"Error: 일괄 동작을 실행하지 않았습니다 — {i}번째 단계({_step_text(st, elements)})에 대상(ref 또는 label)이 없습니다.",
+                f"{i}번째 단계는 어떤 요소를 누르거나 입력할지 정해지지 않았습니다 (ref 또는 label 이 없음).",
+                "대상을 알아야 동작할 수 있습니다.", f"{i}번째 단계에 화면에서 읽은 요소 번호(ref)나 보이는 이름(label)을 지정하세요.", {i: "대상 없음"})
         by_label = st.action in ("type", "select", "click") and st.ref is None
         if not by_label and st.action in ("type", "select", "click"):
             if not refs_valid:
-                return (f"Error: {i}번째 단계의 ref 는 앞 단계가 화면을 바꿔 무효입니다. 이 단계부터는 ref 대신 label 을 쓰세요. "
-                        "실행하지 않았습니다.")
+                prev = steps[culprit - 1]
+                return _batch_report(
+                    steps, elements,
+                    f"Error: 일괄 동작을 실행하지 않았습니다 — {i}번째 단계가 요소 번호(ref {st.ref})로 지정돼 있는데, 앞의 {culprit}번째 단계({_step_text(prev, elements)})가 화면을 바꿀 수 있어 그 번호가 맞지 않을 수 있습니다.",
+                    f"{i}번째 단계 「{_step_text(st, elements)}」는 요소 번호로 지정돼 있는데, 앞의 {culprit}번째 단계 「{_step_text(prev, elements)}」가 화면을 바꿔서 ref 가 무효가 됩니다.",
+                    _REF_WHY, f"{i}번째 단계부터는 번호 대신 화면에 보이는 이름(label)으로 지정하세요 (ref 대신 label 을 쓰세요). 또는 일괄 대신 한 단계씩 실행하세요.",
+                    {culprit: "화면이 바뀔 수 있는 단계", i: "여기서 중단: 번호가 무효"})
             if not last and (st.action == "click" or st.submit):
-                return (f"Error: {i}번째 단계({st.action}{' submit' if st.submit else ''})는 화면을 바꿔 이후 ref 가 무효가 됩니다. "
-                        "ref 로 지정한 클릭·submit 은 마지막 단계에만 쓸 수 있습니다(중간에는 label 로 지정). 실행하지 않았습니다.")
-        if by_label or st.action in ("press", "scroll", "wait") or st.submit:
-            refs_valid = False
+                kind = "클릭" if st.action == "click" else "제출"
+                return _batch_report(
+                    steps, elements,
+                    f"Error: 일괄 동작을 실행하지 않았습니다 — 요소 번호(ref)로 지정한 {kind}({_step_text(st, elements)})는 마지막 단계에만 쓸 수 있는데 {i}번째(중간) 단계에 있습니다.",
+                    f"{i}번째 단계 「{_step_text(st, elements)}」는 요소 번호로 지정된 {kind}이라 실행하면 화면이 바뀌어서, 뒤의 단계에서 쓸 요소 번호(ref)가 무효가 됩니다 (이후 ref 가 무효).",
+                    _REF_WHY, f"{i}번째 단계를 마지막으로 옮기거나, 중간에 오는 클릭·제출은 번호 대신 이름(label)으로 지정하세요.",
+                    {i: f"화면을 바꾸는 {kind}이 중간에 있음"})
+        if (by_label or st.action in ("press", "scroll", "wait") or st.submit) and refs_valid:
+            refs_valid, culprit = False, i
     return None
 
 
@@ -659,6 +692,23 @@ def target_identity(e: dict, elements: Optional[list] = None) -> tuple:
         return base
     twins = [x for x in elements if target_identity(x) == base]
     return base + ((twins.index(e) + 1,) if len(twins) > 1 and e in twins else ())
+
+
+def _error_brief(text: str, max_elements: int = 40, limit: int = 3500) -> str:
+    """요소를 못 찾은 오류(_missing_ref_report)의 화면 표시용 요약: 원인 설명 + 최신 요소 목록의 앞 max_elements 줄."""
+    head, _, tail = text.partition("\n\nURL:")
+    out = head
+    m = re.search(r"<<<WEB_CONTENT>>>\n(.*?)\n<<<END_WEB_CONTENT>>>", tail, re.DOTALL)
+    if m:
+        lines = m.group(1).splitlines()
+        out += f"\n\n[최신 요소 목록 · 앞 {min(len(lines), max_elements)}개 / 전체 {len(lines)}개]\n" + "\n".join(lines[:max_elements])
+    return out[:limit]
+
+
+def _ref_missing(error) -> bool:
+    """요소 번호(ref)로 요소를 찾지 못한 오류인지 (로컬 브라우저의 안내 문구, sandbox 의 Playwright 시간 초과 포함)."""
+    msg = str(error or "")
+    return "요소를 찾을 수 없습니다" in msg or "data-agent-ref" in msg
 
 
 def _el_name(e: dict) -> str:
@@ -813,6 +863,11 @@ class BrowserActionTool(BaseTool):
         decision = policy.classify(payload, self.last_elements, self.last_url)
         if not policy.needs_approval(decision, self.conversation_id, self.last_url):
             return None
+        if decision.level == policy.ASK and payload.get("cmd") == "click":
+            from app.services.local_browser import route_for
+
+            if await route_for(self.user_id, self.session_id) is not None:
+                return None  # 데스크톱 앱 브라우저는 사용자가 화면에서 보고 있다: 위험 신호 없는 클릭(대상을 못 찾는 클릭 포함)은 승인 없이 진행한다
         if not (self.login_enabled and self.conversation_id):
             return ("Error: 이 동작은 사용자 승인이 필요하지만 승인할 수 있는 화면이 없어 실행하지 않았습니다. "
                     "수행하지 말고 상황을 보고한 뒤 멈추세요.")
@@ -863,15 +918,12 @@ class BrowserActionTool(BaseTool):
             brief_src = out
             out = self._with_site_tip(out)
             return out
-        if decision.level == policy.ASK and payload.get("cmd") == "click":
-            from app.services.local_browser import route_for
-
-            if await route_for(self.user_id, self.session_id) is not None:
-                return None  # 데스크톱 앱 브라우저는 사용자가 화면에서 보고 있다: 위험 신호 없는 클릭(대상을 못 찾는 클릭 포함)은 승인 없이 진행한다
         finally:  # 실패·취소로 끝나도 결과 이벤트를 보내 화면에 '진행 중'이 남지 않게 한다
             # 결과는 화면 요약용으로만 짧게 저장한다 (스냅샷 전체는 한 단계에 수천 토큰이라 작업 내역이 비대해진다)
             src = brief_src if brief_src else out
             brief = (src or "(중단됨)").split("\n")[0][:200] if not str(src).startswith("URL:") else " · ".join(str(src).split("\n")[:2])[:200]
+            if str(src).startswith("Error") and ("[원인]" in str(src) or "[문제]" in str(src)):
+                brief = _error_brief(str(src))  # 요소를 못 찾은 오류: 원인 설명과 최신 요소 목록(앞부분)을 화면에서도 볼 수 있게 남긴다
             side_events.emit(self.conversation_id, {"type": "tool_result", "tool": "browser_action", "output": brief,
                                                     "success": not str(out).startswith(("Error", "[결제 직전]")), "call_id": call_id, "agent": self.agent_label})
 
@@ -999,6 +1051,8 @@ class BrowserActionTool(BaseTool):
             elif not res.get("ok") and action != "screenshot" and not any(k in str(res.get("error", "")) for k in ("시작하지", "응답이 없습니다", "연결이 끊어졌습니다")):
                 await self._record_shot("error")  # 실패한 순간의 화면 (원인 파악용)
             prev_elements, prev_url = self.last_elements, self.last_url
+            if not res.get("ok") and ref is not None and action in ("click", "type", "select") and _ref_missing(res.get("error")):
+                return await self._missing_ref_report(ref, str(res.get("error")))
             if res.get("ok") and "elements" in res:
                 self.last_elements, self.last_url = res["elements"], str(res.get("url", ""))
                 if self.last_url and (not self._trail or self._trail[-1][0] != self.last_url):
@@ -1020,6 +1074,39 @@ class BrowserActionTool(BaseTool):
             return note + self._change_summary(action, res, prev_elements, prev_url) + self._url_conditions(action, res) + _format(res)
         except Exception as e:
             return f"Error: {type(e).__name__}: {e}"
+
+    async def _missing_ref_report(self, ref: int, error: str) -> str:
+        """누를 요소(ref)를 찾지 못했을 때: 무엇을 누르려 했는지, 왜 못 찾았는지, 지금 화면의 최신 요소 목록을 함께 돌려준다.
+        번호(ref)는 화면을 읽을 때마다 새로 매겨져서, 그 사이 화면이 바뀌면 같은 번호가 다른 요소이거나 없어진다."""
+        old = next((e for e in self.last_elements if e.get("ref") == ref), None)
+        old_url = self.last_url
+        try:
+            snap = await browser_call(self.user_id, {"cmd": "snapshot"}, sandbox_cid=self.sandbox_cid, use_profile=self.use_profile, session_id=self.session_id)
+        except Exception:  # noqa: BLE001
+            snap = {}
+        if not snap.get("ok") or "elements" not in snap:
+            return f"Error: {error}"
+        new_url = str(snap.get("url", ""))
+        self.last_elements, self.last_url = snap["elements"], new_url
+        self._cur_basis = screen_basis_of(snap)
+        lines = [f"Error: {error}"]
+        if old is None:
+            lines.append(f"[원인] ref {ref} 은(는) 마지막으로 읽은 화면에도 없는 번호입니다. 최신 목록에 나온 번호만 쓸 수 있습니다.")
+        else:
+            name = _el_name(old) or str(old.get("ctx") or old.get("tid") or old.get("cls") or "").strip() or "(이름 없음)"
+            lines.append(f"[누르려던 요소] [{ref}] {old.get('tag', '')} \"{name[:60]}\" (직전에 읽은 화면 기준)")
+            same = [e for e in snap["elements"] if (e.get("tag"), _el_name(e)) == (old.get("tag"), _el_name(old)) and _el_name(old)]
+            if old_url and new_url and old_url.split("#")[0] != new_url.split("#")[0]:
+                cause = f"직전에 읽은 뒤 화면이 이동했습니다 ({old_url[:80]} → {new_url[:80]}). 이동하면 요소 번호가 모두 새로 매겨집니다."
+            elif same:
+                cause = "화면을 다시 읽으면서 요소 번호가 바뀌었습니다. 같은 요소가 아래 목록에 다른 번호로 있습니다."
+            else:
+                cause = "화면이 갱신되면서 그 요소가 사라졌습니다 (팝업·메뉴·드롭다운이 닫혔거나, 목록이 다시 그려졌거나, 위치가 바뀐 경우)."
+            lines.append(f"[원인] {cause}")
+            if same:
+                lines.append("[지금 화면의 같은 이름 요소] " + ", ".join(f"[{e.get('ref')}]" for e in same[:5]))
+        lines.append("[조치] 아래 최신 요소 목록에서 번호를 다시 골라 시도하세요. 화면이 바뀐 동작 뒤에는 항상 목록의 번호가 새로 매겨집니다.")
+        return "\n".join(lines) + "\n\n" + _format(snap)
 
     async def _daemon_shoots(self) -> bool:
         """이 작업의 브라우저가 sandbox 데몬(스스로 스크린샷을 남긴다)인지."""
@@ -1120,7 +1207,7 @@ class BrowserActionTool(BaseTool):
         도메인 차단·승인 정책·CAPTCHA 감지를 거치고, 첫 오류·거부에서 멈춘다. ref 로 지정한 단계는 같은 snapshot 안에서만 쓸 수 있고,
         화면이 바뀌는 단계(달력·카운터 클릭 등)는 label 로 지정해 실행 직전에 화면을 다시 읽어 대상을 찾는다."""
         steps = [BatchStep(**st) if isinstance(st, dict) else st for st in (steps or [])]
-        bad = validate_batch(steps)
+        bad = validate_batch(steps, self.last_elements)
         if bad:
             return bad
         log: list[str] = []

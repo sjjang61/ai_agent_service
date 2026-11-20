@@ -1374,3 +1374,60 @@ def test_sandbox_daemon_launches_new_headless_chromium():
 def test_sandbox_daemon_drops_headless_marker_from_user_agent():
     """User-Agent 의 'HeadlessChrome' 표기만 'Chrome' 으로 바꾼다 (버전·OS 는 브라우저가 알려 준 실제 값)."""
     assert 'replace("HeadlessChrome", "Chrome")' in bt.DAEMON_SOURCE and '_ctx_args["user_agent"]' in bt.DAEMON_SOURCE
+
+
+@pytest.mark.asyncio
+async def test_missing_ref_error_explains_cause_and_includes_fresh_snapshot(monkeypatch):
+    """ref 를 못 찾으면 무엇을 누르려 했는지·왜 못 찾았는지·최신 요소 목록을 함께 돌려준다."""
+    old_page = {"ok": True, "url": PAGE, "title": "T", "elements": [{"ref": 47, "tag": "button", "label": "검색"}, {"ref": 48, "tag": "a", "label": "홈", "href": "/"}], "text": "본문"}
+    fake = Fake(old_page)
+    monkeypatch.setattr(bt, "browser_call", fake)
+
+    async def no_policy(self):
+        return False
+
+    monkeypatch.setattr(bt.BrowserActionTool, "_needs_policy", no_policy)
+    t = bt.BrowserActionTool(user_id="u1")
+    await t._arun("snapshot")  # ref 47 = 검색 버튼
+    new_els = [{"ref": 3, "tag": "button", "label": "검색"}, {"ref": 4, "tag": "a", "label": "홈", "href": "/"}]
+    calls = {"n": 0}
+
+    async def flaky(user_id, payload, **kw):
+        if payload["cmd"] == "click":
+            return {"ok": False, "error": "ref 47 요소를 찾을 수 없습니다. snapshot 으로 최신 ref 를 확인하세요"}
+        return {"ok": True, "url": PAGE, "title": "T", "elements": new_els, "text": "본문"}
+
+    monkeypatch.setattr(bt, "browser_call", flaky)
+    out = await t._arun("click", ref=47)
+    assert out.splitlines()[0].startswith("Error: ref 47 요소를 찾을 수 없습니다")  # 첫 줄은 기존 문구 그대로
+    assert '[누르려던 요소] [47] button "검색"' in out and "[원인]" in out and "번호가 바뀌었습니다" in out
+    assert "[지금 화면의 같은 이름 요소] [3]" in out and '[3] button "검색"' in out  # 최신 목록 포함
+    assert t.last_elements == new_els  # 다음 동작은 최신 번호를 쓴다
+
+
+def test_ref_missing_detects_local_and_sandbox_errors():
+    assert bt._ref_missing("ref 47 요소를 찾을 수 없습니다. snapshot 으로 최신 ref 를 확인하세요")
+    assert bt._ref_missing('Locator.click: Timeout 8000ms exceeded. waiting for locator("[data-agent-ref=\\"47\\"]")')
+    assert not bt._ref_missing("net::ERR_CONNECTION_RESET") and not bt._ref_missing(None)
+
+
+def test_error_brief_keeps_cause_and_first_elements_only():
+    full = ("Error: ref 47 요소를 찾을 수 없습니다.\n[누르려던 요소] [47] button \"검색\"\n[원인] 화면이 이동했습니다.\n[조치] 다시 고르세요.\n\n"
+            "URL: https://x.com/\nTitle: T\nInteractive elements (...):\n<<<WEB_CONTENT>>>\n" + "\n".join(f"[{i}] a \"링크{i}\"" for i in range(100)) + "\n<<<END_WEB_CONTENT>>>\nPage text ...")
+    brief = bt._error_brief(full)
+    assert brief.startswith("Error: ref 47") and "[원인] 화면이 이동했습니다." in brief
+    assert "앞 40개 / 전체 100개" in brief and '[39] a "링크39"' in brief and '[40] a "링크40"' not in brief and "Page text" not in brief
+
+
+def test_batch_validation_error_explains_problem_reason_and_fix():
+    steps = [S("type", ref=1, text="서울"), S("press", key="Enter"), S("click", ref=3)]
+    els = [{"ref": 1, "tag": "input", "label": "도시"}, {"ref": 3, "tag": "button", "label": "확인"}]
+    msg = bt.validate_batch(steps, els)
+    first = msg.splitlines()[0]
+    assert first.startswith("Error: 일괄 동작을 실행하지 않았습니다") and "3번째 단계" in first and "2번째 단계" in first and len(first) < 200  # 첫 줄만 봐도 요지를 안다
+    for part in ("[문제]", "[이유]", "[조치]", "[요청된 단계]", "label"):
+        assert part in msg
+    assert "← 화면이 바뀔 수 있는 단계" in msg and "← 여기서 중단" in msg and "입력" in msg and "“확인” 버튼" in msg
+    mid = bt.validate_batch([S("click", ref=3), S("type", ref=1, text="x")], els)
+    assert "ref 가 무효" in mid and "마지막 단계에만" in mid.splitlines()[0]
+    assert "ref 또는 label" in bt.validate_batch([S("type", text="a")]) 
