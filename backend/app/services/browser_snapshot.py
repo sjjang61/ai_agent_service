@@ -103,6 +103,25 @@ SNAP_JS = r"""(() => {
   }
   // 페이지 본문: 취소선이 그어진 글자(이전 가격 등)는 ~~글자~~ 로 표시한다. innerText 는 서식을 잃어서 취소선 가격과 현재 가격이 구분되지 않기 때문이다
   let txt = (document.body ? document.body.innerText : '').slice(0, 8000);
+  // 본문이 길면(왼쪽 필터·메뉴가 앞부분을 다 차지하는 목록 화면 등) 앞 3000자에 정작 보이는 내용이 없다. 그때는 지금 화면에 보이는 글자를 본문으로 쓴다.
+  if (txt.length > 2800 && document.body) {
+    try {
+      const vis = []; let len = 0;
+      const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT, {acceptNode: (n) => {
+        const p = n.parentElement; if (!p || ['SCRIPT', 'STYLE', 'NOSCRIPT'].includes(p.tagName) || !n.nodeValue.trim()) return NodeFilter.FILTER_REJECT;
+        return NodeFilter.FILTER_ACCEPT; }});
+      const range = document.createRange(); let scanned = 0;
+      while (walker.nextNode() && len < 6000 && ++scanned < 20000) {
+        const n = walker.currentNode; range.selectNodeContents(n);
+        const r = range.getBoundingClientRect();
+        if (r.width < 1 || r.height < 1 || r.bottom <= 0 || r.top >= window.innerHeight || r.right <= 0 || r.left >= window.innerWidth) continue;
+        const st = getComputedStyle(n.parentElement); if (st.visibility === 'hidden' || st.display === 'none') continue;
+        const t = n.nodeValue.trim().replace(/\s+/g, ' '); vis.push(t); len += t.length + 1;
+      }
+      const v = vis.join('\n');
+      if (v.length >= 200) txt = v.slice(0, 8000);
+    } catch (e) {}
+  }
   try {
     const struck = []; let scanned = 0;
     for (const el of document.body ? document.body.querySelectorAll('*') : []) {

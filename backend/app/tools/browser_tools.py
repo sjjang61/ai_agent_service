@@ -26,7 +26,7 @@ from app.config import settings
 DAEMON_PATH = "/tmp/_browser_daemon.py"
 STATE_PATH = "/tmp/_browser_state.json"  # 저장된 로그인 상태. 데몬이 읽자마자 지운다
 DAEMON_PORT = 9333
-DAEMON_VERSION = 15
+DAEMON_VERSION = 16
 LOGIN_TIMEOUT_SECONDS = 600
 MAX_USER_REQUESTS = 3  # 한 번의 브라우저 작업에서 사용자에게 같은 해결을 요청하는 최대 횟수 (해결이 반복해서 실패하면 멈춘다)
 
@@ -38,7 +38,7 @@ from http.server import BaseHTTPRequestHandler, HTTPServer
 from urllib.parse import urlparse
 from playwright.sync_api import sync_playwright
 
-PORT, IDLE_SECONDS, VERSION = 9333, 900, 15
+PORT, IDLE_SECONDS, VERSION = 9333, 900, 16
 STATE_PATH = "/tmp/_browser_state.json"
 SHOT_DIR = "/workspace/browser"
 

@@ -290,7 +290,7 @@ def test_daemon_shoots_on_screen_changes_and_events():
     assert "shot(" in sel  # select 도 남긴다
     scr = src[src.index('if cmd == "scroll"'):src.index('if cmd == "wait"')]
     assert "shot(" in scr  # scroll 도 남긴다
-    assert bt.DAEMON_VERSION == 15 and "VERSION = 9333, 900, 15" in src
+    assert bt.DAEMON_VERSION == 16 and "VERSION = 9333, 900, 16" in src
 
 
 class _LocalFake:
@@ -1357,3 +1357,10 @@ def test_snapshot_over_cap_keeps_controls_and_new_elements_before_links():
     assert "const rank" in SNAP_JS and "el.tagName === 'A' ? 1 : 0" in SNAP_JS  # 화면 안에서는 버튼·입력칸 → 링크 → 일반 요소 순
     order = SNAP_JS.index("cands.filter(el => isPop.has(el))")
     assert order < SNAP_JS.index("g[0].has(el)") < SNAP_JS.index("g[1].has(el)") < SNAP_JS.index("g[2].has(el)")
+
+
+def test_snapshot_text_falls_back_to_visible_text_for_long_pages():
+    """본문이 길면 앞 3000자 대신 지금 화면에 보이는 글자를 본문으로 쓴다 (왼쪽 필터가 앞부분을 차지하는 목록 화면)."""
+    from app.services.browser_snapshot import SNAP_JS
+
+    assert "txt.length > 2800" in SNAP_JS and "createTreeWalker" in SNAP_JS and "window.innerHeight" in SNAP_JS
