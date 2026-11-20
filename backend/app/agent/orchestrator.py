@@ -23,6 +23,10 @@ def _build_memory_context(long_term: dict, short_term: dict) -> str:
     """
     sections = []
 
+    profile = long_term.get("profile") or ""
+    if profile:
+        sections.append(render("memory_profile", items=profile))
+
     facts = long_term.get("semantic") or []
     if facts:
         sections.append(render("memory_facts", items="\n".join(f"- {m.key}: {m.value}" for m in facts)))

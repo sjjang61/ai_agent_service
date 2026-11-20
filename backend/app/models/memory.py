@@ -50,3 +50,38 @@ class Memory(Base):
         default=lambda: datetime.now(timezone.utc),
         onupdate=lambda: datetime.now(timezone.utc),
     )
+
+
+class UserProfile(Base):
+    """USER.md: 사용자의 성향·배경을 한 문서로 합쳐 둔 영구 프로필 (마크다운). 사용자당 1개.
+    merged_at 은 사실·작업 방식 메모리를 이 문서로 마지막에 합친 시각이다. 그 뒤에 새로 저장된 메모리만 프롬프트에 따로 넣는다."""
+
+    __tablename__ = "user_profiles"
+
+    user_id = Column(String(36), ForeignKey("users.id"), primary_key=True)
+    content = Column(Text, nullable=False, default="")
+    merged_at = Column(DateTime, nullable=True)  # UTC naive
+    updated_at = Column(
+        DateTime,
+        default=lambda: datetime.now(timezone.utc),
+        onupdate=lambda: datetime.now(timezone.utc),
+    )
+
+
+class MemoryJournal(Base):
+    """Episodes: 날짜별 일지 (영구 보관). 그날 저장된 사건·해결 사례가 한 줄씩 쌓이고, 사용자가 직접 고칠 수도 있다.
+    사례 메모리(episodic)는 시간이 지나면 중요도가 줄어 정리되지만, 일지는 지우지 않는다."""
+
+    __tablename__ = "memory_journals"
+    __table_args__ = (UniqueConstraint("user_id", "day", name="uq_memory_journal_user_day"),)
+
+    id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    user_id = Column(String(36), ForeignKey("users.id"), nullable=False, index=True)
+    day = Column(String(10), nullable=False)  # YYYY-MM-DD (SCHEDULER_DEFAULT_TIMEZONE 기준)
+    content = Column(Text, nullable=False, default="")
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+    updated_at = Column(
+        DateTime,
+        default=lambda: datetime.now(timezone.utc),
+        onupdate=lambda: datetime.now(timezone.utc),
+    )

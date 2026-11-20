@@ -1,7 +1,7 @@
 from app.models.user import User
 from app.models.conversation import Conversation
 from app.models.message import Message
-from app.models.memory import Memory
+from app.models.memory import Memory, MemoryJournal, UserProfile
 from app.models.mcp_config import MCPServerConfig
 from app.models.sandbox import Sandbox
 from app.models.skill import Skill

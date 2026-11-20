@@ -1,4 +1,5 @@
 """Memory service for long-term (MySQL) and short-term (Redis) memory operations."""
+import logging
 import re
 from datetime import datetime, timedelta, timezone
 from typing import Dict, List, Optional
@@ -10,6 +11,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.config import settings
 from app.models.memory import Memory
 from app.schemas.memory import MemoryCreate, MemoryUpdate, MemorySearchParams, default_type_for
+
+logger = logging.getLogger(__name__)
 
 # 에피소드(사례) 기억은 시간이 지날수록 중요도가 반감기만큼씩 줄어든다
 EPISODE_HALF_LIFE_DAYS = 90
@@ -167,6 +170,13 @@ class MemoryService:
         db.add(memory)
         await db.commit()
         await db.refresh(memory)
+        if mtype == "episodic":
+            try:  # 사례는 정리되더라도 그날 일지에는 남는다 (Episodes)
+                from app.services.memory_journal import record_episode
+
+                await record_episode(user_id, memory, db)
+            except Exception:
+                logger.exception("[memory] 일지 기록 실패")
         return memory
 
     @staticmethod
@@ -231,10 +241,16 @@ class MemoryService:
                 .order_by(Memory.importance.desc(), Memory.updated_at.desc())
             )
         ).scalars().all()
+        from app.services.memory_profile import get_profile, is_covered
+
+        profile = await get_profile(user_id, db)
         by_type: Dict[str, List[Memory]] = {"semantic": [], "procedural": [], "episodic": []}
         for m in rows:
+            if (m.memory_type or "semantic") != "episodic" and is_covered(m, profile):
+                continue  # USER.md 에 이미 합쳐진 사실·작업 방식은 문서로 전달된다 (같은 내용이 두 번 들어가지 않게)
             by_type.setdefault(m.memory_type or "semantic", by_type["semantic"]).append(m)
         return {
+            "profile": (profile.content.strip() if profile and profile.content else ""),
             "semantic": by_type["semantic"][:MAX_FACTS_IN_PROMPT],
             "procedural": by_type["procedural"][:MAX_PROCEDURES_IN_PROMPT],
             "episodic": rank_episodes(by_type["episodic"], query, MAX_EPISODES_IN_PROMPT),

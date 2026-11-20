@@ -96,3 +96,19 @@ export interface ShortMergePreview {
   source_count: number
   conversation_count: number
 }
+
+/** USER.md: 사용자의 성향·배경 프로필 문서 */
+export interface Profile {
+  content: string
+  merged_at: string | null
+  updated_at: string | null
+  /** 마지막으로 합친 뒤에 새로 저장·수정된 사실·작업 방식 메모리 수 */
+  unmerged: number
+}
+
+/** Episodes: 하루치 일지 */
+export interface JournalDay {
+  day: string
+  content: string
+  updated_at: string | null
+}

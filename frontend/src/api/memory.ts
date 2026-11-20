@@ -10,6 +10,8 @@ import type {
   MergedItem,
   ShortTermItem,
   ShortTermMemory,
+  Profile,
+  JournalDay,
 } from '../types/memory'
 
 export const memoryApi = {
@@ -44,4 +46,14 @@ export const memoryApi = {
 
   clearShortTerm: (conversationId: string) =>
     apiClient.delete(`/memory/short/${conversationId}`),
+
+  // USER.md
+  getProfile: () => apiClient.get<Profile>('/memory/profile'),
+  saveProfile: (content: string, merged = false) => apiClient.put<Profile>('/memory/profile', { content, merged }),
+  mergeProfile: () => apiClient.post<{ content: string }>('/memory/profile/merge', {}, { timeout: 120000 }),
+
+  // Episodes (날짜별 일지)
+  listJournal: (before?: string) => apiClient.get<JournalDay[]>('/memory/journal', { params: { limit: 30, before } }),
+  saveJournal: (day: string, content: string) => apiClient.put<JournalDay | null>(`/memory/journal/${day}`, { content }),
+  deleteJournal: (day: string) => apiClient.delete(`/memory/journal/${day}`),
 }

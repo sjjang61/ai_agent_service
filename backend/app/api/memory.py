@@ -11,8 +11,13 @@ from app.schemas.memory import (
     MemoryCreate,
     MemoryUpdate,
     MemoryResponse,
+    JournalDay,
+    JournalSave,
     MemorySearchParams,
     MergedItem,
+    ProfileProposal,
+    ProfileResponse,
+    ProfileSave,
     ShortGroup,
     ShortGroupResult,
     ShortMergeApply,
@@ -93,6 +98,81 @@ async def create_memory(
 
 # Short-term memory endpoints
 # ⚠ GET /short 는 아래 GET /{memory_id} 보다 먼저 선언해야 한다 (뒤에 두면 'short' 가 memory_id 로 해석되어 404 가 난다)
+# ── USER.md (사용자 성향·배경 프로필) ─────────────────────────────
+@router.get("/profile", response_model=ProfileResponse)
+async def get_profile(current_user: User = Depends(get_current_user), db: AsyncSession = Depends(get_session)):
+    from app.services import memory_profile as mp
+
+    row = await mp.get_profile(current_user.id, db)
+    items = await mp.source_memories(current_user.id, db)
+    unmerged = sum(1 for m in items if not mp.is_covered(m, row))
+    return ProfileResponse(
+        content=(row.content if row else "") or "",
+        merged_at=aware(row.merged_at) if row else None,
+        updated_at=aware(row.updated_at) if row else None,
+        unmerged=unmerged,
+    )
+
+
+@router.put("/profile", response_model=ProfileResponse)
+async def save_profile(data: ProfileSave, current_user: User = Depends(get_current_user), db: AsyncSession = Depends(get_session)):
+    from app.services import memory_profile as mp
+
+    await mp.save_profile(current_user.id, data.content, data.merged, db)
+    return await get_profile(current_user, db)
+
+
+@router.post("/profile/merge", response_model=ProfileProposal)
+async def propose_profile(current_user: User = Depends(get_current_user), db: AsyncSession = Depends(get_session)):
+    """현재 USER.md 와 사실·작업 방식 메모리를 합친 새 문서를 만들어 돌려준다 (저장하지 않는다: 확인한 뒤 PUT /profile 에 merged=true 로 저장)."""
+    from app.services import memory_profile as mp
+
+    try:
+        text = await mp.propose(current_user.id, db)
+    except Exception:
+        raise HTTPException(status_code=502, detail="프로필을 정리하지 못했습니다. 잠시 후 다시 시도해 주세요")
+    if not text:
+        raise HTTPException(status_code=502, detail="정리된 내용이 비어 있습니다")
+    return ProfileProposal(content=text)
+
+
+# ── Episodes (날짜별 일지) ─────────────────────────────────────
+def _journal(row) -> JournalDay:
+    return JournalDay(day=row.day, content=row.content or "", updated_at=aware(row.updated_at))
+
+
+@router.get("/journal", response_model=List[JournalDay])
+async def list_journal(
+    limit: int = Query(30, ge=1, le=200),
+    before: Optional[str] = Query(None, description="이 날짜(YYYY-MM-DD)보다 이전만"),
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_session),
+):
+    from app.services import memory_journal as mj
+
+    await mj.backfill(current_user.id, db)  # 일지가 없는데 사례 메모리가 있으면 처음 한 번 옮긴다
+    return [_journal(r) for r in await mj.list_days(current_user.id, db, limit, before)]
+
+
+@router.put("/journal/{day}", response_model=Optional[JournalDay])
+async def save_journal(day: str, data: JournalSave, current_user: User = Depends(get_current_user), db: AsyncSession = Depends(get_session)):
+    from app.services import memory_journal as mj
+
+    if not mj.valid_day(day):
+        raise HTTPException(status_code=400, detail="날짜는 YYYY-MM-DD 형식이어야 합니다")
+    row = await mj.save_day(current_user.id, day, data.content, db)
+    return _journal(row) if row else None
+
+
+@router.delete("/journal/{day}")
+async def delete_journal(day: str, current_user: User = Depends(get_current_user), db: AsyncSession = Depends(get_session)):
+    from app.services import memory_journal as mj
+
+    if not mj.valid_day(day) or not await mj.delete_day(current_user.id, day, db):
+        raise HTTPException(status_code=404, detail="일지를 찾을 수 없습니다")
+    return {"deleted": True}
+
+
 @router.get("/short", response_model=List[ShortTermItem])
 async def list_all_short_term_memories(
     current_user: User = Depends(get_current_user),

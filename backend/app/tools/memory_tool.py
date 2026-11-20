@@ -11,12 +11,14 @@ from app.schemas.memory import EpisodeDetail, MemoryCreate, MemoryUpdate
 
 class MemoryInput(BaseModel):
     action: Literal[
-        "store", "retrieve", "list", "search", "store_short", "retrieve_short"
+        "store", "retrieve", "list", "search", "store_short", "retrieve_short", "profile", "journal", "store_journal"
     ] = Field(
         description=(
             "Action: store (long-term), retrieve (long-term by key), "
             "list (all long-term), search (keyword search), "
-            "store_short (conversation scope), retrieve_short"
+            "store_short (conversation scope), retrieve_short, "
+            "profile (read the user's USER.md), journal (read the daily journal: key=YYYY-MM-DD for one day, omit for the latest 7 days), "
+            "store_journal (append one line to the daily journal: value=the line, key=YYYY-MM-DD, omit for today)"
         )
     )
     key: Optional[str] = Field(default=None, description="Memory key/identifier")
@@ -56,7 +58,9 @@ class MemoryTool(BaseTool):
         "Long-term memory has three kinds (memory_type): semantic = stable facts about the user; "
         "procedural = how to act, written as an action (e.g. 'show example code first, then explain'); "
         "episodic = a specific past event or solved case (provide situation, resolution, outcome). "
-        "Categories: preference, fact, instruction, general."
+        "Categories: preference, fact, instruction, general. "
+        "profile = USER.md, one document with the user's background, tendencies and working style (read-only here). "
+        "journal = Episodes, a permanent daily log; use store_journal to note something worth remembering about today."
     )
     args_schema: type[BaseModel] = MemoryInput
     user_id: str = ""
@@ -91,6 +95,12 @@ class MemoryTool(BaseTool):
                 return await self._store_short_term(key, value)
             elif action == "retrieve_short":
                 return await self._retrieve_short_term(key)
+            elif action == "profile":
+                return await self._read_profile()
+            elif action == "journal":
+                return await self._read_journal(key)
+            elif action == "store_journal":
+                return await self._store_journal(key, value)
             return f"Unknown action: {action}"
         except Exception as e:
             return f"Memory error: {type(e).__name__}: {e}"
@@ -243,3 +253,45 @@ class MemoryTool(BaseTool):
             self.user_id, self.conversation_id, key
         )
         return value if value else f"No short-term memory for: {key}"
+
+    async def _read_profile(self) -> str:
+        if not self.db_session_factory:
+            return "Error: Database session not available"
+        from app.services.memory_profile import get_profile
+
+        async with self.db_session_factory() as db:
+            row = await get_profile(self.user_id, db)
+            return row.content if row and row.content.strip() else "USER.md is empty"
+
+    async def _read_journal(self, day: str = None) -> str:
+        if not self.db_session_factory:
+            return "Error: Database session not available"
+        from app.services import memory_journal as mj
+
+        async with self.db_session_factory() as db:
+            if day:
+                if not mj.valid_day(day):
+                    return "Error: key must be a date like 2026-11-20"
+                row = await mj.get_day(self.user_id, day, db)
+                return row.content if row and row.content.strip() else f"No journal for {day}"
+            rows = await mj.list_days(self.user_id, db, limit=7)
+            if not rows:
+                return "Journal is empty"
+            return "\n\n".join(f"## {r.day}\n{r.content}" for r in rows)
+
+    async def _store_journal(self, day: str = None, line: str = None) -> str:
+        if not line or not line.strip():
+            return "Error: value (the journal line) is required"
+        if not self.db_session_factory:
+            return "Error: Database session not available"
+        from app.services import memory_journal as mj
+
+        day = day or mj.local_time(None).strftime("%Y-%m-%d")
+        if not mj.valid_day(day):
+            return "Error: key must be a date like 2026-11-20"
+        text = " ".join(line.split())
+        if not text.startswith("- "):
+            text = f"- {mj.local_time(None).strftime('%H:%M')} {text}"
+        async with self.db_session_factory() as db:
+            await mj.append_line(self.user_id, day, text, db)
+        return f"Added to journal {day}"

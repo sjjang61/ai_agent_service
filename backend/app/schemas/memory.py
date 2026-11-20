@@ -141,3 +141,33 @@ class ShortMergeApply(BaseModel):
 class ShortMergeResult(BaseModel):
     saved: int
     removed: int
+
+
+class ProfileResponse(BaseModel):
+    """USER.md: 사용자의 성향·배경 프로필 문서."""
+
+    content: str = ""
+    merged_at: Optional[datetime] = None  # 사실·작업 방식 메모리를 마지막으로 합친 시각
+    updated_at: Optional[datetime] = None
+    unmerged: int = 0  # 마지막으로 합친 뒤에 새로 저장·수정된 사실·작업 방식 메모리 수
+
+
+class ProfileSave(BaseModel):
+    content: str = Field(default="", max_length=4000)
+    merged: bool = False  # '합치기' 결과를 저장하는 경우 True (지금까지의 메모리를 이 문서에 합친 것으로 표시)
+
+
+class ProfileProposal(BaseModel):
+    content: str
+
+
+class JournalDay(BaseModel):
+    """Episodes: 하루치 일지."""
+
+    day: str
+    content: str
+    updated_at: Optional[datetime] = None
+
+
+class JournalSave(BaseModel):
+    content: str = Field(default="", max_length=20000)

@@ -20,7 +20,7 @@ LLM 에 보내는 모든 프롬프트는 이 폴더의 `.md` 파일입니다. �
 | `custom_agent.md` | 커스텀 에이전트 지침 머리글 + 사용자 지침 `{{name}}` `{{instructions}}` | `agent/agent_runtime.py` |
 | `tool_limit.md` | 도구를 제한한 에이전트의 사용 가능 도구 안내 `{{allowed}}` | `agent/agent_runtime.py` |
 | `time_context.md` | 현재 시각 `{{now}}` | `agent/orchestrator.py` |
-| `memory_facts.md` `memory_procedures.md` `memory_episodes.md` `memory_short_term.md` | 메모리 구역 머리말 `{{items}}` | `agent/orchestrator.py` |
+| `memory_profile.md` `memory_facts.md` `memory_procedures.md` `memory_episodes.md` `memory_short_term.md` | 메모리 구역 머리말 `{{items}}` (profile 은 USER.md 문서) | `agent/orchestrator.py` |
 | `summary_context.md` | 대화 앞부분 요약 구역 `{{summary}}` | `services/conversation_summary.py` |
 | `skills_installed.md` `skills_none.md` | 스킬 안내 (`{{skills}}`) | `tools/skill_tool.py` |
 | `mcp_catalog.md` | MCP 도구 목록 머리말 `{{tools}}` | `tools/mcp_tools.py` |
@@ -41,6 +41,7 @@ LLM 에 보내는 모든 프롬프트는 이 폴더의 `.md` 파일입니다. �
 ### 별도 LLM 호출
 | 파일 | 용도 | 사용처 |
 |---|---|---|
+| `memory_profile_merge.md` | 현재 USER.md 와 사실·작업 방식 메모리를 한 문서로 합쳐 정리 `{{current}}` `{{facts}}` `{{procedures}}` `{{max_chars}}` | `services/memory_profile.py` |
 | `short_memory_group.md` `short_memory_merge.md` | 단기 메모리를 주제별로 묶기 / 한 그룹의 중복을 합쳐 정리하기 `{{items}}` (병합은 `{{max_items}}` 도) | `services/short_memory_merge.py` |
 | `calendar_extract.md` | 단기 메모리에서 날짜가 있는 일정을 캘린더 이벤트로 추출 `{{today}}` `{{items}}` | `services/calendar_events.py` |
 | `wiki_graph_extract.md` | 위키 문서에서 개체·개념과 관계를 추출 `{{title}}` `{{content}}` `{{max_entities}}` `{{max_relations}}` | `services/wiki_extract.py` |
