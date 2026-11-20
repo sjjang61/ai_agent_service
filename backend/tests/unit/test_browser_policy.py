@@ -218,3 +218,11 @@ def test_browser_action_does_not_press_payment_button_even_when_approval_is_off(
 
     out = asyncio.run(run())
     assert out.startswith("[결제 직전]") and "click" not in calls  # 브라우저로 클릭이 나가지 않았다
+
+
+def test_popup_close_buttons_never_need_approval():
+    """팝업을 닫는 클릭은 승인 없이 실행돼야 한다 (읽기 전용 분석에서는 승인할 화면이 없어 승인이 필요하면 팝업을 못 닫는다)."""
+    for label in ("닫기", "×", "X", "Close", "오늘 하루 보지 않기", "다시 보지 않기", "나중에", "다음에", "건너뛰기", "아니요", "거부"):
+        el = {"ref": 1, "tag": "button", "label": label}
+        assert bp.classify({"cmd": "click", "ref": 1}, [el], "https://www.cgv.co.kr/").level == bp.AUTO, label
+    assert bp.classify({"cmd": "press", "key": "Escape"}, [], "https://www.cgv.co.kr/").level == bp.AUTO  # Escape 로 닫기

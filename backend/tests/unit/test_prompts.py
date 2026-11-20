@@ -51,9 +51,17 @@ def test_json_braces_in_prompts_are_left_alone():
 def test_sections_and_agent_spec_split_on_separator_lines():
     role, instructions = prompts.agent_spec("subagent_coder")
     assert role.startswith("sandbox") and len(instructions) == 3
-    assert len(prompts.sections("browser_agent")) == 12  # 웹 콘텐츠 불신·쓰기 승인 규칙 + 사이트별 요령·결과 형식·최종 점검
+    assert len(prompts.sections("browser_agent")) == 13  # 웹 콘텐츠 불신·쓰기 승인 규칙 + 사이트별 요령 + 팝업 닫기 + 결과 형식·최종 점검
     assert len(prompts.sections("team_default")) == 5  # 브라우저 위임 규칙 1개 추가
 
 
 def test_system_prompt_is_loaded_from_markdown():
     assert prompts.SYSTEM_PROMPT.startswith("당신은 사용자의 복잡한 작업을 수행하는 AI 에이전트입니다.")
+
+
+def test_browser_agent_prompt_tells_to_close_popups_without_following_them():
+    text = "\n".join(prompts.sections("browser_agent"))
+    for must in ("팝업은 항상 먼저 닫으세요", "Escape", "오늘 하루 보지 않기", "동의하고 계속", "request_user_login"):
+        assert must in text, must
+    assert "읽거나 따라가지 마세요" in text  # 팝업의 링크·이벤트 참여를 따라가지 않는다
+    assert "팝업은 닫고 진행하세요" in prompts.load("site_analysis")  # 분석 중에도 같은 규칙, 어떤 팝업이 뜨는지는 기록
