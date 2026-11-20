@@ -21,13 +21,14 @@ export default function SiteProfilesPage() {
   const sites = data?.sites ?? []
   const noVertical = sites.filter((s) => !s.vertical || !verticals.some((v) => v.key === s.vertical))
 
+  const off = (key: string) => sites.filter((s) => s.vertical === key && !s.enabled).length
   const rowCls = (on: boolean) =>
     `w-full flex items-center gap-2 px-3 py-1.5 rounded-[var(--radius-md)] text-left border-none cursor-pointer text-[13px] ${on ? 'bg-surface-active text-content-primary' : 'bg-transparent text-content-secondary hover:bg-surface-hover'}`
 
   const siteRows = (list: typeof sites) =>
     list.map((s) => (
       <button key={s.id} onClick={() => setSel({ kind: 'site', id: s.id })} className={`${rowCls(sel?.kind === 'site' && sel.id === s.id)} pl-6`}>
-        <span className="truncate flex-1">{s.name}</span>
+        <span className={`truncate flex-1 ${s.enabled ? '' : 'line-through opacity-60'}`} title={s.enabled ? undefined : '사용 안 함: 에이전트가 이 사이트에 접속하지 않습니다'}>{s.name}</span>
         <StatusBadge site={s} />
       </button>
     ))
@@ -64,7 +65,9 @@ export default function SiteProfilesPage() {
             <div key={v.key} className="space-y-0.5">
               <button onClick={() => setSel({ kind: 'vertical', key: v.key })} className={rowCls(sel?.kind === 'vertical' && sel.key === v.key)}>
                 <span className="truncate flex-1 font-medium text-content-primary">{v.name}</span>
-                <span className="text-xs text-content-tertiary">{v.site_count}</span>
+                <span className="text-xs text-content-tertiary" title={off(v.key) ? `사용 안 함 ${off(v.key)}개 포함` : undefined}>
+                  {v.site_count}{off(v.key) > 0 && <span className="text-red-500"> (끔 {off(v.key)})</span>}
+                </span>
               </button>
               {siteRows(sites.filter((s) => s.vertical === v.key))}
               <button onClick={() => setSel({ kind: 'new-site', vertical: v.key })} className="pl-6 pr-3 py-1 text-xs text-content-tertiary hover:text-content-primary border-none bg-transparent cursor-pointer text-left">

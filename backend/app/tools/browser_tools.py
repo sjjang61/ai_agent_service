@@ -761,6 +761,7 @@ class BrowserActionTool(BaseTool):
     session_label: str = ""
     tips_shown: set = Field(default_factory=set)  # 이미 안내한 사이트 요령 (이름). 처음 방문하는 사이트에서만 한 번 덧붙인다
     login_enabled: bool = False
+    ignore_site_block: bool = False  # 사이트 설정에서 꺼진 사이트로의 이동도 허용한다 (그 사이트를 다시 분석할 때)
     captcha_handoff: bool = False  # login_enabled 가 아니어도(쓰기 승인은 계속 막은 채) CAPTCHA 만은 사용자에게 넘겨 해결을 기다린다 (사이트 분석)
     clock: Any = None
     run_tag: str = ""  # 한 번의 브라우저 작업(cli_browser_agent 호출) 식별자. 스크린샷을 이 작업에 묶는다
@@ -959,7 +960,7 @@ class BrowserActionTool(BaseTool):
                    "direction": direction, "submit": submit, "seconds": seconds, "name": text, "run": self.run_tag or None}
         try:
             if action == "goto" and url:
-                denied = policy.domain_denied(url)
+                denied = policy.domain_denied(url) or (None if self.ignore_site_block else site_tips.blocked(url))
                 if denied:
                     return f"Error: {denied}"
             words, url_words = site_tips.stop_rules(self.last_url, self.tips_shown)
@@ -983,7 +984,9 @@ class BrowserActionTool(BaseTool):
                 self.last_elements, self.last_url = res["elements"], str(res.get("url", ""))
                 if self.last_url and (not self._trail or self._trail[-1][0] != self.last_url):
                     self._trail.append((self.last_url, str(res.get("title", ""))[:80]))
-                denied = policy.domain_denied(self.last_url)
+                from app.agent import site_tips as _st
+
+                denied = policy.domain_denied(self.last_url) or (None if self.ignore_site_block else _st.blocked(self.last_url))
                 if denied:  # 클릭·리다이렉트로 차단 도메인에 도착한 경우 되돌아간다
                     await browser_call(self.user_id, {"cmd": "back"}, sandbox_cid=self.sandbox_cid, use_profile=self.use_profile, session_id=self.session_id)
                     self.last_elements, self.last_url = [], ""

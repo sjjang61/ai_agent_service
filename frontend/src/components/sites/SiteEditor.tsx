@@ -56,6 +56,13 @@ export default function SiteEditor({ site, verticals, defaultVertical, onSaved, 
     return () => clearTimeout(t)
   }, [showPreview, form])
 
+  // 사용 안 함 전환: 저장된 값 그대로 사용 여부만 바꿔 바로 저장한다 (편집 중인 다른 내용은 건드리지 않는다)
+  const toggleEnabled = () => {
+    if (!site) return
+    const next = !site.enabled
+    if (!next && !confirm(`“${site.name}” 을(를) 사용 안 함으로 바꿀까요?\n에이전트가 이 사이트(${site.domains})에 접속하지 않고, 이 사이트의 요령도 전달하지 않습니다.`)) return
+    save.mutate({ name: site.name, vertical: site.vertical, domains: site.domains, aliases: site.aliases, body: site.body, spec: siteSpecOf(site.spec), status: site.status, verified_at: site.verified_at, enabled: next })
+  }
   const markVerified = () => { const next = { ...form, status: 'verified' as const, verified_at: today() }; setForm(next); save.mutate(next) }
   const copyMd = async () => {
     try { await navigator.clipboard.writeText(site!.md); setCopied(true); setTimeout(() => setCopied(false), 1500) } catch { setError('복사하지 못했습니다') }
@@ -68,7 +75,22 @@ export default function SiteEditor({ site, verticals, defaultVertical, onSaved, 
         <h2 className="text-[17px] font-semibold text-content-primary">{site ? site.name : '새 사이트'}</h2>
         {site && <StatusBadge site={site} />}
         {site?.verified_at && <span className="text-xs text-content-tertiary">확인 {site.verified_at}</span>}
+        {site && (
+          <button
+            onClick={toggleEnabled}
+            disabled={save.isPending}
+            title={site.enabled ? '에이전트가 이 사이트에 접속하지 않게 합니다 (봇 확인이 풀리지 않는 사이트 등)' : '다시 에이전트가 이 사이트를 쓸 수 있게 합니다'}
+            className={`ml-auto ${secondaryBtn}`}
+          >
+            {site.enabled ? '사용 안 함으로 바꾸기' : '다시 사용하기'}
+          </button>
+        )}
       </div>
+      {site && !site.enabled && (
+        <div className="rounded-[var(--radius-md)] border border-border bg-surface-secondary px-3 py-2 text-[13px] text-content-secondary">
+          이 사이트는 <b>사용 안 함</b> 상태입니다. 에이전트는 {site.domains} 에 접속하지 않고(시도하면 건너뜁니다), 이 사이트의 요령도 받지 않습니다. 사이트를 다시 분석하는 것은 가능합니다.
+        </div>
+      )}
       <div className="grid grid-cols-2 gap-3">
         <Field label="이름">
           <input value={form.name} onChange={(e) => set('name', e.target.value)} className={inputCls} placeholder="예: 네이버 항공권" />
@@ -105,10 +127,10 @@ export default function SiteEditor({ site, verticals, defaultVertical, onSaved, 
         <Field label="확인일" hint="마지막으로 직접 확인한 날">
           <input type="date" value={form.verified_at ?? ''} onChange={(e) => set('verified_at', e.target.value || null)} className={inputCls} />
         </Field>
-        <Field label="사용">
+        <Field label="사용" hint="끄면 에이전트가 이 사이트에 접속하지 않습니다. 요령만 주지 않으려면 상태를 '초안'으로 두세요.">
           <label className="flex items-center gap-2 h-[42px] text-[13px] text-content-primary cursor-pointer">
             <input type="checkbox" checked={form.enabled} onChange={(e) => set('enabled', e.target.checked)} />
-            에이전트에게 제공
+            사용 (끄면 접속하지 않음)
           </label>
         </Field>
       </div>

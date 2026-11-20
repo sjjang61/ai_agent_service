@@ -82,7 +82,10 @@ async def refresh(db: AsyncSession) -> None:
     sites = (await db.execute(
         select(SiteProfile).where(SiteProfile.enabled.is_(True), SiteProfile.status.in_(USABLE_STATUSES)).order_by(SiteProfile.name)
     )).scalars().all()
-    site_tips.set_cache([to_vertical(v) for v in verticals], [to_tip(s) for s in sites if s.domains.strip()])
+    all_rows = (await db.execute(select(SiteProfile))).scalars().all()
+    states = [site_tips.SiteState(name=r.name, domains=site_tips._csv(r.domains), aliases=site_tips._csv(r.aliases), enabled=bool(r.enabled))
+              for r in all_rows if r.domains.strip()]
+    site_tips.set_cache([to_vertical(v) for v in verticals], [to_tip(s) for s in sites if s.domains.strip()], states)
 
 
 async def init() -> None:

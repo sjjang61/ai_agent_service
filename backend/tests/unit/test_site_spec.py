@@ -198,3 +198,46 @@ def test_naver_shopping_draft_starts_from_the_search_url_the_user_gave():
     assert site_tips.for_url("https://search.shopping.naver.com/search/all?query=a").name != "네이버 가격비교"  # 초안은 에이전트에게 주지 않는다 (더 넓은 naver.com 요령으로 넘어간다)
     movies = {x.name for x in site_tips.file_tips() if x.vertical == "movie"}
     assert movies == {"CGV", "메가박스", "롯데시네마"} and all(x.status == "draft" for x in site_tips.file_tips() if x.vertical == "movie")
+
+
+# ── 사이트 비활성화(사용 안 함): 에이전트가 그 사이트에 접속하지 않는다 ───────────────
+def _states(*rows):
+    site_tips.set_cache([], [], [site_tips.SiteState(name=n, domains=tuple(d.split(", ")), aliases=tuple(a.split(", ")) if a else (), enabled=e) for n, d, a, e in rows])
+
+
+def test_disabled_site_is_blocked_only_when_every_row_for_the_domain_is_off():
+    try:
+        _states(("지마켓", "gmarket.co.kr", "지마켓, g마켓", False), ("다나와", "danawa.com", "다나와", True),
+                ("아고다 · 항공권", "agoda.com", "아고다", False), ("아고다 · 호텔", "agoda.com", "아고다", True),
+                ("검색엔진", "naver.com", "", False), ("네이버 항공권", "flight.naver.com", "", True))
+        msg = site_tips.blocked("https://www.gmarket.co.kr/n/search?keyword=a")
+        assert msg and "지마켓" in msg and "사용 안 함" in msg and "다시 열지 말고" in msg
+        assert site_tips.blocked("https://search.danawa.com/") is None  # 켜진 사이트
+        assert site_tips.blocked("https://www.agoda.com/flights") is None  # 같은 도메인의 호텔 행이 켜져 있으면 막지 않는다
+        assert site_tips.blocked("https://mail.naver.com/") is not None  # 더 넓은 naver.com 행이 꺼져 있고
+        assert site_tips.blocked("https://flight.naver.com/") is None  # 더 구체적인 도메인의 켜진 행이 이긴다
+        assert site_tips.blocked("https://example.com/") is None
+    finally:
+        site_tips.clear_cache()
+    assert site_tips.blocked("https://www.gmarket.co.kr/") is None  # 캐시가 없으면(파일 기본값) 막지 않는다
+
+
+def test_start_blocks_warns_about_a_disabled_site_the_task_names():
+    try:
+        _states(("지마켓", "gmarket.co.kr", "지마켓, g마켓", False), ("다나와", "danawa.com", "다나와", True))
+        blocks, _ = site_tips.start_blocks("지마켓에서 진라면 최저가 찾아줘")
+        assert blocks and blocks[0].startswith("[사용 안 함 사이트] 지마켓") and "건너뛰고" in blocks[0]
+        assert not any("[사용 안 함" in b for b in site_tips.start_blocks("다나와에서 진라면 최저가")[0])  # 켜진 사이트나 언급 없는 작업은 안내하지 않는다
+        assert site_tips.disabled_blocks("https://www.gmarket.co.kr/ 열어줘")  # 주소로 가리켜도
+    finally:
+        site_tips.clear_cache()
+
+
+@pytest.mark.asyncio
+async def test_turning_a_site_off_in_settings_blocks_it_and_turning_it_on_restores(db):
+    row = await svc.save_site(db, {**SITE, "name": "꺼 볼 사이트", "domains": "offtest.example.com", "vertical": "flight"})
+    assert site_tips.blocked("https://offtest.example.com/x") is None
+    await svc.save_site(db, {"name": row.name, "vertical": "flight", "domains": row.domains, "aliases": "", "body": row.body, "status": "verified", "enabled": False}, site_id=row.id)
+    assert "꺼 볼 사이트" in site_tips.blocked("https://offtest.example.com/x")  # 저장 즉시 반영
+    await svc.save_site(db, {"name": row.name, "vertical": "flight", "domains": row.domains, "aliases": "", "body": row.body, "status": "verified", "enabled": True}, site_id=row.id)
+    assert site_tips.blocked("https://offtest.example.com/x") is None

@@ -48,6 +48,15 @@ class SiteTip:
 
 
 @dataclass(frozen=True)
+class SiteState:
+    """사이트 행의 사용 여부만 담은 것 (꺼진 사이트로의 이동을 막는 데 쓴다. 요령은 SiteTip 이 따로 갖는다)."""
+    name: str
+    domains: tuple[str, ...]
+    aliases: tuple[str, ...]
+    enabled: bool
+
+
+@dataclass(frozen=True)
 class Vertical:
     key: str
     name: str
@@ -129,16 +138,18 @@ def file_verticals() -> tuple[Vertical, ...]:
 
 # DB 에서 읽어 온 내용. None 이면 파일을 쓴다.
 _cache: Optional[tuple[tuple[Vertical, ...], tuple[SiteTip, ...]]] = None
+_states: tuple[SiteState, ...] = ()  # DB 의 모든 사이트 행의 사용 여부 (캐시와 함께 채운다)
 
 
-def set_cache(verticals, tips) -> None:
-    global _cache
+def set_cache(verticals, tips, states=()) -> None:
+    global _cache, _states
     _cache = (tuple(verticals), tuple(tips))
+    _states = tuple(states)
 
 
 def clear_cache() -> None:
-    global _cache
-    _cache = None
+    global _cache, _states
+    _cache, _states = None, ()
 
 
 def all_tips() -> tuple[SiteTip, ...]:
@@ -231,11 +242,44 @@ def match_verticals(task: str, tips: Optional[list] = None) -> list[Vertical]:
     return [v for v in all_verticals() if v.key in keys or any(k in text for k in v.keywords)]
 
 
+def blocked(url: str) -> Optional[str]:
+    """이 주소가 '사용 안 함'으로 꺼진 사이트면 에이전트에게 돌려줄 사유, 아니면 None.
+    가장 구체적인 도메인의 행들이 모두 꺼져 있을 때만 막는다 (같은 도메인의 다른 분야 행이 켜져 있으면 막지 않는다)."""
+    host = _host(url)
+    best_len, group = 0, []
+    for s in _states:
+        n = max((len(d) for d in s.domains if _host_matches(host, d)), default=0)
+        if n > best_len:
+            best_len, group = n, [s]
+        elif n and n == best_len:
+            group.append(s)
+    if group and all(not s.enabled for s in group):
+        return (f"사이트 설정에서 사용 안 함으로 꺼진 사이트라 접속하지 않았습니다: {group[0].name} ({host}). "
+                "이 사이트를 다시 열지 말고 다른 사이트나 방법으로 진행하세요. 마땅한 대안이 없으면 이 사이트를 쓸 수 없어 제외했다고 사용자에게 알리세요.")
+    return None
+
+
+def disabled_blocks(task: str, start_url: str | None = None) -> list[str]:
+    """작업이 '사용 안 함' 사이트를 가리키면(이름·도메인) 시작 지침에 붙일 안내. 헛되이 접속을 시도하지 않게 한다."""
+    text = (task or "").lower()
+    hosts = {_host(u) for u in _URL.findall(text)} | ({_host(start_url)} if start_url else set())
+    names = []
+    for s in _states:
+        if s.enabled:
+            continue
+        if any(_host_matches(h, d) for h in hosts for d in s.domains) or any(d in text for d in s.domains) or any(a in text for a in s.aliases):
+            if blocked(f"https://{s.domains[0]}/") and s.name not in names:  # 같은 도메인의 켜진 행이 있으면 안내하지 않는다
+                names.append(s.name)
+    if not names:
+        return []
+    return ["[사용 안 함 사이트] " + ", ".join(names) + " — 사이트 설정에서 꺼져 있어 접속할 수 없습니다. 이 사이트는 건너뛰고 다른 사이트로 진행하거나, 대안이 없으면 사용자에게 쓸 수 없다고 알리세요."]
+
+
 def start_blocks(task: str, start_url: str | None = None) -> tuple[list[str], set[str]]:
     """시작 지침에 붙일 블록(분야 지침 먼저, 사이트 요령 다음)과, 이미 안내한 것의 표시(사이트 이름, '@분야키')."""
     tips = match_task(task, start_url)
     verticals = match_verticals(task, tips)
-    blocks = [v.block() for v in verticals] + [t.block(hint=False) for t in tips]
+    blocks = disabled_blocks(task, start_url) + [v.block() for v in verticals] + [t.block(hint=False) for t in tips]
     return blocks, {t.name for t in tips} | {f"@{v.key}" for v in verticals}
 
 

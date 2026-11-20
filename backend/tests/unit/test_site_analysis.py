@@ -364,3 +364,24 @@ async def test_route_for_skips_the_local_browser_when_forced(monkeypatch):
 
     assert await asyncio.create_task(forced()) is None  # 강제한 태스크만
     assert await lb.route_for("u1") is not None
+
+
+def test_browser_tool_refuses_a_disabled_site_but_analysis_may_visit_it(monkeypatch):
+    from app.agent import site_tips
+    from app.tools import browser_tools as bt
+
+    called = []
+
+    async def fake_call(user_id, payload, timeout=90, sandbox_cid="", use_profile=True, session_id=""):
+        called.append(payload["cmd"])
+        return {"ok": True, "url": payload.get("url", ""), "title": "t", "elements": [], "text": "본문"}
+
+    monkeypatch.setattr(bt, "browser_call", fake_call)
+    site_tips.set_cache([], [], [site_tips.SiteState(name="지마켓", domains=("gmarket.co.kr",), aliases=("지마켓",), enabled=False)])
+    try:
+        out = asyncio.run(bt.BrowserActionTool(user_id="u1")._arun("goto", url="https://www.gmarket.co.kr/"))
+        assert out.startswith("Error:") and "사용 안 함" in out and called == []  # 브라우저를 열지도 않는다
+        ok = asyncio.run(bt.BrowserActionTool(user_id="u1", ignore_site_block=True)._arun("goto", url="https://www.gmarket.co.kr/"))
+        assert not ok.startswith("Error") and called == ["goto"]  # 그 사이트를 다시 분석하는 실행은 접속할 수 있다
+    finally:
+        site_tips.clear_cache()
