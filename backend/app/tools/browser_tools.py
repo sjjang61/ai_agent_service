@@ -863,6 +863,11 @@ class BrowserActionTool(BaseTool):
             brief_src = out
             out = self._with_site_tip(out)
             return out
+        if decision.level == policy.ASK and payload.get("cmd") == "click":
+            from app.services.local_browser import route_for
+
+            if await route_for(self.user_id, self.session_id) is not None:
+                return None  # 데스크톱 앱 브라우저는 사용자가 화면에서 보고 있다: 위험 신호 없는 클릭(대상을 못 찾는 클릭 포함)은 승인 없이 진행한다
         finally:  # 실패·취소로 끝나도 결과 이벤트를 보내 화면에 '진행 중'이 남지 않게 한다
             # 결과는 화면 요약용으로만 짧게 저장한다 (스냅샷 전체는 한 단계에 수천 토큰이라 작업 내역이 비대해진다)
             src = brief_src if brief_src else out

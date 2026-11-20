@@ -226,3 +226,20 @@ def test_popup_close_buttons_never_need_approval():
         el = {"ref": 1, "tag": "button", "label": label}
         assert bp.classify({"cmd": "click", "ref": 1}, [el], "https://www.cgv.co.kr/").level == bp.AUTO, label
     assert bp.classify({"cmd": "press", "key": "Escape"}, [], "https://www.cgv.co.kr/").level == bp.AUTO  # Escape 로 닫기
+
+
+@pytest.mark.asyncio
+async def test_plain_click_needs_no_approval_in_desktop_app_browser(monkeypatch):
+    """데스크톱 앱 브라우저에서는 대상을 못 찾는 클릭(ASK)도 승인 없이 진행하고, 결제·삭제 같은 위험 라벨(ASK_ALWAYS)은 그대로 묻는다."""
+    from app.services import local_browser as lb
+
+    tool = FakeTool(user_id="u1", conversation_id="", login_enabled=False)
+    tool.last_elements, tool.last_url = EL, "https://example.com/"
+    assert await tool._approve({"cmd": "click", "ref": 99})  # sandbox: 대상을 모르는 클릭은 승인 필요(화면이 없으면 막힘)
+
+    async def local(*a, **k):
+        return object()
+
+    monkeypatch.setattr(lb, "route_for", local)
+    assert await tool._approve({"cmd": "click", "ref": 99}) is None  # 앱 브라우저: 승인 불필요
+    assert await tool._approve({"cmd": "click", "ref": 4})  # 위험 라벨은 여전히 승인 필요
