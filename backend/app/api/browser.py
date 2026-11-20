@@ -185,6 +185,15 @@ async def browser_live(websocket: WebSocket):
     async def send(obj: dict):
         await websocket.send_json(obj)
 
+    # 데스크톱 앱의 브라우저가 연결돼 있으면 에이전트도 그 브라우저를 쓴다. 이 화면은 sandbox 브라우저를 비추는 것이라 아무것도 나오지 않으므로,
+    # (앱의 브라우저는 건드리지 않고) 앱 안에서 직접 로그인하도록 안내한다. 로그인은 앱의 영구 세션에 남는다.
+    from app.services.local_browser import route_for
+
+    if await route_for(user.id) is not None:
+        await send({"t": "error", "message": "데스크톱 앱의 브라우저가 연결되어 있어 이 화면은 쓰지 않습니다. 앱 오른쪽의 브라우저 주소창에서 사이트를 열어 직접 로그인하세요. 로그인 상태는 앱에 그대로 유지됩니다."})
+        await websocket.close()
+        return
+
     try:
         res = await browser_call(user.id, {"cmd": "ping"}, timeout=60, sandbox_cid=scope)
         if res.get("ok") and res.get("v") != DAEMON_VERSION:  # 이전 버전 데몬은 다시 시작한다
