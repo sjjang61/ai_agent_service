@@ -290,7 +290,7 @@ def test_daemon_shoots_on_screen_changes_and_events():
     assert "shot(" in sel  # select 도 남긴다
     scr = src[src.index('if cmd == "scroll"'):src.index('if cmd == "wait"')]
     assert "shot(" in scr  # scroll 도 남긴다
-    assert bt.DAEMON_VERSION == 30 and "VERSION = 9333, 900, 30" in src
+    assert bt.DAEMON_VERSION == 31 and "VERSION = 9333, 900, 31" in src
 
 
 class _LocalFake:

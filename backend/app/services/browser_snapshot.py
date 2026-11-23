@@ -185,7 +185,7 @@ BLOCKED_JS = r"""(el) => {
   // 같은 슬라이더의 화살표 버튼 이름: 숨은 항목은 이 화살표로 넘겨야 보인다
   const arrows = () => { for (let a = el.parentElement, n = 0; a && n < 6 && a !== document.body; a = a.parentElement, n++) {
       const bs = [...a.querySelectorAll('button,a')].filter(x => x !== el && /next|prev|다음|이전/i.test((x.className || '') + ' ' + (x.getAttribute('aria-label') || '') + ' ' + (x.innerText || '')));
-      if (bs.length) return ' 같은 영역의 화살표 버튼: ' + bs.slice(0, 2).map(x => '“' + ((x.innerText || x.getAttribute('aria-label') || x.className || '').trim().slice(0, 20)) + '”').join(', ') + ' (이름이 같은 것이 여럿이면 순번·맥락으로 구분)'; }
+      if (bs.length && el.closest('[class*=slick i],[class*=swiper i],[class*=carousel i],[class*=slider i]')) return ' 같은 슬라이더의 화살표 버튼: ' + bs.slice(0, 2).map(x => '“' + ((x.innerText || x.getAttribute('aria-label') || x.className || '').trim().slice(0, 20)) + '”').join(', ') + ' (이름이 같은 것이 여럿이면 순번·맥락으로 구분)'; }
     return ''; };
   if (el.getAttribute('aria-disabled') === 'true' || el.disabled) return '비활성 상태(aria-disabled)입니다. 이미 지난 날짜·시각이거나 슬라이더 안에 숨은 항목일 수 있습니다.' + arrows();
   el.scrollIntoView({block: 'center', inline: 'nearest'});   // 가로로도 스크롤되는 페이지(롯데시네마)에서 가운데 맞춤은 화면을 옆으로 밀어 엉뚱한 요소가 가리게 된다
@@ -198,9 +198,8 @@ BLOCKED_JS = r"""(el) => {
   return '그 자리에는 다른 요소(' + (((hit.tagName || '') + ' ' + (hit.innerText || hit.getAttribute('aria-label') || '')).trim().replace(/\s+/g, ' ').slice(0, 30) || hit.tagName) + ')가 있습니다.' + arrows();
 }"""
 
-BLOCKED_MSG = ("ref {ref} 요소를 누를 수 없습니다: {what}. 슬라이더·스크롤 영역 밖에 밀려나 보이지 않거나 다른 요소에 가려진 상태일 수 있습니다. "
-               "같은 영역의 다음/이전 화살표(같은 이름이 여럿이면 순번·맥락으로 구분)로 이 항목이 보이게 한 뒤 snapshot 으로 다시 확인하세요")
-
+BLOCKED_MSG = ("ref {ref} 요소를 누를 수 없습니다: {what}. 가려졌거나 화면에 보이지 않는 요소입니다. 슬라이더 안의 항목이면 같은 슬라이더의 다음/이전 화살표로 넘긴 뒤 snapshot 으로 다시 확인하세요. "
+               "그 밖에는 이 단계가 꼭 필요한지 확인하세요(예: '적용' 버튼이 가려도 다음 단계를 바로 눌러 반영되는 화면이 있습니다). 같은 이름의 다른 요소가 있으면 그것을 누르세요.")
 
 # 화면 본문에 이 문구가 보이면 아직 불러오는 중이다(CGV '잠시만 기다려 주세요.' 는 위젯이 약 6초 뒤에 뜬다, Google Flights '결과를 가져오는 중'). 읽기 전에 잠시 기다린다.
 LOADING_PATTERN = r"잠시만 기다려|로딩 ?중|불러오는 중|가져오는 중|Loading\.\.\."
