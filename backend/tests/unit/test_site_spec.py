@@ -271,3 +271,11 @@ def test_verification_does_not_penalize_a_step_the_site_marks_as_not_done():
     done = {"success": True, "summary": "s", "issues": [], "steps": [{"key": "search", "status": "reached", "note": ""}, {"key": "detail", "status": "reached", "note": "열림"}]}
     assert sa.evaluate(done, [{"action": "goto"}], 0, 1, vflow, {"detail"})["flow"][1]["status"] == "reached"  # 되는 날에는 도달한 것으로 인정한다
     assert not sa.evaluate({**ok, "steps": [{"key": "search", "status": "failed", "note": ""}]}, [{"action": "goto"}], 0, 1, vflow, {"detail"})["passed"]  # 다른 단계가 막히면 여전히 미통과
+
+
+def test_transport_vertical_stops_before_payment_and_korail_is_verified_for_the_local_browser():
+    v = site_tips.vertical("transport")
+    assert [s["key"] for s in v.spec["flow"] if s["write"]] == ["select"] and {"결제하기", "예매 확정"} <= set(v.stop_words)
+    assert [v.key for v in site_tips.match_verticals("서울에서 부산 가는 KTX 기차표 조회해줘")] == ["transport"]
+    t = next(x for x in site_tips.file_tips() if x.name == "코레일")
+    assert t.vertical == "transport" and t.status == "verified" and "korail.com" in t.domains and "railway-timetable" in t.body  # 로컬 브라우저에서 검증, sandbox 는 자동화 제한이 있어 본문에 안내
