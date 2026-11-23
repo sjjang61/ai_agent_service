@@ -1,5 +1,6 @@
 ---
 key: hotel
+category: travel
 name: 호텔·숙소
 keywords: 호텔, 숙소, 숙박, 객실
 stop_words: 예약 확정, 지금 결제

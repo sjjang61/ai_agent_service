@@ -6,6 +6,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.agent import site_categories
 from app.db.session import get_session
 from app.dependencies import get_current_user
 from app.models.site_profile import SiteProfile, SiteProfileRevision, SiteVertical
@@ -17,9 +18,15 @@ from app.services import site_profile_service as svc
 router = APIRouter()
 
 
+class CategoryOut(BaseModel):
+    key: str
+    name: str
+
+
 class VerticalOut(BaseModel):
     key: str
     name: str
+    category: Optional[str] = None
     keywords: str
     stop_words: str
     stop_urls: str
@@ -37,6 +44,7 @@ class SiteOut(BaseModel):
     id: str
     name: str
     vertical: Optional[str] = None
+    category: Optional[str] = None  # 분야가 없는 사이트의 카테고리
     domains: str
     aliases: str
     body: str
@@ -52,6 +60,7 @@ class SiteOut(BaseModel):
 
 
 class ProfilesOut(BaseModel):
+    categories: list[CategoryOut] = []
     verticals: list[VerticalOut]
     sites: list[SiteOut]
     stale_days: int
@@ -60,6 +69,7 @@ class ProfilesOut(BaseModel):
 class VerticalIn(BaseModel):
     key: Optional[str] = None  # 만들 때만
     name: str
+    category: Optional[str] = Field(default=None, description="카테고리 key. 보내지 않으면 지금 값을 유지한다")
     keywords: str = ""
     stop_words: str = ""
     stop_urls: str = ""
@@ -72,6 +82,7 @@ class VerticalIn(BaseModel):
 class SiteIn(BaseModel):
     name: str
     vertical: Optional[str] = None
+    category: Optional[str] = Field(default=None, description="분야가 없는 사이트의 카테고리 key. 보내지 않으면 지금 값을 유지한다")
     domains: str
     aliases: str = ""
     body: str = ""
@@ -105,7 +116,7 @@ def _rev_out(r: SiteProfileRevision) -> RevisionOut:
 
 def _vertical_out(row: SiteVertical, counts: dict) -> VerticalOut:
     return VerticalOut(
-        key=row.key, name=row.name, keywords=row.keywords, stop_words=row.stop_words, stop_urls=row.stop_urls, body=row.body,
+        key=row.key, name=row.name, category=row.category, keywords=row.keywords, stop_words=row.stop_words, stop_urls=row.stop_urls, body=row.body,
         checklist=row.checklist, spec=row.spec or {}, source=row.source, version=row.version, updated_at=row.updated_at,
         site_count=counts.get(row.key, 0), md=svc.vertical_md(row),
     )
@@ -113,7 +124,7 @@ def _vertical_out(row: SiteVertical, counts: dict) -> VerticalOut:
 
 def _site_out(row: SiteProfile) -> SiteOut:
     return SiteOut(
-        id=row.id, name=row.name, vertical=row.vertical, domains=row.domains, aliases=row.aliases, body=row.body, spec=row.spec or {}, status=row.status,
+        id=row.id, name=row.name, vertical=row.vertical, category=row.category, domains=row.domains, aliases=row.aliases, body=row.body, spec=row.spec or {}, status=row.status,
         verified_at=row.verified_at, enabled=row.enabled, source=row.source, version=row.version, updated_at=row.updated_at,
         is_stale=svc.is_stale(row), md=svc.site_md(row),
     )
@@ -130,7 +141,7 @@ async def list_profiles(db: AsyncSession = Depends(get_session), _: User = Depen
     for s in sites:
         if s.vertical:
             counts[s.vertical] = counts.get(s.vertical, 0) + 1
-    return ProfilesOut(verticals=[_vertical_out(v, counts) for v in verticals], sites=[_site_out(s) for s in sites], stale_days=svc.STALE_DAYS)
+    return ProfilesOut(categories=[CategoryOut(key=k, name=n) for k, n in site_categories.CATEGORIES], verticals=[_vertical_out(v, counts) for v in verticals], sites=[_site_out(s) for s in sites], stale_days=svc.STALE_DAYS)
 
 
 @router.post("/verticals", response_model=VerticalOut, status_code=201)

@@ -1,5 +1,6 @@
 ---
 key: movie
+category: culture
 name: 영화 예매
 keywords: 영화 예매, 영화 예약, 상영 시간표, 상영시간, 좌석 선택
 stop_words: 예매 완료, 예매하기 완료

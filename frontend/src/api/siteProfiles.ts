@@ -20,9 +20,13 @@ export const emptySiteSpec = (): SiteSpec => ({ entry: [], menus: [], inputs: {}
 export const verticalSpecOf = (s?: Partial<VerticalSpec> | null): VerticalSpec => ({ ...emptyVerticalSpec(), ...(s ?? {}) })
 export const siteSpecOf = (s?: Partial<SiteSpec> | null): SiteSpec => ({ ...emptySiteSpec(), ...(s ?? {}) })
 
+/** 카테고리(상위 분류): 카테고리 > 분야(상세 카테고리) > 사이트 */
+export interface SiteCategory { key: string; name: string }
+
 export interface SiteVertical {
   key: string
   name: string
+  category: string | null
   keywords: string
   stop_words: string
   stop_urls: string
@@ -42,6 +46,8 @@ export interface SiteProfile {
   id: string
   name: string
   vertical: string | null
+  /** 분야가 없는 사이트의 카테고리 (분야가 있으면 분야의 카테고리를 따른다) */
+  category: string | null
   domains: string
   aliases: string
   body: string
@@ -57,15 +63,18 @@ export interface SiteProfile {
 }
 
 export interface SiteProfiles {
+  categories: SiteCategory[]
   verticals: SiteVertical[]
   sites: SiteProfile[]
   stale_days: number
 }
 
-export type VerticalInput = Pick<SiteVertical, 'name' | 'keywords' | 'stop_words' | 'stop_urls' | 'body' | 'checklist'> & { key?: string; version?: number; spec: VerticalSpec }
+export type VerticalInput = Pick<SiteVertical, 'name' | 'category' | 'keywords' | 'stop_words' | 'stop_urls' | 'body' | 'checklist'> & { key?: string; version?: number; spec: VerticalSpec }
 export type SiteInput = Pick<SiteProfile, 'name' | 'domains' | 'aliases' | 'body' | 'status' | 'enabled'> & {
   spec: SiteSpec
   vertical: string | null
+  /** 보내지 않으면 서버가 지금 값을 유지한다 */
+  category?: string | null
   verified_at: string | null
   version?: number
 }

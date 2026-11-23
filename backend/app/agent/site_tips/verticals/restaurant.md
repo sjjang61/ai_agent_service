@@ -1,5 +1,6 @@
 ---
 key: restaurant
+category: culture
 name: 식당 예약
 keywords: 식당 예약, 레스토랑 예약, 맛집 예약, 테이블 예약, 웨이팅
 stop_words: 예약 확정, 예약 완료, 예약금 결제

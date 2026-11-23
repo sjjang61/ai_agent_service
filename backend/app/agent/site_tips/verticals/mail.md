@@ -1,5 +1,6 @@
 ---
 key: mail
+category: communication
 name: 메일
 keywords: 받은편지함, 받은 편지함, 메일함, 안 읽은 메일, 메일 확인, 이메일 확인, 메일 검색
 stop_words: 영구 삭제, 완전 삭제, 휴지통 비우기

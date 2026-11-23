@@ -36,6 +36,7 @@ class SiteTip:
     vertical: str = ""
     spec: dict = field(default_factory=dict)
     status: str = "verified"  # draft(분석 대기)는 에이전트에게 주지 않는다
+    category: str = ""  # 분야가 없는 사이트의 카테고리 key (화면 분류용)
 
     def block(self, hint: bool = True, vspec: Optional[dict] = None) -> str:
         head = f"[사이트 요령 · {self.name} · 확인 {self.verified}]"
@@ -66,6 +67,7 @@ class Vertical:
     body: str
     checklist: str = ""
     spec: dict = field(default_factory=dict)
+    category: str = ""  # 카테고리 key (화면 분류용)
 
     def block(self) -> str:
         sites = [t.name for t in all_tips() if t.vertical == self.key]
@@ -112,7 +114,7 @@ def parse_site_file(path: Path) -> SiteTip:
         raise ValueError(f"{path.name}: {e}")
     return SiteTip(name=meta.get("name", ""), domains=_csv(meta.get("domains")), aliases=_csv(meta.get("aliases")),
                    verified=meta.get("verified", ""), body=body, vertical=meta.get("vertical", "").strip().lower(), spec=spec,
-                   status=meta.get("status", "verified").strip().lower() or "verified")
+                   status=meta.get("status", "verified").strip().lower() or "verified", category=meta.get("category", "").strip().lower())
 
 
 def parse_vertical_file(path: Path) -> Vertical:
@@ -123,7 +125,8 @@ def parse_vertical_file(path: Path) -> Vertical:
         raise ValueError(f"{path.name}: {e}")
     guide, checklist = split_checklist(body)
     return Vertical(key=meta.get("key", "").strip().lower(), name=meta.get("name", ""), keywords=_csv(meta.get("keywords")),
-                    stop_words=_csv(meta.get("stop_words")), stop_urls=_csv(meta.get("stop_urls")), body=guide, checklist=checklist, spec=spec)
+                    stop_words=_csv(meta.get("stop_words")), stop_urls=_csv(meta.get("stop_urls")), body=guide, checklist=checklist, spec=spec,
+                    category=meta.get("category", "").strip().lower())
 
 
 @lru_cache(maxsize=1)

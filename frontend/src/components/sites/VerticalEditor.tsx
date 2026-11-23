@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
-import { emptyVerticalSpec, siteProfilesApi, verticalSpecOf, type SiteVertical, type VerticalInput } from '../../api/siteProfiles'
+import { emptyVerticalSpec, siteProfilesApi, verticalSpecOf, type SiteCategory, type SiteVertical, type VerticalInput } from '../../api/siteProfiles'
 import { errorText, inputCls, primaryBtn } from '../skills/common'
 import { Field, TextArea, secondaryBtn } from './fields'
 import HistoryPanel from './HistoryPanel'
@@ -9,19 +9,22 @@ import { VerticalSpecEditor } from './SpecEditors'
 interface Props {
   /** 없으면 새 분야 */
   vertical: SiteVertical | null
+  categories: SiteCategory[]
+  /** 새 분야의 처음 카테고리 */
+  defaultCategory?: string | null
   onSaved: (key: string) => void
   onDeleted: () => void
 }
 
-const EMPTY: VerticalInput = { key: '', name: '', keywords: '', stop_words: '', stop_urls: '', body: '', checklist: '', spec: emptyVerticalSpec() }
+const EMPTY: VerticalInput = { key: '', name: '', category: null, keywords: '', stop_words: '', stop_urls: '', body: '', checklist: '', spec: emptyVerticalSpec() }
 
-export default function VerticalEditor({ vertical, onSaved, onDeleted }: Props) {
+export default function VerticalEditor({ vertical, categories, defaultCategory, onSaved, onDeleted }: Props) {
   const qc = useQueryClient()
-  const [form, setForm] = useState<VerticalInput>(vertical ? { ...vertical, spec: verticalSpecOf(vertical.spec) } : EMPTY)
+  const [form, setForm] = useState<VerticalInput>(vertical ? { ...vertical, spec: verticalSpecOf(vertical.spec) } : { ...EMPTY, category: defaultCategory ?? null })
   const [error, setError] = useState('')
   const [copied, setCopied] = useState(false)
   const [showHistory, setShowHistory] = useState(false)
-  const set = (k: Exclude<keyof VerticalInput, 'spec' | 'version'>) => (v: string) => setForm((f) => ({ ...f, [k]: v }))
+  const set = (k: Exclude<keyof VerticalInput, 'spec' | 'version' | 'category'>) => (v: string) => setForm((f) => ({ ...f, [k]: v }))
   const refresh = () => qc.invalidateQueries({ queryKey: ['site-profiles'] })
 
   const save = useMutation({
@@ -58,6 +61,12 @@ export default function VerticalEditor({ vertical, onSaved, onDeleted }: Props) 
           <input value={form.key ?? ''} onChange={(e) => set('key')(e.target.value)} disabled={!!vertical} className={`${inputCls} disabled:opacity-60`} />
         </Field>
       </div>
+      <Field label="카테고리" hint="이 분야(상세 카테고리)가 속한 상위 분류입니다. 목록에서 카테고리별로 묶어 보여 주는 데만 쓰이고 에이전트 지침에는 영향이 없습니다.">
+        <select value={form.category ?? ''} onChange={(e) => setForm((f) => ({ ...f, category: e.target.value || '' }))} className={inputCls}>
+          <option value="">(카테고리 없음)</option>
+          {categories.map((c) => <option key={c.key} value={c.key}>{c.name}</option>)}
+        </select>
+      </Field>
       <Field label="키워드" hint="쉼표로 구분. 작업 문장에 나오면 사이트를 말하지 않아도 이 분야 지침이 붙습니다. '영화'처럼 흔한 단어는 피하세요.">
         <input value={form.keywords} onChange={(e) => set('keywords')(e.target.value)} className={inputCls} placeholder="항공권, 항공편" />
       </Field>
@@ -92,8 +101,8 @@ export default function VerticalEditor({ vertical, onSaved, onDeleted }: Props) 
             <HistoryPanel
               queryKey={['vertical-revisions', vertical.key]}
               load={() => siteProfilesApi.verticalRevisions(vertical.key)}
-              current={{ name: vertical.name, keywords: vertical.keywords, stop_words: vertical.stop_words, stop_urls: vertical.stop_urls, body: vertical.body, checklist: vertical.checklist, spec: vertical.spec }}
-              labels={{ name: '이름', keywords: '키워드', stop_words: '누르지 않을 버튼 문구', stop_urls: '이동하지 않을 주소 문구', body: '공통 지침', checklist: '분석 체크리스트', spec: '구조 (입력값·표준 단계)' }}
+              current={{ name: vertical.name, category: vertical.category, keywords: vertical.keywords, stop_words: vertical.stop_words, stop_urls: vertical.stop_urls, body: vertical.body, checklist: vertical.checklist, spec: vertical.spec }}
+              labels={{ name: '이름', category: '카테고리', keywords: '키워드', stop_words: '누르지 않을 버튼 문구', stop_urls: '이동하지 않을 주소 문구', body: '공통 지침', checklist: '분석 체크리스트', spec: '구조 (입력값·표준 단계)' }}
               restore={(revId) => siteProfilesApi.restoreVertical(vertical.key, revId)}
               onRestored={() => { refresh(); qc.invalidateQueries({ queryKey: ['vertical-revisions', vertical.key] }) }}
             />

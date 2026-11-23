@@ -17,6 +17,7 @@ class SiteVertical(Base):
 
     id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
     key = Column(String(50), nullable=False, unique=True, index=True)  # shopping | movie | flight | hotel
+    category = Column(String(30), nullable=True)  # 카테고리 key (agent/site_categories.py). 분야는 카테고리 아래의 상세 분류
     name = Column(String(100), nullable=False)
     keywords = Column(Text, nullable=False, default="")  # 쉼표 구분. 작업 문장에 나오면 이 분야 지침을 붙인다
     stop_words = Column(Text, nullable=False, default="")  # 쉼표 구분. 이 라벨의 버튼은 누르지 않는다 (결제 직전에 멈춘다)
@@ -39,6 +40,7 @@ class SiteProfile(Base):
     id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
     name = Column(String(100), nullable=False)
     vertical = Column(String(50), nullable=True, index=True)  # SiteVertical.key (분야가 없는 사이트도 있다)
+    category = Column(String(30), nullable=True)  # 분야가 없는 사이트의 카테고리 key (분야가 있으면 분야의 카테고리를 따른다)
     domains = Column(Text, nullable=False, default="")  # 쉼표 구분. 하위 도메인도 맞는다
     aliases = Column(Text, nullable=False, default="")  # 쉼표 구분. 작업 문장에 나오면 시작할 때 붙인다
     body = Column(Text, nullable=False, default="")  # 에이전트에게 주는 사이트 요령 (구조화에 담기지 않는 예외·주의, markdown)

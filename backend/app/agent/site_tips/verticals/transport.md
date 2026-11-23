@@ -1,5 +1,6 @@
 ---
 key: transport
+category: transport
 name: 교통 예약(기차·버스)
 keywords: 기차 예매, 기차표, 열차 예매, 열차 조회, KTX, SRT, 버스 예매, 고속버스, 시외버스, 승차권
 stop_words: 결제하기, 승차권 결제, 예매 확정, 예약 확정

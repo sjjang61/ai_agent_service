@@ -279,3 +279,41 @@ def test_transport_vertical_stops_before_payment_and_korail_is_verified_for_the_
     assert [v.key for v in site_tips.match_verticals("서울에서 부산 가는 KTX 기차표 조회해줘")] == ["transport"]
     t = next(x for x in site_tips.file_tips() if x.name == "코레일")
     assert t.vertical == "transport" and t.status == "verified" and "korail.com" in t.domains and "railway-timetable" in t.body  # 로컬 브라우저에서 검증, sandbox 는 자동화 제한이 있어 본문에 안내
+
+
+def test_every_vertical_and_vertical_less_site_has_a_known_category():
+    """카테고리(쇼핑·교통·부동산·금융 …) > 분야(상세) > 사이트. 시드의 모든 분야는 카테고리가 있고, 분야 없는 사이트(검색엔진)는 자기 카테고리를 갖는다."""
+    from app.agent import site_categories as sc
+
+    assert {"shopping", "transport", "realestate", "finance", "search"} <= set(sc.KEYS)
+    assert [v.key for v in site_tips.file_verticals() if v.category not in sc.NAMES] == []
+    by = {v.key: v.category for v in site_tips.file_verticals()}
+    assert by["flight"] == by["transport"] == "transport" and by["shopping"] == "shopping" and by["hotel"] == "travel"
+    loose = [t for t in site_tips.file_tips() if not t.vertical]
+    assert [(t.name, t.category) for t in loose] == [("검색엔진(구글·네이버·다음)", "search")]
+    with pytest.raises(ValueError):
+        sc.normalize("nope")
+    assert sc.normalize("") == "" and sc.normalize(" Finance ") == "finance"
+
+
+@pytest.mark.asyncio
+async def test_category_is_saved_seeded_and_kept_when_a_client_does_not_send_it(db):
+    from sqlalchemy import select
+    from app.models.site_profile import SiteProfile, SiteVertical
+    from app.services import site_profile_service as svc
+
+    await svc.seed_from_files(db)
+    assert (await db.execute(select(SiteVertical.category).where(SiteVertical.key == "flight"))).scalar_one() == "transport"
+    se = (await db.execute(select(SiteProfile).where(SiteProfile.name == "검색엔진(구글·네이버·다음)"))).scalar_one()
+    assert se.vertical is None and se.category == "search"
+    # 카테고리를 보내지 않는 저장(이전 화면)은 값을 지우지 않는다. 빈 문자열은 비운다. 모르는 값은 거절한다
+    base = {"name": se.name, "domains": se.domains, "body": se.body, "status": "verified"}
+    assert (await svc.save_site(db, base, site_id=se.id)).category == "search"
+    assert (await svc.save_site(db, {**base, "category": "finance"}, site_id=se.id)).category == "finance"
+    assert (await svc.save_site(db, {**base, "category": ""}, site_id=se.id)).category is None
+    with pytest.raises(svc.ProfileError):
+        await svc.save_site(db, {**base, "category": "nope"}, site_id=se.id)
+    # 분야가 있는 사이트는 자기 카테고리를 저장하지 않는다 (분야를 따른다)
+    sky = (await db.execute(select(SiteProfile).where(SiteProfile.name == "스카이스캐너"))).scalar_one()
+    out = await svc.save_site(db, {"name": sky.name, "vertical": sky.vertical, "domains": sky.domains, "body": sky.body, "status": sky.status, "category": "finance"}, site_id=sky.id)
+    assert out.category is None

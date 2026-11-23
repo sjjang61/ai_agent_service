@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
-import { emptySiteSpec, siteProfilesApi, siteSpecOf, type SiteInput, type SiteProfile, type SiteVertical } from '../../api/siteProfiles'
+import { emptySiteSpec, siteProfilesApi, siteSpecOf, type SiteCategory, type SiteInput, type SiteProfile, type SiteVertical } from '../../api/siteProfiles'
 import { errorText, inputCls, primaryBtn } from '../skills/common'
 import { Field, TextArea, secondaryBtn } from './fields'
 import StatusBadge from './StatusBadge'
@@ -12,19 +12,21 @@ interface Props {
   /** 없으면 새 사이트 */
   site: SiteProfile | null
   verticals: SiteVertical[]
+  categories: SiteCategory[]
   defaultVertical?: string | null
+  defaultCategory?: string | null
   onSaved: (id: string) => void
   onDeleted: () => void
 }
 
 const today = () => new Date().toISOString().slice(0, 10)
 
-export default function SiteEditor({ site, verticals, defaultVertical, onSaved, onDeleted }: Props) {
+export default function SiteEditor({ site, verticals, categories, defaultVertical, defaultCategory, onSaved, onDeleted }: Props) {
   const qc = useQueryClient()
   const [form, setForm] = useState<SiteInput>(
     site
-      ? { name: site.name, vertical: site.vertical, domains: site.domains, aliases: site.aliases, body: site.body, spec: siteSpecOf(site.spec), status: site.status, verified_at: site.verified_at, enabled: site.enabled }
-      : { name: '', vertical: defaultVertical ?? null, domains: '', aliases: '', body: '', spec: emptySiteSpec(), status: 'draft', verified_at: null, enabled: true },
+      ? { name: site.name, vertical: site.vertical, category: site.category, domains: site.domains, aliases: site.aliases, body: site.body, spec: siteSpecOf(site.spec), status: site.status, verified_at: site.verified_at, enabled: site.enabled }
+      : { name: '', vertical: defaultVertical ?? null, category: defaultCategory ?? null, domains: '', aliases: '', body: '', spec: emptySiteSpec(), status: 'draft', verified_at: null, enabled: true },
   )
   const [error, setError] = useState('')
   const [copied, setCopied] = useState(false)
@@ -98,10 +100,22 @@ export default function SiteEditor({ site, verticals, defaultVertical, onSaved, 
         <Field label="분야">
           <select value={form.vertical ?? ''} onChange={(e) => set('vertical', e.target.value || null)} className={inputCls}>
             <option value="">(분야 없음)</option>
-            {verticals.map((v) => <option key={v.key} value={v.key}>{v.name}</option>)}
+            {categories.map((c) => {
+              const vs = verticals.filter((v) => v.category === c.key)
+              return vs.length > 0 ? <optgroup key={c.key} label={c.name}>{vs.map((v) => <option key={v.key} value={v.key}>{v.name}</option>)}</optgroup> : null
+            })}
+            {verticals.filter((v) => !v.category || !categories.some((c) => c.key === v.category)).map((v) => <option key={v.key} value={v.key}>{v.name}</option>)}
           </select>
         </Field>
       </div>
+      {!form.vertical && (
+        <Field label="카테고리" hint="분야가 없는 사이트가 속할 상위 분류입니다. 분야를 고르면 그 분야의 카테고리를 따릅니다.">
+          <select value={form.category ?? ''} onChange={(e) => set('category', e.target.value || '')} className={inputCls}>
+            <option value="">(카테고리 없음)</option>
+            {categories.map((c) => <option key={c.key} value={c.key}>{c.name}</option>)}
+          </select>
+        </Field>
+      )}
       <Field label="도메인" hint="쉼표로 구분. 하위 도메인도 맞습니다. 주소를 붙여 넣어도 도메인만 남깁니다. 더 구체적인 도메인(flight.naver.com)이 넓은 도메인(naver.com)보다 먼저 적용됩니다. 한 사이트가 여러 분야를 가지면 '아고다 · 호텔'처럼 분야마다 따로 만드세요 (같은 도메인은 분야가 다를 때만 쓸 수 있습니다).">
         <input value={form.domains} onChange={(e) => set('domains', e.target.value)} className={inputCls} placeholder="flight.naver.com" />
       </Field>
@@ -178,8 +192,8 @@ export default function SiteEditor({ site, verticals, defaultVertical, onSaved, 
           <HistoryPanel
             queryKey={['site-revisions', site.id]}
             load={() => siteProfilesApi.siteRevisions(site.id)}
-            current={{ name: site.name, vertical: site.vertical, domains: site.domains, aliases: site.aliases, body: site.body, spec: site.spec, status: site.status, verified_at: site.verified_at, enabled: site.enabled }}
-            labels={{ name: '이름', vertical: '분야', domains: '도메인', aliases: '별칭', body: '예외·주의', spec: '구조', status: '상태', verified_at: '확인일', enabled: '사용' }}
+            current={{ name: site.name, vertical: site.vertical, category: site.category, domains: site.domains, aliases: site.aliases, body: site.body, spec: site.spec, status: site.status, verified_at: site.verified_at, enabled: site.enabled }}
+            labels={{ name: '이름', vertical: '분야', category: '카테고리', domains: '도메인', aliases: '별칭', body: '예외·주의', spec: '구조', status: '상태', verified_at: '확인일', enabled: '사용' }}
             restore={(revId) => siteProfilesApi.restoreSite(site.id, revId)}
             onRestored={() => { qc.invalidateQueries({ queryKey: ['site-profiles'] }); qc.invalidateQueries({ queryKey: ['site-revisions', site.id] }) }}
           />

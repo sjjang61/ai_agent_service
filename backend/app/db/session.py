@@ -42,6 +42,7 @@ async def init_db():
         await conn.run_sync(_ensure_published_app_columns)
         await conn.run_sync(_ensure_schedule_notify_columns)
         await conn.run_sync(_ensure_site_spec_columns)
+        await conn.run_sync(_ensure_site_category_columns)
 
 
 def _ensure_memory_columns(sync_conn) -> None:
@@ -252,3 +253,13 @@ def _ensure_published_app_columns(sync_conn) -> None:
         from app.services.app_policy import make_slug
 
         sync_conn.execute(text("UPDATE published_apps SET slug = :s WHERE id = :i"), {"s": make_slug(name, app_id), "i": app_id})
+
+
+def _ensure_site_category_columns(sync_conn) -> None:
+    """웹사이트 분석 카테고리 컬럼 보강 (alembic ze5f6a7b8c9d 와 같은 변경)."""
+    from sqlalchemy import inspect, text
+
+    insp = inspect(sync_conn)
+    for table in ("site_verticals", "site_profiles"):
+        if "category" not in {c["name"] for c in insp.get_columns(table)}:
+            sync_conn.execute(text(f"ALTER TABLE {table} ADD COLUMN category VARCHAR(30) NULL"))

@@ -1,5 +1,6 @@
 ---
 key: shopping
+category: shopping
 name: 쇼핑 (가격비교)
 keywords: 최저가, 가격비교, 가격 비교, 장바구니
 stop_words: 바로구매, 바로 구매, 구매하기, 주문하기, 주문 완료

@@ -1,5 +1,6 @@
 ---
 key: flight
+category: transport
 name: 항공권
 keywords: 항공권, 항공편, 비행기표
 stop_words: 예약 확정, 구매 확정
