@@ -1,105 +1,110 @@
 ---
 key: movie
-category: culture
 name: 영화 예매
+category: culture
 keywords: 영화 예매, 영화 예약, 상영 시간표, 상영시간, 좌석 선택
 stop_words: 예매 완료, 예매하기 완료
-stop_urls:
+stop_urls: 
 ---
 ```spec
 {
-  "inputs": [
-    {
-      "key": "title",
-      "label": "영화 제목",
-      "required": true,
-      "format": "상영 중인 영화",
-      "example": ""
-    },
-    {
-      "key": "theater",
-      "label": "극장(지점)",
-      "required": true,
-      "format": "지점명",
-      "example": "강남"
-    },
-    {
-      "key": "date",
-      "label": "날짜",
-      "required": true,
-      "format": "YYYY-MM-DD 또는 '내일' 같은 상대 표현",
-      "example": "내일"
-    },
-    {
-      "key": "people",
-      "label": "인원",
-      "required": true,
-      "format": "성인·청소년 수",
-      "example": "성인 2"
-    },
-    {
-      "key": "time",
-      "label": "원하는 시간대",
-      "required": false,
-      "format": "",
-      "example": "저녁"
-    },
-    {
-      "key": "seat",
-      "label": "좌석 조건",
-      "required": false,
-      "format": "위치·붙은 좌석",
-      "example": ""
-    }
-  ],
   "flow": [
     {
       "key": "movie",
-      "title": "영화 선택",
       "desc": "",
+      "title": "영화 선택",
       "write": false
     },
     {
       "key": "theater",
-      "title": "극장 선택",
       "desc": "",
+      "title": "극장 선택",
       "write": false
     },
     {
       "key": "date",
-      "title": "날짜 선택",
       "desc": "",
+      "title": "날짜 선택",
       "write": false
     },
     {
       "key": "showtimes",
-      "title": "상영 시간표 읽기",
       "desc": "상영관 종류·시각·남은 좌석",
+      "title": "상영 시간표 읽기",
       "write": false
     },
     {
       "key": "seats",
-      "title": "인원 맞추고 좌석 선택",
       "desc": "좌석은 사용자가 조건을 줬을 때만",
+      "title": "인원 맞추고 좌석 선택",
       "write": true
     },
     {
       "key": "stop",
-      "title": "결제 직전에서 멈춤",
       "desc": "결제 화면으로 넘어가지 않고 멈춘다. 좌석 선택 전 상영 시간표 화면에서 멈추는 것도 이 단계를 충족한 것으로 본다",
+      "title": "결제 직전에서 멈춤",
       "write": false
     }
   ],
+  "inputs": [
+    {
+      "key": "title",
+      "label": "영화 제목",
+      "format": "상영 중인 영화",
+      "example": "",
+      "required": true
+    },
+    {
+      "key": "theater",
+      "label": "극장(지점)",
+      "format": "지점명",
+      "example": "강남",
+      "required": true
+    },
+    {
+      "key": "date",
+      "label": "날짜",
+      "format": "YYYY-MM-DD 또는 '내일' 같은 상대 표현",
+      "example": "내일",
+      "required": true
+    },
+    {
+      "key": "people",
+      "label": "인원",
+      "format": "성인·청소년 수",
+      "example": "성인 2",
+      "required": true
+    },
+    {
+      "key": "time",
+      "label": "원하는 시간대",
+      "format": "",
+      "example": "저녁",
+      "required": false
+    },
+    {
+      "key": "seat",
+      "label": "좌석 조건",
+      "format": "위치·붙은 좌석",
+      "example": "",
+      "required": false
+    }
+  ],
   "sample": {
-    "title": "상영 중인 인기 영화 하나",
-    "theater": "강남",
     "date": "내일",
-    "people": "성인 2"
+    "title": "상영 중인 인기 영화 하나",
+    "people": "성인 2",
+    "theater": "강남"
   }
 }
 ```
 
 영화와 극장을 정하고 상영 시간표를 조회해, 좌석을 고르는 데까지가 이 분야의 범위입니다. **결제는 하지 않습니다.**
+
+영화는 두 가지 순서로 찾을 수 있습니다. 어느 극장(체인)이든 형태는 같습니다. 사용자가 영화를 먼저 말했으면 '영화 먼저', 극장을 먼저 말했으면 '극장 먼저'로 시작하고, 둘 다 말했으면 그 사이트에서 더 쉬운 쪽을 고르세요.
+- 극장 먼저(극장 → 시간표 → 영화): 극장을 검색해 극장 페이지로 들어가 그 극장의 상영시간표를 보고, 시간표에서 영화를 골라 예매하기로 갑니다.
+- 영화 먼저(영화 → 날짜·시간대 → 극장 → 시간표): 영화를 검색해 고르고, 날짜와 오전·오후 시간대를 정한 뒤, 극장을 극장명(또는 지역)으로 검색해 고르면 그 영화의 상영 스케줄이 나옵니다.
+두 방식 모두 상영 시간(스케줄)을 누르거나 '예매하기'를 누르면 인원·좌석 단계로 이어지니, 시간표를 읽는 데서 멈추세요(좌석 선택은 사용자가 요청했을 때만).
 
 진행 순서
 1. 영화 제목, 극장(지점), 날짜, 인원(성인·청소년 등)을 확인합니다. 빠진 값이 있으면 추측하지 말고 사용자에게 물어 보세요.
@@ -124,3 +129,4 @@ stop_urls:
 - 좌석 배치도는 요소로 잡히는가, 스크린샷으로만 보이는가? 선택된 좌석의 표시는?
 - 결제로 넘어가는 버튼의 이름과 화면은? (멈출 지점)
 - 로그인·캡차·봇 차단이 있는가?
+- 극장 먼저·영화 먼저 두 가지 진입이 모두 있는가? 각각의 시작 화면 주소, 검색 입력창, 극장 페이지 주소 형식(극장 코드)은?
