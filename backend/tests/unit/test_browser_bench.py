@@ -87,3 +87,14 @@ def test_zero_action_failure_is_infra_and_excluded_from_aggregate():
     g = bb.aggregate(rows)
     assert g["excluded_infra"] == 2 and g["runs"] == 2 and g["pass_rate"] == 0.5  # 환경 오류 2회는 빠진다
     assert bb.aggregate([{"site_name": "A", **infra}])["pass_rate"] is None
+
+
+def test_site_specific_sample_inputs_replace_values_the_site_does_not_have():
+    """롯데시네마에는 '강남' 극장이 없어서 분야 샘플 그대로면 항상 실패로 집계된다 → 사이트별 입력값으로 바꾼다."""
+    from types import SimpleNamespace
+    from app.services import browser_bench as bb
+
+    site = SimpleNamespace(name="롯데시네마", status="verified", enabled=True, vertical="movie", domains="lottecinema.co.kr", aliases="", body="", spec={})
+    vspec = {"movie": {"inputs": [{"key": "theater"}, {"key": "date"}], "sample": {"theater": "강남", "date": "내일"}, "flow": [{"key": "x"}]}}
+    case = bb.build_cases([site], vspec)[0]
+    assert case["inputs"] == {"theater": "월드타워", "date": "내일"}

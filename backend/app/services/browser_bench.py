@@ -93,6 +93,10 @@ def start_url_for(site: SiteProfile) -> str:
     return f"https://{dom[0]}/" if dom else ""
 
 
+# 분야 샘플 입력값이 그 사이트에 없는 값일 때(예: 롯데시네마에는 '강남' 극장이 없다) 사이트별로 바꿔 쓴다. 없는 극장을 요청하면 에이전트가 맞게 멈춰도 '실패'로 집계된다
+SITE_INPUTS: dict[str, dict] = {"롯데시네마": {"theater": "월드타워"}}
+
+
 def build_cases(sites: list[SiteProfile], vertical_specs: dict, sites_filter: Optional[set] = None, verticals_filter: Optional[set] = None,
                 include_excluded: bool = False) -> list[dict]:
     """측정 대상: 검증됨 + 사용 중인 사이트. 분야 샘플 입력값을 쓰고, 기본에서 메일 분야는 뺀다."""
@@ -109,6 +113,7 @@ def build_cases(sites: list[SiteProfile], vertical_specs: dict, sites_filter: Op
         vspec = vertical_specs.get(s.vertical or "") or {}
         keys = {i["key"] for i in vspec.get("inputs", [])}
         inputs = {k: v for k, v in (vspec.get("sample") or {}).items() if k in keys and str(v).strip()}
+        inputs.update(SITE_INPUTS.get(s.name, {}))
         # 분야가 없는 사이트는 표준 플로우가 없어서 시나리오를 직접 준다
         scenario = "" if vspec.get("flow") else f"{s.name} 의 사이트 요령에 적힌 방법으로 대표적인 검색을 한 번 수행하고 결과 화면까지 확인한다 (상태를 바꾸는 동작 제외)"
         out.append({"name": s.name, "vertical": s.vertical, "start_url": start_url_for(s), "inputs": inputs, "scenario": scenario, "body": s.body or "", "spec": s.spec or {}})
