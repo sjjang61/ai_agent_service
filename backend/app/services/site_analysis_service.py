@@ -141,6 +141,23 @@ def evaluate(verdict: Optional[dict], steps: list, loop_blocks: int, seconds: fl
     return {**base, "passed": passed, "success": verdict["success"], "summary": verdict["summary"], "issues": issues, "flow": flow}
 
 
+def _usage_of(payload) -> dict:
+    """에이전트 실행 결과의 토큰 사용량 {input, output, total}. 모델이 알려 주지 않으면 빈 dict."""
+    m = getattr(payload, "metrics", None)
+    if m is None:
+        return {}
+    try:
+        def num(name):
+            v = m.get(name) if isinstance(m, dict) else getattr(m, name, None)
+            v = sum(v) if isinstance(v, (list, tuple)) else v  # 여러 번 호출한 합이 목록으로 올 수 있다
+            return int(v) if isinstance(v, (int, float)) and v else 0
+        i, o, t = num("input_tokens"), num("output_tokens"), num("total_tokens")
+        t = t or (i + o)
+        return {"input": i, "output": o, "total": t} if t else {}
+    except Exception:  # noqa: BLE001
+        return {}
+
+
 def snap(steps: list) -> list:
     """저장용 복사본. 같은 dict 를 계속 고치면 SQLAlchemy 가 JSON 의 변화를 알아채지 못해 저장하지 않는다."""
     return [dict(s) for s in steps]
@@ -346,6 +363,7 @@ async def _execute(run_id: str, current_body: str = "") -> None:
             )
             last_flush = 0.0
             text = ""
+            usage: dict = {}  # 모델이 알려 준 토큰 사용량 (알 수 없으면 비어 있다)
             async for kind, payload in side_events.run_with_side(
                 bt.run_with_budget(agent.arun(_prompt(run, current_body)), settings.SITE_ANALYSIS_TIMEOUT_SECONDS, clock), q
             ):
@@ -355,6 +373,7 @@ async def _execute(run_id: str, current_body: str = "") -> None:
                         await db.commit()
                 else:
                     text = str(getattr(payload, "content", "") or "").strip()
+                    usage = _usage_of(payload) or usage
             run.steps = snap(steps)
             run.answer = text[:15000] or None
             seconds = time.time() - started
@@ -367,7 +386,8 @@ async def _execute(run_id: str, current_body: str = "") -> None:
                 else:
                     run.status, run.error = "failed", f"에이전트가 <구조>·<요령> 형식으로 초안을 만들지 못했습니다 ({spec_err}). 답변 원문은 메모에 남깁니다"
             else:
-                run.result = evaluate(parse_verdict(text), steps, tool._loop_blocks, seconds, _vspec(run).get("flow", []), site_spec.skipped_keys(run.draft_spec))
+                run.result = {**evaluate(parse_verdict(text), steps, tool._loop_blocks, seconds, _vspec(run).get("flow", []), site_spec.skipped_keys(run.draft_spec)),
+                              **({"usage": usage} if usage else {})}
                 run.status = "succeeded"
         except asyncio.CancelledError:
             run.steps, run.status, run.error = snap(steps), "cancelled", "사용자가 중단했습니다"

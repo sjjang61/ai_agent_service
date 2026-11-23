@@ -95,3 +95,34 @@ class SiteAnalysisRun(Base):
     base_run_id = Column(String(36), nullable=True)  # verify 가 검증한 분석 실행
     created_at = Column(DateTime, default=_now, index=True)
     finished_at = Column(DateTime, nullable=True)
+
+
+class BrowserBenchResult(Base):
+    """브라우저 자동화 측정: 검증된 사이트 시나리오를 반복 실행한 결과 한 건 (scripts/browser_bench.py).
+    같은 label 로 묶어 통과율·실패 원인·시간을 집계하고, label 끼리 비교해 개선 효과를 숫자로 확인한다."""
+
+    __tablename__ = "browser_bench_results"
+    __table_args__ = (Index("ix_bench_label_site", "label", "site_name"),)
+
+    id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    label = Column(String(100), nullable=False, index=True)  # 측정 묶음 이름 (예: baseline, after-heal)
+    site_name = Column(String(100), nullable=False)
+    vertical = Column(String(50), nullable=True)
+    attempt = Column(Integer, nullable=False, default=1)
+    run_id = Column(String(36), nullable=True)  # SiteAnalysisRun.id (단계별 기록은 거기에 있다)
+    run_status = Column(String(20), nullable=False, default="")  # succeeded | failed | cancelled
+    passed = Column(Boolean, nullable=False, default=False)
+    success = Column(Boolean, nullable=False, default=False)
+    seconds = Column(Integer, nullable=True)
+    steps = Column(Integer, nullable=True)  # 브라우저 동작 수
+    failed_steps = Column(Integer, nullable=True)
+    loop_blocks = Column(Integer, nullable=True)
+    tokens = Column(Integer, nullable=True)  # 모델이 알려 준 총 토큰 (모르면 NULL)
+    heals = Column(Integer, nullable=True)  # 요소 번호 자동 복구 횟수
+    flow = Column(JSON, nullable=True)  # [{key, title, status}]
+    issues = Column(JSON, nullable=True)
+    errors = Column(JSON, nullable=True)  # {오류 분류: 횟수}
+    reasons = Column(JSON, nullable=True)  # 통과하지 못한 이유 분류 목록
+    env = Column(JSON, nullable=True)  # {daemon: 데몬 버전, llm: 모델 종류}
+    error = Column(Text, nullable=True)
+    created_at = Column(DateTime, default=_now)

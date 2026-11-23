@@ -10,6 +10,7 @@ from app.db.session import get_session
 from app.dependencies import get_current_user
 from app.models.site_profile import SiteProfile, SiteProfileRevision, SiteVertical
 from app.models.user import User
+from app.services import browser_bench as bench
 from app.services import site_analysis_service as analysis
 from app.services import site_profile_service as svc
 
@@ -317,3 +318,24 @@ async def cancel_analysis(run_id: str, db: AsyncSession = Depends(get_session), 
         return _run_out(await analysis.cancel(db, user.id, run_id))
     except analysis.AnalysisError as e:
         _afail(e)
+
+
+# ── 브라우저 자동화 측정 결과 (scripts/browser_bench.py 가 쌓는다. 읽기 전용) ─────────────
+@router.get("/bench/labels")
+async def bench_labels(user: User = Depends(get_current_user), db: AsyncSession = Depends(get_session)):
+    """측정 묶음(label) 목록: 실행 수·통과율·마지막 실행 시각, 최근 순."""
+    return await bench.list_labels(db)
+
+
+@router.get("/bench/summary")
+async def bench_summary(label: Optional[str] = None, user: User = Depends(get_current_user), db: AsyncSession = Depends(get_session)):
+    """한 묶음의 집계: 전체·사이트별 통과율, 불안정한 사이트, 동작 오류 분류, 통과 못한 이유, 평균 시간·동작·토큰. label 이 없으면 가장 최근 묶음."""
+    if not label:
+        labels = await bench.list_labels(db)
+        if not labels:
+            raise HTTPException(status_code=404, detail="측정 결과가 없습니다")
+        label = labels[0]["label"]
+    rows = await bench.load_results(db, label)
+    if not rows:
+        raise HTTPException(status_code=404, detail="측정 결과를 찾을 수 없습니다")
+    return {"label": label, **bench.aggregate(rows)}
