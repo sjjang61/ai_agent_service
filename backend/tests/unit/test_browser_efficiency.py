@@ -290,7 +290,7 @@ def test_daemon_shoots_on_screen_changes_and_events():
     assert "shot(" in sel  # select 도 남긴다
     scr = src[src.index('if cmd == "scroll"'):src.index('if cmd == "wait"')]
     assert "shot(" in scr  # scroll 도 남긴다
-    assert bt.DAEMON_VERSION == 24 and "VERSION = 9333, 900, 24" in src
+    assert bt.DAEMON_VERSION == 27 and "VERSION = 9333, 900, 27" in src
 
 
 class _LocalFake:
@@ -1354,7 +1354,8 @@ def test_snapshot_over_cap_keeps_controls_and_new_elements_before_links():
     from app.services.browser_snapshot import SNAP_JS
 
     assert "window.__agentSeen" in SNAP_JS and "added.length <= 40" in SNAP_JS  # 방금 나타난 요소는 소수일 때만 앞에 둔다
-    assert "const rank" in SNAP_JS and "el.tagName === 'A' ? 1 : 0" in SNAP_JS  # 화면 안에서는 버튼·입력칸 → 링크 → 일반 요소 순
+    assert "const rank" in SNAP_JS and "el.tagName === 'A' && !btnLike(el)" in SNAP_JS  # 화면 안에서는 버튼·입력칸(버튼 모양 링크 포함) → 링크 → 일반 요소 순
+    assert "btnLike" in SNAP_JS and "(btn|button|tab)" in SNAP_JS  # <a class="btn"> 탭(메가박스 '극장별')이 포스터 버튼에 밀려 잘리지 않는다
     order = SNAP_JS.index("cands.filter(el => isPop.has(el))")
     assert order < SNAP_JS.index("g[0].has(el)") < SNAP_JS.index("g[1].has(el)") < SNAP_JS.index("g[2].has(el)")
 

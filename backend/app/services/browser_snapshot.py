@@ -9,7 +9,7 @@
 """
 
 SNAP_JS = r"""(() => {
-  const MAX = 120;
+  const MAX = 160;
   const sel = 'a[href],button,input,select,textarea,summary,[role=button],[role=link],[role=checkbox],[role=tab],[role=menuitem],[role=menuitemradio],[role=menuitemcheckbox],[role=option],[role=radio],[role=switch],[role=combobox],[role=treeitem],[onclick]';
   const overlaySel = '[role=listbox],[role=dialog],[role=alertdialog],[role=menu],[aria-modal=true],[class*=popup i],[class*=popover i],[class*=dropdown i],[class*=modal i],[class*=listbox i]';
   document.querySelectorAll('[data-agent-ref]').forEach(e => e.removeAttribute('data-agent-ref'));
@@ -51,7 +51,9 @@ SNAP_JS = r"""(() => {
     // 이름 없는 체크박스(목록 줄마다 하나씩 있는 선택 칸)와 시맨틱 표시 없이 커서만 pointer 인 일반 요소(div·span·li 등)는 수십~수백 개일 수 있어서 맨 뒤로 둔다
     const bare = (el) => el.tagName === 'INPUT' && el.type === 'checkbox' && !el.getAttribute('aria-label') && !el.title && !(el.labels && el.labels.length);
     const generic = (el) => !['A', 'BUTTON', 'INPUT', 'SELECT', 'TEXTAREA', 'SUMMARY'].includes(el.tagName) && !el.getAttribute('role') && !el.hasAttribute('onclick');
-    const rank = (el) => (bare(el) || generic(el)) ? 2 : el.tagName === 'A' ? 1 : 0;
+    // 버튼 모양의 링크(class 에 btn·button·tab)와 탭(role=tab)은 버튼처럼 앞에 둔다: 메가박스의 '극장별' 탭은 <a class="btn"> 이라 영화 포스터 버튼 수십 개에 밀려 목록에서 잘렸다
+    const btnLike = (el) => el.tagName === 'A' && (el.getAttribute('role') === 'tab' || /(^|[\s_-])(btn|button|tab)([\s_-]|$)/i.test(typeof el.className === 'string' ? el.className : ''));
+    const rank = (el) => (bare(el) || generic(el)) ? 2 : (el.tagName === 'A' && !btnLike(el)) ? 1 : 0;
     // 화면 안인데 그 자리에서 눌리는 것이 다른 요소인 항목(슬라이더 밖으로 밀려난 항목, 다른 요소에 가려진 항목)은 팝업 안에서도 뒤로 민다
     const covered = (el) => { const r = el.getBoundingClientRect(); const cx = r.x + r.width / 2, cy = r.y + r.height / 2;
       if (cx < 0 || cy < 0 || cx > innerWidth || cy > innerHeight) return false;
@@ -179,7 +181,7 @@ BLOCKED_JS = r"""(el) => {
       if (bs.length) return ' 같은 영역의 화살표 버튼: ' + bs.slice(0, 2).map(x => '“' + ((x.innerText || x.getAttribute('aria-label') || x.className || '').trim().slice(0, 20)) + '”').join(', ') + ' (이름이 같은 것이 여럿이면 순번·맥락으로 구분)'; }
     return ''; };
   if (el.getAttribute('aria-disabled') === 'true' || el.disabled) return '비활성 상태(aria-disabled)입니다. 이미 지난 날짜·시각이거나 슬라이더 안에 숨은 항목일 수 있습니다.' + arrows();
-  el.scrollIntoView({block: 'center', inline: 'center'});
+  el.scrollIntoView({block: 'center', inline: 'nearest'});   // 가로로도 스크롤되는 페이지(롯데시네마)에서 가운데 맞춤은 화면을 옆으로 밀어 엉뚱한 요소가 가리게 된다
   const r = el.getBoundingClientRect(); const cx = r.x + r.width / 2, cy = r.y + r.height / 2;
   const hit = document.elementFromPoint(cx, cy);
   if (!hit) return '';   // 화면 밖이라 판단할 수 없다
