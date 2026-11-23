@@ -492,3 +492,35 @@ async def test_browser_action_emits_agent_tagged_steps_with_short_output(monkeyp
 
 async def _false():
     return False
+
+
+@pytest.mark.asyncio
+async def test_page_dialogs_are_answered_so_the_page_does_not_hang_and_the_agent_is_told():
+    """alert 가 떠 있으면 페이지가 멈춰 '로딩 시간 초과'로 보인다(KOBUS 조회하기). alert 는 확인, confirm·prompt 는 취소로 바로 응답하고 내용을 다음 화면 읽기에 알린다."""
+    import json as _json
+
+    class Ws:
+        close_code = None
+
+        def __init__(self):
+            self.sent, self.queue = [], []
+
+        async def send(self, data):
+            m = _json.loads(data)
+            self.sent.append(m)
+            if m["method"] != "Page.handleJavaScriptDialog":  # 평소 명령에는 대화상자 이벤트 뒤에 응답이 온다
+                self.queue += [_json.dumps({"method": "Page.javascriptDialogOpening", "params": {"type": "alert", "message": "출발 당일 안내"}}),
+                               _json.dumps({"method": "Page.javascriptDialogOpening", "params": {"type": "confirm", "message": "삭제할까요?"}}),
+                               _json.dumps({"id": m["id"], "result": {}})]
+
+        async def recv(self):
+            return self.queue.pop(0)
+
+    b = FakeBrowser()
+    b._ws = Ws()
+    assert await lb.LocalBrowser._send(b, "Input.dispatchMouseEvent") == {}
+    answers = [m["params"]["accept"] for m in b._ws.sent if m["method"] == "Page.handleJavaScriptDialog"]
+    assert answers == [True, False]  # alert 확인, confirm 취소(되돌릴 수 없는 동작을 대신 승인하지 않는다)
+    assert b._dialogs == ["확인 처리한 alert 대화상자: 출발 당일 안내", "취소 처리한 confirm 대화상자: 삭제할까요?"]
+    snap = await lb.LocalBrowser._snapshot(b)
+    assert snap["text"].startswith("[페이지 대화상자 자동 응답] 확인 처리한 alert") and b._dialogs == []

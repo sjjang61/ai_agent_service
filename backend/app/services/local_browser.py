@@ -86,6 +86,7 @@ class LocalBrowser:
         self._seq = 0
         self._lock = asyncio.Lock()
         self._shots = 0
+        self._dialogs: list[str] = []  # 자동으로 응답한 페이지 대화상자 내용 (다음 화면 읽기에 알린다)
         self._sig: Any = None  # 마지막 snapshot 의 (주소, 요소 수, 본문): 클릭 뒤 변화가 있었는지 보는 용도
         self._stopped_run: Optional[str] = None  # 사용자가 중지한 브라우저 작업(run 태그)
         self._seen_stop: Optional[int] = None  # 앱의 '중지' 누름 횟수 중 이미 처리한 값 (병렬 세션이 모두 중지되도록 횟수로 비교한다)
@@ -173,6 +174,18 @@ class LocalBrowser:
             self._ws = None
             return False
 
+    async def _answer_dialog(self, p: dict) -> None:
+        """페이지의 alert·confirm·prompt 대화상자: 열려 있는 동안 페이지가 멈춰 '로딩 시간 초과'로 보이므로 바로 응답한다.
+        alert 는 확인, confirm·prompt·beforeunload 는 취소(사용자 동의가 필요한 되돌릴 수 없는 동작을 대신 승인하지 않는다). 내용은 다음 화면 읽기에 알려 준다."""
+        kind = str(p.get("type") or "alert")
+        accept = kind == "alert"
+        self._seq += 1
+        try:
+            await self._ws.send(json.dumps({"id": self._seq, "method": "Page.handleJavaScriptDialog", "params": {"accept": accept}}))
+        except Exception:  # noqa: BLE001
+            return
+        self._dialogs.append(f"{'확인' if accept else '취소'} 처리한 {kind} 대화상자: {str(p.get('message') or '')[:200]}")
+
     async def _send(self, method: str, params: Optional[dict] = None, timeout: float = 30.0) -> dict:
         self._seq += 1
         mid = self._seq
@@ -183,6 +196,9 @@ class LocalBrowser:
             if remain <= 0:
                 raise LocalBrowserError(f"CDP 응답 시간 초과: {method}")
             msg = json.loads(await asyncio.wait_for(self._ws.recv(), remain))
+            if msg.get("method") == "Page.javascriptDialogOpening":
+                await self._answer_dialog(msg.get("params") or {})
+                continue
             if msg.get("id") == mid:
                 if "error" in msg:
                     raise LocalBrowserError(f"{method}: {msg['error'].get('message', msg['error'])}")
@@ -226,7 +242,11 @@ class LocalBrowser:
                 url = await self._eval("location.href")
                 title = await self._eval("document.title")
                 self._sig = (url, len(s["elements"]), s["text"])
-                return {"url": url, "title": title, "elements": s["elements"], "text": s["text"], "sy": s.get("sy")}
+                text = s["text"]
+                if self._dialogs:  # 페이지가 띄운 대화상자(alert 등)는 자동 응답했으니 무슨 내용이었는지 알려 준다
+                    text = "[페이지 대화상자 자동 응답] " + " / ".join(self._dialogs[-3:]) + "\n" + text
+                    self._dialogs.clear()
+                return {"url": url, "title": title, "elements": s["elements"], "text": text, "sy": s.get("sy")}
             except LocalBrowserError:
                 if attempt:
                     raise
