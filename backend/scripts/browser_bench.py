@@ -47,10 +47,12 @@ async def main() -> None:
         p = sub.add_parser(name)
         p.add_argument("--sites", default="", help="쉼표로 구분한 사이트 이름 (비우면 모두)")
         p.add_argument("--verticals", default="", help="쉼표로 구분한 분야 키 (예: shopping,flight)")
+        p.add_argument("--skill-sites-only", action="store_true", help="참고 스킬이 지정된 사이트만 (스킬 유무 비교 측정용)")
         p.add_argument("--include-mail", action="store_true", help="메일 분야 포함 (실제 메일함을 읽는다)")
         if name == "run":
             p.add_argument("--label", required=True, help="측정 묶음 이름 (예: baseline)")
             p.add_argument("--attempts", type=int, default=3)
+            p.add_argument("--no-skills", action="store_true", help="지정된 참고 스킬을 붙이지 않고 측정한다 (스킬 유무 비교의 기준선)")
             p.add_argument("--user-id", default="", help="실행할 사용자 id (기본: LOCAL_BROWSER_USER_ID)")
     r = sub.add_parser("report"); r.add_argument("--label", default="", help="비우면 가장 최근 묶음")
     c = sub.add_parser("compare"); c.add_argument("a"); c.add_argument("b")
@@ -60,7 +62,7 @@ async def main() -> None:
     from sqlalchemy import select
     from app.config import settings
     from app.db.session import AsyncSessionLocal, engine
-    from app.models.site_profile import SiteProfile
+    from app.models.site_profile import SiteProfile, SiteVertical
     from app.services import browser_bench as bb
     from app.services import site_profile_service as svc
     from app.agent import site_tips
@@ -71,8 +73,16 @@ async def main() -> None:
                 await svc.refresh(db)
                 sites = (await db.execute(select(SiteProfile))).scalars().all()
             vspecs = {v.key: v.spec for v in site_tips.all_verticals()}
+            if getattr(args, "no_skills", False):
+                from app.services import skill_refs
+                skill_refs.ENABLED = False  # 이 프로세스에서만: 분석 프롬프트에 참고 스킬을 붙이지 않는다
             cases = bb.build_cases(sites, vspecs, {x.strip() for x in args.sites.split(",") if x.strip()} or None,
                                    {x.strip() for x in args.verticals.split(",") if x.strip()} or None, args.include_mail)
+            if args.skill_sites_only:
+                async with AsyncSessionLocal() as db:
+                    vskills = {v.key: v.reference_skills for v in (await db.execute(select(SiteVertical))).scalars().all()}
+                by_name = {s.name: s for s in sites}
+                cases = [c_ for c_ in cases if bb.has_reference_skills(by_name[c_["name"]], vskills)]
             if args.cmd == "cases":
                 for c_ in cases:
                     print(f"{c_['name']:<14} {c_['vertical'] or '-':<10} {c_['start_url']}  입력: {c_['inputs']}")

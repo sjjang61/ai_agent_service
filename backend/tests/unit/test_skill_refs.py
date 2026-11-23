@@ -56,3 +56,21 @@ async def test_long_skill_text_is_capped_and_skill_count_is_limited(db, tmp_path
     block, found, _ = await skill_refs.reference_block(db, "u1", [f"s{i}" for i in range(5)])
     assert len(found) == skill_refs.MAX_SKILLS and "…(이하 생략)" in block
     assert len(block) < skill_refs.MAX_SKILLS * (skill_refs.MAX_CHARS_EACH + 200) + 600
+
+
+@pytest.mark.asyncio
+async def test_measurement_switch_turns_reference_skills_off(db, tmp_path, monkeypatch):
+    db.add(_skill(tmp_path, "a", "d", "b"))
+    await db.commit()
+    assert (await skill_refs.reference_block(db, "u1", ["a"]))[1] == ["a"]
+    monkeypatch.setattr(skill_refs, "ENABLED", False)  # 스킬 유무 비교 측정의 기준선
+    assert await skill_refs.reference_block(db, "u1", ["a"]) == ("", [], [])
+
+
+def test_bench_picks_sites_that_have_reference_skills_from_the_site_or_its_vertical():
+    from types import SimpleNamespace
+    from app.services import browser_bench as bb
+
+    s = lambda skills, vert=None: SimpleNamespace(reference_skills=skills, vertical=vert)  # noqa: E731
+    assert bb.has_reference_skills(s("railway-timetable"), {}) and not bb.has_reference_skills(s(None), {}) and not bb.has_reference_skills(s(""), {})
+    assert bb.has_reference_skills(s(None, "flight"), {"flight": "flight-ticket-search"})

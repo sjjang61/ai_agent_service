@@ -15,6 +15,9 @@ from app.models.skill import Skill
 
 logger = logging.getLogger(__name__)
 
+# 측정용 스위치: False 면 지정한 참고 스킬을 붙이지 않는다(스킬 유무 비교 측정). 서비스에서는 항상 True.
+ENABLED = True
+
 MAX_SKILLS = 3          # 한 분석에 붙이는 스킬 수
 MAX_CHARS_EACH = 2500   # 스킬 하나의 지침 길이 상한
 _FRONT = re.compile(r"\A---\s*\n.*?\n---\s*\n", re.S)
@@ -39,6 +42,8 @@ def skill_text(install_path: str) -> str:
 
 async def reference_block(db: AsyncSession, user_id: str, names: Iterable[str]) -> tuple[str, list[str], list[str]]:
     """(프롬프트 블록, 찾은 스킬 이름, 못 찾은 이름). 하나도 없으면 블록은 빈 문자열."""
+    if not ENABLED:
+        return "", [], []
     wanted: list[str] = []
     for n in names:
         n = (n or "").strip().lower()

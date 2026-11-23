@@ -120,6 +120,17 @@ def build_cases(sites: list[SiteProfile], vertical_specs: dict, sites_filter: Op
     return out
 
 
+def _skills_on() -> bool:
+    from app.services import skill_refs
+
+    return skill_refs.ENABLED
+
+
+def has_reference_skills(site: SiteProfile, vertical_skills: dict) -> bool:
+    """이 사이트(또는 분야)에 참고 스킬이 지정돼 있는가 — 스킬 유무 비교 측정의 대상 판단."""
+    return bool((site.reference_skills or "").strip() or (vertical_skills.get(site.vertical or "") or "").strip())
+
+
 def is_infra(r: dict) -> bool:
     return INFRA_REASON in (r.get("reasons") or [])
 
@@ -251,7 +262,7 @@ async def run_batch(user_id: str, cases: list[dict], label: str, attempts: int =
                 s = summarize_run(run)
                 if hung:
                     s["reasons"] = ["실행 제한 시간 초과 (멈춤)"] + [r for r in s["reasons"] if r != INFRA_REASON]
-                db.add(BrowserBenchResult(label=label, site_name=c["name"], vertical=c["vertical"], attempt=attempt, run_id=rid, env={"daemon": DAEMON_VERSION, "llm": settings.LLM_TYPE}, **s))
+                db.add(BrowserBenchResult(label=label, site_name=c["name"], vertical=c["vertical"], attempt=attempt, run_id=rid, env={"daemon": DAEMON_VERSION, "llm": settings.LLM_TYPE, "skills": _skills_on()}, **s))
                 await db.commit()
             saved += 1
             infra_streak = infra_streak + 1 if INFRA_REASON in s["reasons"] else 0
