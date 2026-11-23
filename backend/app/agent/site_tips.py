@@ -37,6 +37,7 @@ class SiteTip:
     spec: dict = field(default_factory=dict)
     status: str = "verified"  # draft(분석 대기)는 에이전트에게 주지 않는다
     category: str = ""  # 분야가 없는 사이트의 카테고리 key (화면 분류용)
+    skills: tuple[str, ...] = ()  # 사이트 분석이 참고할 스킬 이름(소문자)
 
     def block(self, hint: bool = True, vspec: Optional[dict] = None) -> str:
         head = f"[사이트 요령 · {self.name} · 확인 {self.verified}]"
@@ -68,6 +69,7 @@ class Vertical:
     checklist: str = ""
     spec: dict = field(default_factory=dict)
     category: str = ""  # 카테고리 key (화면 분류용)
+    skills: tuple[str, ...] = ()  # 사이트 분석이 참고할 스킬 이름(소문자)
 
     def block(self) -> str:
         sites = [t.name for t in all_tips() if t.vertical == self.key]
@@ -114,7 +116,7 @@ def parse_site_file(path: Path) -> SiteTip:
         raise ValueError(f"{path.name}: {e}")
     return SiteTip(name=meta.get("name", ""), domains=_csv(meta.get("domains")), aliases=_csv(meta.get("aliases")),
                    verified=meta.get("verified", ""), body=body, vertical=meta.get("vertical", "").strip().lower(), spec=spec,
-                   status=meta.get("status", "verified").strip().lower() or "verified", category=meta.get("category", "").strip().lower())
+                   status=meta.get("status", "verified").strip().lower() or "verified", category=meta.get("category", "").strip().lower(), skills=_csv(meta.get("skills")))
 
 
 def parse_vertical_file(path: Path) -> Vertical:
@@ -126,7 +128,7 @@ def parse_vertical_file(path: Path) -> Vertical:
     guide, checklist = split_checklist(body)
     return Vertical(key=meta.get("key", "").strip().lower(), name=meta.get("name", ""), keywords=_csv(meta.get("keywords")),
                     stop_words=_csv(meta.get("stop_words")), stop_urls=_csv(meta.get("stop_urls")), body=guide, checklist=checklist, spec=spec,
-                    category=meta.get("category", "").strip().lower())
+                    category=meta.get("category", "").strip().lower(), skills=_csv(meta.get("skills")))
 
 
 @lru_cache(maxsize=1)
@@ -212,6 +214,12 @@ def _spec_urls(t: SiteTip) -> list[str]:
     return [x.get("url", "") for k in ("entry", "menus", "flow") for x in s.get(k, [])]
 
 
+def _scoped(t: SiteTip) -> bool:
+    """진입 주소가 모두 도메인의 특정 경로(/travel/flights 등)에 있는 요령 (같은 도메인의 일반 요령과 구분하려는 것: google.com 의 검색엔진 vs Google Flights)."""
+    entries = [x.get("url", "") for x in (t.spec or {}).get("entry", [])]
+    return bool(entries) and all(_path_head(u) for u in entries)
+
+
 def pick(url: str, shown: Optional[set] = None) -> list[SiteTip]:
     """주소에 해당하는 요령 중 지금 쓸 것. 같은 도메인에 분야가 다른 요령이 여럿이면
     (1) 주소의 첫 경로(/flights, /hotels)가 그 요령의 진입·메뉴·단계 주소와 같은 것, (2) 이미 안내한 분야의 것, 순으로 좁히고, 그래도 못 정하면 모두 준다.
@@ -223,6 +231,9 @@ def pick(url: str, shown: Optional[set] = None) -> list[SiteTip]:
     by_path = [t for t in cands if head and any(_path_head(u) == head for u in _spec_urls(t))]
     if by_path:
         return by_path
+    plain = [t for t in cands if not _scoped(t)]
+    if plain and len(plain) < len(cands):  # 경로가 맞는 요령이 없으면, 경로 전용 요령(Google Flights)은 빼고 일반 요령(검색엔진)만
+        return plain
     seen = {s[1:] for s in (shown or ()) if isinstance(s, str) and s.startswith("@")}
     return [t for t in cands if t.vertical in seen] or cands
 
@@ -247,6 +258,9 @@ def match_task(task: str, start_url: str | None = None) -> list[SiteTip]:
     for t in out:
         group = [o for o in out if o is not t and set(o.domains) & set(t.domains)]
         in_group = [o for o in group + [t] if o.vertical in wanted]
+        alias_hit = any(a in text for a in t.aliases)
+        if group and _scoped(t) and not alias_hit and t.vertical not in wanted and any(not _scoped(o) for o in group):
+            continue  # 같은 도메인의 일반 요령(검색엔진)이 있으면, 경로 전용 요령은 이름·분야 키워드를 말했을 때만
         narrowed.append(t) if (not group or not in_group or t.vertical in wanted) else None
     return narrowed
 

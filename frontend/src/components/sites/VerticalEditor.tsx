@@ -4,6 +4,7 @@ import { emptyVerticalSpec, siteProfilesApi, verticalSpecOf, type SiteCategory, 
 import { errorText, inputCls, primaryBtn } from '../skills/common'
 import { Field, TextArea, secondaryBtn } from './fields'
 import HistoryPanel from './HistoryPanel'
+import SkillRefsField from './SkillRefsField'
 import { VerticalSpecEditor } from './SpecEditors'
 
 interface Props {
@@ -16,7 +17,7 @@ interface Props {
   onDeleted: () => void
 }
 
-const EMPTY: VerticalInput = { key: '', name: '', category: null, keywords: '', stop_words: '', stop_urls: '', body: '', checklist: '', spec: emptyVerticalSpec() }
+const EMPTY: VerticalInput = { key: '', name: '', category: null, reference_skills: null, keywords: '', stop_words: '', stop_urls: '', body: '', checklist: '', spec: emptyVerticalSpec() }
 
 export default function VerticalEditor({ vertical, categories, defaultCategory, onSaved, onDeleted }: Props) {
   const qc = useQueryClient()
@@ -67,6 +68,7 @@ export default function VerticalEditor({ vertical, categories, defaultCategory, 
           {categories.map((c) => <option key={c.key} value={c.key}>{c.name}</option>)}
         </select>
       </Field>
+      <SkillRefsField value={form.reference_skills ?? ''} onChange={(v) => setForm((f) => ({ ...f, reference_skills: v }))} scope="분야" />
       <Field label="키워드" hint="쉼표로 구분. 작업 문장에 나오면 사이트를 말하지 않아도 이 분야 지침이 붙습니다. '영화'처럼 흔한 단어는 피하세요.">
         <input value={form.keywords} onChange={(e) => set('keywords')(e.target.value)} className={inputCls} placeholder="항공권, 항공편" />
       </Field>
@@ -101,8 +103,8 @@ export default function VerticalEditor({ vertical, categories, defaultCategory, 
             <HistoryPanel
               queryKey={['vertical-revisions', vertical.key]}
               load={() => siteProfilesApi.verticalRevisions(vertical.key)}
-              current={{ name: vertical.name, category: vertical.category, keywords: vertical.keywords, stop_words: vertical.stop_words, stop_urls: vertical.stop_urls, body: vertical.body, checklist: vertical.checklist, spec: vertical.spec }}
-              labels={{ name: '이름', category: '카테고리', keywords: '키워드', stop_words: '누르지 않을 버튼 문구', stop_urls: '이동하지 않을 주소 문구', body: '공통 지침', checklist: '분석 체크리스트', spec: '구조 (입력값·표준 단계)' }}
+              current={{ name: vertical.name, category: vertical.category, reference_skills: vertical.reference_skills, keywords: vertical.keywords, stop_words: vertical.stop_words, stop_urls: vertical.stop_urls, body: vertical.body, checklist: vertical.checklist, spec: vertical.spec }}
+              labels={{ name: '이름', category: '카테고리', reference_skills: '참고 스킬', keywords: '키워드', stop_words: '누르지 않을 버튼 문구', stop_urls: '이동하지 않을 주소 문구', body: '공통 지침', checklist: '분석 체크리스트', spec: '구조 (입력값·표준 단계)' }}
               restore={(revId) => siteProfilesApi.restoreVertical(vertical.key, revId)}
               onRestored={() => { refresh(); qc.invalidateQueries({ queryKey: ['vertical-revisions', vertical.key] }) }}
             />

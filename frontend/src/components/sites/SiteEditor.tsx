@@ -5,6 +5,7 @@ import { errorText, inputCls, primaryBtn } from '../skills/common'
 import { Field, TextArea, secondaryBtn } from './fields'
 import StatusBadge from './StatusBadge'
 import HistoryPanel from './HistoryPanel'
+import SkillRefsField from './SkillRefsField'
 import AnalysisPanel from './AnalysisPanel'
 import { SiteSpecEditor } from './SpecEditors'
 
@@ -25,7 +26,7 @@ export default function SiteEditor({ site, verticals, categories, defaultVertica
   const qc = useQueryClient()
   const [form, setForm] = useState<SiteInput>(
     site
-      ? { name: site.name, vertical: site.vertical, category: site.category, domains: site.domains, aliases: site.aliases, body: site.body, spec: siteSpecOf(site.spec), status: site.status, verified_at: site.verified_at, enabled: site.enabled }
+      ? { name: site.name, vertical: site.vertical, category: site.category, reference_skills: site.reference_skills, domains: site.domains, aliases: site.aliases, body: site.body, spec: siteSpecOf(site.spec), status: site.status, verified_at: site.verified_at, enabled: site.enabled }
       : { name: '', vertical: defaultVertical ?? null, category: defaultCategory ?? null, domains: '', aliases: '', body: '', spec: emptySiteSpec(), status: 'draft', verified_at: null, enabled: true },
   )
   const [error, setError] = useState('')
@@ -119,6 +120,7 @@ export default function SiteEditor({ site, verticals, categories, defaultVertica
       <Field label="도메인" hint="쉼표로 구분. 하위 도메인도 맞습니다. 주소를 붙여 넣어도 도메인만 남깁니다. 더 구체적인 도메인(flight.naver.com)이 넓은 도메인(naver.com)보다 먼저 적용됩니다. 한 사이트가 여러 분야를 가지면 '아고다 · 호텔'처럼 분야마다 따로 만드세요 (같은 도메인은 분야가 다를 때만 쓸 수 있습니다).">
         <input value={form.domains} onChange={(e) => set('domains', e.target.value)} className={inputCls} placeholder="flight.naver.com" />
       </Field>
+      <SkillRefsField value={form.reference_skills ?? ''} onChange={(v) => set('reference_skills', v)} scope="사이트" />
       <Field label="별칭" hint="쉼표로 구분. 작업 문장에 이 단어가 나오면 시작할 때 요령이 붙습니다. '다음'처럼 흔한 단어는 피하세요.">
         <input value={form.aliases} onChange={(e) => set('aliases', e.target.value)} className={inputCls} placeholder="네이버항공권, 네이버 항공권" />
       </Field>
@@ -192,8 +194,8 @@ export default function SiteEditor({ site, verticals, categories, defaultVertica
           <HistoryPanel
             queryKey={['site-revisions', site.id]}
             load={() => siteProfilesApi.siteRevisions(site.id)}
-            current={{ name: site.name, vertical: site.vertical, category: site.category, domains: site.domains, aliases: site.aliases, body: site.body, spec: site.spec, status: site.status, verified_at: site.verified_at, enabled: site.enabled }}
-            labels={{ name: '이름', vertical: '분야', category: '카테고리', domains: '도메인', aliases: '별칭', body: '예외·주의', spec: '구조', status: '상태', verified_at: '확인일', enabled: '사용' }}
+            current={{ name: site.name, vertical: site.vertical, category: site.category, reference_skills: site.reference_skills, domains: site.domains, aliases: site.aliases, body: site.body, spec: site.spec, status: site.status, verified_at: site.verified_at, enabled: site.enabled }}
+            labels={{ name: '이름', vertical: '분야', category: '카테고리', reference_skills: '참고 스킬', domains: '도메인', aliases: '별칭', body: '예외·주의', spec: '구조', status: '상태', verified_at: '확인일', enabled: '사용' }}
             restore={(revId) => siteProfilesApi.restoreSite(site.id, revId)}
             onRestored={() => { qc.invalidateQueries({ queryKey: ['site-profiles'] }); qc.invalidateQueries({ queryKey: ['site-revisions', site.id] }) }}
           />

@@ -30,7 +30,7 @@ async def seed_from_files(db: AsyncSession) -> dict:
     for v in site_tips.file_verticals():
         if v.key and v.key not in have_v:
             db.add(SiteVertical(key=v.key, name=v.name, keywords=_join(v.keywords), stop_words=_join(v.stop_words),
-                                stop_urls=_join(v.stop_urls), body=v.body, checklist=v.checklist, spec=v.spec or None, category=v.category or None, source="seed"))
+                                stop_urls=_join(v.stop_urls), body=v.body, checklist=v.checklist, spec=v.spec or None, category=v.category or None, reference_skills=_join(v.skills) or None, source="seed"))
             added["verticals"] += 1
     # 이름이 바뀐 시드(한 사이트가 여러 분야를 갖게 되며 '아고다' → '아고다 · 항공권'): 화면에서 고치지 않은 행은 제자리에서 이름만 바꾼다
     renamed = {"아고다": "아고다 · 항공권", "네이버 플레이스": "네이버 예약"}
@@ -45,7 +45,7 @@ async def seed_from_files(db: AsyncSession) -> dict:
         if t.name and t.name not in have_s:
             db.add(SiteProfile(name=t.name, vertical=t.vertical or None, domains=_join(t.domains), aliases=_join(t.aliases),
                                body=t.body, spec=t.spec or None, status=t.status if t.status in STATUSES else "verified", verified_at=t.verified or None,
-                               category=(None if t.vertical else (t.category or None)), source="seed"))
+                               category=(None if t.vertical else (t.category or None)), reference_skills=_join(t.skills) or None, source="seed"))
             added["sites"] += 1
     # 구조화 기능이 생기기 전에 시드된 항목: 화면에서 고친 적 없고(source=seed) spec 이 비어 있으면 md 의 spec 을 채운다
     files_v = {v.key: v for v in site_tips.file_verticals()}
@@ -70,6 +70,13 @@ async def seed_from_files(db: AsyncSession) -> dict:
         if files_s.get(row.name) and files_s[row.name].category:
             row.category = files_s[row.name].category
             added["sites"] += 1
+    # 참고 스킬이 생기기 전에 만든 항목: 비어 있는 것만 md 로 채운다
+    for row in (await db.execute(select(SiteVertical).where(SiteVertical.reference_skills.is_(None)))).scalars().all():
+        if files_v.get(row.key) and files_v[row.key].skills:
+            row.reference_skills = _join(files_v[row.key].skills)
+    for row in (await db.execute(select(SiteProfile).where(SiteProfile.reference_skills.is_(None)))).scalars().all():
+        if files_s.get(row.name) and files_s[row.name].skills:
+            row.reference_skills = _join(files_s[row.name].skills)
     await db.commit()
     return added
 
@@ -78,6 +85,7 @@ def to_vertical(row: SiteVertical) -> site_tips.Vertical:
     return site_tips.Vertical(
         key=row.key, name=row.name, keywords=site_tips._csv(row.keywords), stop_words=site_tips._csv(row.stop_words),
         stop_urls=site_tips._csv(row.stop_urls), body=row.body or "", checklist=row.checklist or "", spec=row.spec or {}, category=row.category or "",
+        skills=site_tips._csv(row.reference_skills),
     )
 
 
@@ -85,6 +93,7 @@ def to_tip(row: SiteProfile) -> site_tips.SiteTip:
     return site_tips.SiteTip(
         name=row.name, domains=site_tips._csv(row.domains), aliases=site_tips._csv(row.aliases), verified=row.verified_at or "",
         body=row.body or "", vertical=(row.vertical or "").lower(), spec=row.spec or {}, category=row.category or "",
+        skills=site_tips._csv(row.reference_skills),
     )
 
 
@@ -177,6 +186,8 @@ def site_md(row: SiteProfile) -> str:
         head.append(f"category: {row.category}")  # 분야가 없는 사이트만 자기 카테고리를 갖는다
     if row.aliases:
         head.append(f"aliases: {row.aliases}")
+    if row.reference_skills:
+        head.append(f"skills: {row.reference_skills}")
     if row.status != "verified":
         head.append(f"status: {row.status}")  # draft(분석 전)·stale. 생략하면 verified 로 시드되므로 내보낼 때 빠뜨리면 안 된다
     head.append(f"verified: {row.verified_at or ''}")
@@ -184,7 +195,7 @@ def site_md(row: SiteProfile) -> str:
 
 
 def vertical_md(row: SiteVertical) -> str:
-    head = [f"key: {row.key}", f"name: {row.name}"] + ([f"category: {row.category}"] if row.category else []) + [f"keywords: {row.keywords}", f"stop_words: {row.stop_words}", f"stop_urls: {row.stop_urls}"]
+    head = [f"key: {row.key}", f"name: {row.name}"] + ([f"category: {row.category}"] if row.category else []) + ([f"skills: {row.reference_skills}"] if row.reference_skills else []) + [f"keywords: {row.keywords}", f"stop_words: {row.stop_words}", f"stop_urls: {row.stop_urls}"]
     body = _spec_fence(row.spec) + (row.body or "").strip()
     if (row.checklist or "").strip():
         body += f"\n\n{site_tips.CHECKLIST_HEADING}\n{row.checklist.strip()}"
@@ -308,6 +319,16 @@ def _category(data: dict, row) -> Optional[str]:
         raise ProfileError(400, str(e))
 
 
+def _ref_skills(data: dict, row) -> Optional[str]:
+    """참고 스킬 이름 목록(쉼표). 보내지 않으면(None) 지금 값을 유지하고, 빈 문자열이면 비운다."""
+    if data.get("reference_skills") is None:
+        return row.reference_skills if row is not None else None
+    names = normalize_csv(data["reference_skills"])
+    if len(names) > 300:
+        raise ProfileError(400, "참고 스킬은 300자 이내로 입력하세요")
+    return names  # 비우면 ''(None 이 아니다): 다시 시작할 때 md 로 채워지지 않게
+
+
 def _status(raw: str) -> str:
     if raw not in STATUSES:
         raise ProfileError(400, "상태가 올바르지 않습니다")
@@ -344,6 +365,7 @@ async def save_site(db: AsyncSession, data: dict, site_id: Optional[str] = None,
         name=name, vertical=vertical, domains=domains, aliases=normalize_csv(data.get("aliases", "")),
         body=(data.get("body") or "").strip(), status=status, verified_at=verified_at, enabled=bool(data.get("enabled", True)),
         spec=_spec(data, row, site_spec.clean_site), category=None if vertical else _category(data, row),  # 분야가 있으면 분야의 카테고리를 따른다
+        reference_skills=_ref_skills(data, row),
     )
     before = None
     if row is None:
@@ -389,7 +411,7 @@ async def save_vertical(db: AsyncSession, data: dict, key: Optional[str] = None,
     fields = dict(
         name=_name(data.get("name", "")), keywords=normalize_csv(data.get("keywords", "")), stop_words=normalize_csv(data.get("stop_words", "")),
         stop_urls=normalize_csv(data.get("stop_urls", "")), body=(data.get("body") or "").strip(), checklist=(data.get("checklist") or "").strip(),
-        spec=_spec(data, row, site_spec.clean_vertical), category=_category(data, row),
+        spec=_spec(data, row, site_spec.clean_vertical), category=_category(data, row), reference_skills=_ref_skills(data, row),
     )
     if not fields["body"]:
         raise ProfileError(400, "공통 지침을 입력하세요")
@@ -424,8 +446,8 @@ async def delete_vertical(db: AsyncSession, key: str) -> None:
 
 # ── 수정 이력 ─────────────────────────────────────────────────
 MAX_REVISIONS = 50  # 항목마다 남기는 이력 수 (넘으면 오래된 것부터 지운다)
-SITE_FIELDS = ("name", "vertical", "category", "domains", "aliases", "body", "status", "verified_at", "enabled", "spec")
-VERTICAL_FIELDS = ("name", "category", "keywords", "stop_words", "stop_urls", "body", "checklist", "spec")
+SITE_FIELDS = ("name", "vertical", "category", "reference_skills", "domains", "aliases", "body", "status", "verified_at", "enabled", "spec")
+VERTICAL_FIELDS = ("name", "category", "reference_skills", "keywords", "stop_words", "stop_urls", "body", "checklist", "spec")
 
 
 def snapshot_of(row) -> dict:

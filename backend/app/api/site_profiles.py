@@ -27,6 +27,7 @@ class VerticalOut(BaseModel):
     key: str
     name: str
     category: Optional[str] = None
+    reference_skills: Optional[str] = None
     keywords: str
     stop_words: str
     stop_urls: str
@@ -45,6 +46,7 @@ class SiteOut(BaseModel):
     name: str
     vertical: Optional[str] = None
     category: Optional[str] = None  # 분야가 없는 사이트의 카테고리
+    reference_skills: Optional[str] = None
     domains: str
     aliases: str
     body: str
@@ -70,6 +72,7 @@ class VerticalIn(BaseModel):
     key: Optional[str] = None  # 만들 때만
     name: str
     category: Optional[str] = Field(default=None, description="카테고리 key. 보내지 않으면 지금 값을 유지한다")
+    reference_skills: Optional[str] = Field(default=None, description="사이트 분석이 참고할 스킬 이름(쉼표). 보내지 않으면 지금 값을 유지, 빈 문자열이면 비운다")
     keywords: str = ""
     stop_words: str = ""
     stop_urls: str = ""
@@ -83,6 +86,7 @@ class SiteIn(BaseModel):
     name: str
     vertical: Optional[str] = None
     category: Optional[str] = Field(default=None, description="분야가 없는 사이트의 카테고리 key. 보내지 않으면 지금 값을 유지한다")
+    reference_skills: Optional[str] = Field(default=None, description="사이트 분석이 참고할 스킬 이름(쉼표). 보내지 않으면 지금 값을 유지, 빈 문자열이면 비운다")
     domains: str
     aliases: str = ""
     body: str = ""
@@ -129,7 +133,7 @@ def _rev_out(r: SiteProfileRevision) -> RevisionOut:
 
 def _vertical_out(row: SiteVertical, counts: dict) -> VerticalOut:
     return VerticalOut(
-        key=row.key, name=row.name, category=row.category, keywords=row.keywords, stop_words=row.stop_words, stop_urls=row.stop_urls, body=row.body,
+        key=row.key, name=row.name, category=row.category, reference_skills=row.reference_skills, keywords=row.keywords, stop_words=row.stop_words, stop_urls=row.stop_urls, body=row.body,
         checklist=row.checklist, spec=row.spec or {}, source=row.source, version=row.version, updated_at=row.updated_at,
         site_count=counts.get(row.key, 0), md=svc.vertical_md(row),
     )
@@ -137,7 +141,7 @@ def _vertical_out(row: SiteVertical, counts: dict) -> VerticalOut:
 
 def _site_out(row: SiteProfile) -> SiteOut:
     return SiteOut(
-        id=row.id, name=row.name, vertical=row.vertical, category=row.category, domains=row.domains, aliases=row.aliases, body=row.body, spec=row.spec or {}, status=row.status,
+        id=row.id, name=row.name, vertical=row.vertical, category=row.category, reference_skills=row.reference_skills, domains=row.domains, aliases=row.aliases, body=row.body, spec=row.spec or {}, status=row.status,
         verified_at=row.verified_at, enabled=row.enabled, source=row.source, version=row.version, updated_at=row.updated_at,
         is_stale=svc.is_stale(row), md=svc.site_md(row),
     )

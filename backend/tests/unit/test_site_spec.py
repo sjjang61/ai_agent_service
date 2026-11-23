@@ -349,3 +349,43 @@ async def test_common_guideline_is_seeded_edited_with_version_check_and_cached(d
     with pytest.raises(svc.ProfileError):
         await svc.save_common(db, "가" * 4001)
     site_tips.clear_cache()
+
+
+def test_korail_references_the_timetable_skill_and_the_prompt_carries_the_skills_block():
+    from types import SimpleNamespace
+    from app.services import site_analysis_service as sa
+
+    t = next(x for x in site_tips.file_tips() if x.name == "코레일")
+    assert t.skills == ("railway-timetable",)
+    run = SimpleNamespace(mode="verify", name="코레일", vertical="transport", start_url="https://www.korail.com/", scenario="", inputs={}, draft_spec=None)
+    assert "[참고 스킬" not in sa._prompt(run, "")                                     # 없으면 지금처럼
+    assert "[참고 스킬 — 테스트]" in sa._prompt(run, "", "[참고 스킬 — 테스트]")           # 있으면 프롬프트에 붙는다
+
+
+@pytest.mark.asyncio
+async def test_reference_skills_are_seeded_saved_kept_cleared_and_exported(db):
+    from sqlalchemy import select
+    from app.models.site_profile import SiteProfile
+    from app.services import site_profile_service as svc
+
+    await svc.seed_from_files(db)
+    kr = (await db.execute(select(SiteProfile).where(SiteProfile.name == "코레일"))).scalar_one()
+    assert kr.reference_skills == "railway-timetable" and "skills: railway-timetable" in svc.site_md(kr)
+    base = {"name": kr.name, "vertical": kr.vertical, "domains": kr.domains, "body": kr.body, "status": kr.status}
+    assert (await svc.save_site(db, base, site_id=kr.id)).reference_skills == "railway-timetable"                              # 보내지 않으면 유지
+    assert (await svc.save_site(db, {**base, "reference_skills": " A-skill , a-skill,B"}, site_id=kr.id)).reference_skills == "A-skill, B"  # 정리
+    assert (await svc.save_site(db, {**base, "reference_skills": ""}, site_id=kr.id)).reference_skills == ""                  # 빈 문자열은 비움
+    await svc.seed_from_files(db)
+    assert (await db.get(SiteProfile, kr.id)).reference_skills == ""                                                           # 비운 것을 다시 시작할 때 md 로 채우지 않는다
+    with pytest.raises(svc.ProfileError):
+        await svc.save_site(db, {**base, "reference_skills": "x" * 301}, site_id=kr.id)
+
+
+def test_path_scoped_site_does_not_hijack_plain_pages_of_the_same_domain():
+    """Google Flights(google.com/travel/flights)가 같은 도메인의 일반 검색 페이지·작업에 붙지 않는다. 이름이나 분야 키워드를 말하거나 그 경로에 있을 때만 붙는다."""
+    names = lambda urls: [t.name for t in site_tips.pick(urls)]  # noqa: E731
+    assert names("https://www.google.com/search?q=a") == ["검색엔진(구글·네이버·다음)"] and names("https://www.google.com/") == ["검색엔진(구글·네이버·다음)"]
+    assert names("https://www.google.com/travel/flights/search?tfs=x") == ["Google Flights"]
+    assert [t.name for t in site_tips.match_task("구글에서 진라면 최저가 검색해줘", "https://www.google.com/")] == ["검색엔진(구글·네이버·다음)"]
+    assert "Google Flights" in [t.name for t in site_tips.match_task("구글 항공권으로 서울 도쿄 조회")]
+    assert "Google Flights" in [t.name for t in site_tips.match_task("google.com 에서 항공권 찾아줘")]

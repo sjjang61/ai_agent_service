@@ -3,6 +3,7 @@ name: 코레일
 domains: korail.com, letskorail.com
 vertical: transport
 aliases: 코레일, korail, ktx, 레츠코레일, 코레일톡
+skills: railway-timetable
 verified: 2026-11-23
 ---
 ```spec

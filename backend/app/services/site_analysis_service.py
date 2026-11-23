@@ -301,7 +301,28 @@ def _flow_list(vspec: dict) -> str:
     return "\n".join(f"- {s['key']}: {s['title']}" + (" (상태를 바꾸는 단계: 실행하지 않고 '진행 방법'만 기록)" if s.get("write") else "") for s in vspec.get("flow", [])) or "(정의된 단계 없음)"
 
 
-def _prompt(run: SiteAnalysisRun, current_body: str) -> str:
+async def _skills_block(db: AsyncSession, run: SiteAnalysisRun) -> str:
+    """이 사이트·분야에 지정한 참고 스킬 중 이 사용자가 가진 것만 '참고 스킬' 블록으로 만든다. 없거나 실패하면 빈 문자열(지금처럼 동작)."""
+    try:
+        from app.models.site_profile import SiteProfile, SiteVertical
+        from app.services.skill_refs import reference_block
+
+        names: list[str] = []
+        if run.vertical:
+            v = (await db.execute(select(SiteVertical).where(SiteVertical.key == run.vertical))).scalar_one_or_none()
+            names += [n for n in (v.reference_skills or "").split(",")] if v else []
+        s = (await db.execute(select(SiteProfile).where(SiteProfile.name == run.name))).scalar_one_or_none()
+        names += [n for n in (s.reference_skills or "").split(",")] if s else []
+        block, found, missing = await reference_block(db, run.user_id, names)
+        if missing:
+            logger.info("[site_analysis] 참고 스킬을 찾지 못해 건너뜀: %s", ", ".join(missing))
+        return block
+    except Exception:  # noqa: BLE001 — 참고 자료를 못 붙여도 분석은 계속한다
+        logger.exception("[site_analysis] 참고 스킬 블록을 만들지 못함")
+        return ""
+
+
+def _prompt(run: SiteAnalysisRun, current_body: str, skills_block: str = "") -> str:
     vspec = _vspec(run)
     samples = site_spec.sample_text(vspec, run.inputs) or "(정의된 입력값 없음: 시나리오의 값을 쓰세요)"
     if run.mode == "analyze":
@@ -314,7 +335,8 @@ def _prompt(run: SiteAnalysisRun, current_body: str) -> str:
         text = render("site_verify", name=run.name, start_url=run.start_url, scenario=run.scenario, samples=samples, flow=_flow_list(vspec))
     common = site_tips.common_text()
     common_part = f"\n\n[전체 공통 지침 — 모든 사이트에 적용]\n{common}" if common else ""
-    return f"{text}{common_part}\n\n(시작 URL: {run.start_url})"
+    skills_part = f"\n\n{skills_block}" if skills_block else ""
+    return f"{text}{common_part}{skills_part}\n\n(시작 URL: {run.start_url})"
 
 
 async def _execute(run_id: str, current_body: str = "") -> None:
@@ -350,6 +372,7 @@ async def _execute(run_id: str, current_body: str = "") -> None:
                 await reset_if_new_turn(run.user_id)  # 남은 탭을 닫고 깨끗하게 시작
             bt.clear_handoff(run.user_id)
             blocks, shown = _blocks_for(run)
+            skills_block = await _skills_block(db, run)
             clock = bt.WaitClock()
             tool = bt.BrowserActionTool(user_id=run.user_id, run_tag=run.browser_run, conversation_id=conv, login_enabled=False,
                                         clock=clock, tips_shown=shown, captcha_handoff=bool(run.captcha_handoff), ignore_site_block=True,
@@ -367,7 +390,7 @@ async def _execute(run_id: str, current_body: str = "") -> None:
             text = ""
             usage: dict = {}  # 모델이 알려 준 토큰 사용량 (알 수 없으면 비어 있다)
             async for kind, payload in side_events.run_with_side(
-                bt.run_with_budget(agent.arun(_prompt(run, current_body)), settings.SITE_ANALYSIS_TIMEOUT_SECONDS, clock), q
+                bt.run_with_budget(agent.arun(_prompt(run, current_body, skills_block)), settings.SITE_ANALYSIS_TIMEOUT_SECONDS, clock), q
             ):
                 if kind == "side":
                     if fold_event(steps, payload) and time.time() - last_flush >= FLUSH_INTERVAL:
