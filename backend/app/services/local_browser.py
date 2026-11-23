@@ -23,7 +23,9 @@ import websockets
 
 from app.config import settings
 
-from app.services.browser_snapshot import BLOCKED_JS, BLOCKED_MSG, SNAP_JS  # sandbox 데몬과 같은 요소 수집 스크립트 (data-agent-ref 번호 부여)
+import re
+
+from app.services.browser_snapshot import BLOCKED_JS, BLOCKED_MSG, LOADING_PATTERN, LOADING_WAIT_SECONDS, SNAP_JS  # sandbox 데몬과 같은 요소 수집 스크립트 (data-agent-ref 번호 부여)
 
 # 키 이름 → (key, code, windowsVirtualKeyCode, text)
 _KEYS: dict[str, tuple[str, str, int, str]] = {
@@ -235,6 +237,15 @@ class LocalBrowser:
                 pass
             await asyncio.sleep(0.15)
 
+    async def _after_load(self, snap: dict) -> dict:
+        """읽은 화면에 '불러오는 중' 문구가 보이면 사라질 때까지(최대 LOADING_WAIT_SECONDS) 기다렸다가 다시 읽는다."""
+        pat = re.compile(LOADING_PATTERN)
+        end = time.monotonic() + LOADING_WAIT_SECONDS
+        while pat.search(snap.get("text") or "") and time.monotonic() < end:
+            await asyncio.sleep(1.0)
+            snap = await self._snapshot()
+        return snap
+
     async def _snapshot(self) -> dict:
         for attempt in (0, 1):  # 이동 직후엔 컨텍스트가 바뀌어 한 번 실패할 수 있다
             try:
@@ -325,7 +336,7 @@ class LocalBrowser:
             if res.get("errorText"):
                 return {"ok": False, "error": f"이동 실패: {res['errorText']}"}
             await self._settle()
-            return {"ok": True, **await self._snapshot()}
+            return {"ok": True, **await self._after_load(await self._snapshot())}
         if cmd == "snapshot":
             return {"ok": True, **await self._snapshot()}
         if cmd == "click":
@@ -338,7 +349,7 @@ class LocalBrowser:
             if before is not None and self._sig == before:  # 변화가 없다: 열리는 데 시간이 걸리는 팝업·패널일 수 있어 잠시 기다려 한 번 더 읽는다
                 await asyncio.sleep(1.2)
                 snap = await self._snapshot()
-            return {"ok": True, **snap}
+            return {"ok": True, **await self._after_load(snap)}
         if cmd == "type":
             ref, text = int(c["ref"]), str(c.get("text", ""))[:2000]
             focus = (

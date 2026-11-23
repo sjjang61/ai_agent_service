@@ -26,11 +26,11 @@ from app.config import settings
 DAEMON_PATH = "/tmp/_browser_daemon.py"
 STATE_PATH = "/tmp/_browser_state.json"  # 저장된 로그인 상태. 데몬이 읽자마자 지운다
 DAEMON_PORT = 9333
-DAEMON_VERSION = 29
+DAEMON_VERSION = 30
 LOGIN_TIMEOUT_SECONDS = 600
 MAX_USER_REQUESTS = 3  # 한 번의 브라우저 작업에서 사용자에게 같은 해결을 요청하는 최대 횟수 (해결이 반복해서 실패하면 멈춘다)
 
-from app.services.browser_snapshot import BLOCKED_JS as BLOCKED_JS_SRC, BLOCKED_MSG, SNAP_JS as SNAP_JS_SRC
+from app.services.browser_snapshot import BLOCKED_JS as BLOCKED_JS_SRC, BLOCKED_MSG, LOADING_PATTERN, LOADING_WAIT_SECONDS, SNAP_JS as SNAP_JS_SRC
 
 DAEMON_SOURCE = r'''
 import base64, hashlib, ipaddress, json, os, socket, sys, time
@@ -38,13 +38,15 @@ from http.server import BaseHTTPRequestHandler, HTTPServer
 from urllib.parse import urlparse
 from playwright.sync_api import sync_playwright
 
-PORT, IDLE_SECONDS, VERSION = 9333, 900, 29
+PORT, IDLE_SECONDS, VERSION = 9333, 900, 30
 STATE_PATH = "/tmp/_browser_state.json"
 SHOT_DIR = "/workspace/browser"
 
 SNAP_JS = r"""__SNAP_JS__"""
 BLOCKED_JS = r"""__BLOCKED_JS__"""
-BLOCKED_MSG = """__BLOCKED_MSG__"""   # 요소 수집 스크립트: app/services/browser_snapshot.py (로컬 브라우저와 같은 것)
+BLOCKED_MSG = """__BLOCKED_MSG__"""
+LOADING_RE = r"""__LOADING_PATTERN__"""
+LOADING_WAIT = __LOADING_WAIT__   # 요소 수집 스크립트: app/services/browser_snapshot.py (로컬 브라우저와 같은 것)
 
 FOCUS_JS = """() => {
   const el = document.activeElement;
@@ -166,6 +168,14 @@ def settle(page):
     try: page.wait_for_load_state("networkidle", timeout=3000)
     except Exception: pass
 
+def after_load(page, snap):
+    """읽은 화면에 '불러오는 중' 문구가 보이면 사라질 때까지(최대 LOADING_WAIT초) 기다렸다가 다시 읽는다."""
+    import re as _re
+    end = time.time() + LOADING_WAIT
+    while _re.search(LOADING_RE, snap.get("text") or "") and time.time() < end:
+        time.sleep(1.0); snap = snapshot(page)
+    return snap
+
 def snapshot(page):
     s = page.evaluate(SNAP_JS)
     state["sig"] = (page.url, len(s["elements"]), s["text"])
@@ -212,7 +222,7 @@ def handle(c):
             raise
         settle(page)
         shot(state["page"], c.get("run"))
-        return {"ok": True, **snapshot(state["page"])}
+        return {"ok": True, **after_load(state["page"], snapshot(state["page"]))}
     if cmd == "snapshot": return {"ok": True, **snapshot(page)}
     if cmd == "shot":   # 주요 이벤트(CAPTCHA·승인 요청·오류) 때 도구가 요청하는 현재 화면 기록
         shot(page, c.get("run")); return {"ok": True}
@@ -226,6 +236,7 @@ def handle(c):
         snap = snapshot(state["page"])
         if before is not None and state.get("sig") == before:   # 변화가 없다: 열리는 데 시간이 걸리는 팝업·패널일 수 있어 잠시 기다려 한 번 더 읽는다
             time.sleep(1.2); settle(state["page"]); snap = snapshot(state["page"])
+        snap = after_load(state["page"], snap)
         shot(state["page"], c.get("run"))
         return {"ok": True, **snap}
     if cmd == "type":
@@ -285,7 +296,7 @@ srv = HTTPServer(("127.0.0.1", PORT), H); srv.timeout = 30
 while time.time() - last[0] < IDLE_SECONDS:
     srv.handle_request()
 browser.close(); pw.stop()
-'''.replace("__SNAP_JS__", SNAP_JS_SRC).replace("__BLOCKED_JS__", BLOCKED_JS_SRC).replace("__BLOCKED_MSG__", BLOCKED_MSG)
+'''.replace("__SNAP_JS__", SNAP_JS_SRC).replace("__BLOCKED_JS__", BLOCKED_JS_SRC).replace("__BLOCKED_MSG__", BLOCKED_MSG).replace("__LOADING_PATTERN__", LOADING_PATTERN).replace("__LOADING_WAIT__", str(LOADING_WAIT_SECONDS))
 
 
 def _truncate(s: str, limit: int) -> str:

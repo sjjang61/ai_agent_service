@@ -290,7 +290,7 @@ def test_daemon_shoots_on_screen_changes_and_events():
     assert "shot(" in sel  # select 도 남긴다
     scr = src[src.index('if cmd == "scroll"'):src.index('if cmd == "wait"')]
     assert "shot(" in scr  # scroll 도 남긴다
-    assert bt.DAEMON_VERSION == 29 and "VERSION = 9333, 900, 29" in src
+    assert bt.DAEMON_VERSION == 30 and "VERSION = 9333, 900, 30" in src
 
 
 class _LocalFake:
@@ -1540,3 +1540,14 @@ def test_calendar_cells_show_their_date_and_big_repeated_lists_do_not_push_out_p
     assert "data-iso" in SNAP_JS and "item.date" in SNAP_JS
     assert "bulk" in SNAP_JS and "groupCount" in SNAP_JS and "> 40" in SNAP_JS
     assert "date=2026-12-04" in bt._compact_element({"ref": 7, "tag": "div", "role": "gridcell", "label": "4", "date": "2026-12-04"})
+
+
+def test_loading_text_makes_the_browser_wait_before_reading():
+    """CGV '잠시만 기다려 주세요.'(위젯이 약 6초 뒤에 뜬다)처럼 불러오는 중 문구가 보이면 읽기 전에 사라질 때까지 기다린다(로컬·sandbox 공통)."""
+    import re
+    from app.services import browser_snapshot as bs, local_browser as lb
+
+    for t in ("잠시만 기다려 주세요.", "결과를 가져오는 중", "로딩중", "Loading...", "불러오는 중(21%)"):
+        assert re.search(bs.LOADING_PATTERN, t), t
+    assert not re.search(bs.LOADING_PATTERN, "극장을 선택해 주세요")
+    assert hasattr(lb.LocalBrowser, "_after_load") and "after_load" in bt.DAEMON_SOURCE and "LOADING_RE" in bt.DAEMON_SOURCE and "잠시만 기다려" in bt.DAEMON_SOURCE

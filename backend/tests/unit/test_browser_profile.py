@@ -27,7 +27,7 @@ def test_sanitize_blocks_finance():
 
 def test_daemon_source_compiles_and_version_matches():
     compile(DAEMON_SOURCE, "daemon", "exec")
-    assert "VERSION = 9333, 900, 29" in DAEMON_SOURCE and DAEMON_VERSION == 29
+    assert "VERSION = 9333, 900, 30" in DAEMON_SOURCE and DAEMON_VERSION == 30
 
 
 def test_login_request_flow():
