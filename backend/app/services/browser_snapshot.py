@@ -53,7 +53,11 @@ SNAP_JS = r"""(() => {
     const generic = (el) => !['A', 'BUTTON', 'INPUT', 'SELECT', 'TEXTAREA', 'SUMMARY'].includes(el.tagName) && !el.getAttribute('role') && !el.hasAttribute('onclick');
     // 버튼 모양의 링크(class 에 btn·button·tab)와 탭(role=tab)은 버튼처럼 앞에 둔다: 메가박스의 '극장별' 탭은 <a class="btn"> 이라 영화 포스터 버튼 수십 개에 밀려 목록에서 잘렸다
     const btnLike = (el) => el.tagName === 'A' && (el.getAttribute('role') === 'tab' || /(^|[\s_-])(btn|button|tab)([\s_-]|$)/i.test(typeof el.className === 'string' ? el.className : ''));
-    const rank = (el) => (bare(el) || generic(el)) ? 2 : (el.tagName === 'A' && !btnLike(el)) ? 1 : 0;
+    // 같은 모양(태그+class)이 40개를 넘는 반복 목록(터미널·영화·상품 줄)은 한 단계 뒤로: 목록 항목 수백 개가 같은 팝업의 '선택완료'·'확인' 버튼을 상한 밖으로 밀어내지 않게 한다
+    const groupCount = new Map(); const gk = (el) => el.tagName + '.' + (typeof el.className === 'string' ? el.className : '');
+    for (const el of cands) groupCount.set(gk(el), (groupCount.get(gk(el)) || 0) + 1);
+    const bulk = (el) => groupCount.get(gk(el)) > 40;
+    const rank = (el) => (bare(el) || generic(el)) ? 2 : Math.min(2, ((el.tagName === 'A' && !btnLike(el)) ? 1 : 0) + (bulk(el) ? 1 : 0));
     // 화면 안인데 그 자리에서 눌리는 것이 다른 요소인 항목(슬라이더 밖으로 밀려난 항목, 다른 요소에 가려진 항목)은 팝업 안에서도 뒤로 민다
     const covered = (el) => { const r = el.getBoundingClientRect(); const cx = r.x + r.width / 2, cy = r.y + r.height / 2;
       if (cx < 0 || cy < 0 || cx > innerWidth || cy > innerHeight) return false;
@@ -76,6 +80,9 @@ SNAP_JS = r"""(() => {
     if (el.placeholder) item.placeholder = el.placeholder;
     if (el.value && el.type !== 'password' && el.tagName !== 'BUTTON') item.value = String(el.value).slice(0, 60);
     if (el.href) item.href = el.href.slice(0, 120);
+    // 달력 칸처럼 이름은 '4' 뿐인데 날짜를 속성으로 갖는 요소: 같은 숫자가 여러 달에 반복돼도 어느 날짜인지 알 수 있게 한다 (Google Flights 의 data-iso)
+    const dateAttr = el.getAttribute('data-iso') || el.getAttribute('data-date') || el.getAttribute('data-day') || el.getAttribute('datetime');
+    if (dateAttr && /^\d{4}-\d{2}-\d{2}/.test(dateAttr)) item.date = dateAttr.slice(0, 10);
     if (el.checked) item.checked = true;
     if (el.disabled) item.disabled = true;
     if (!item.label) {   // 이름 없는 요소(아이콘 버튼 등): 무엇인지 알 수 있는 단서를 붙인다

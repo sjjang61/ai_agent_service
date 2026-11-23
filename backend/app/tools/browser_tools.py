@@ -26,7 +26,7 @@ from app.config import settings
 DAEMON_PATH = "/tmp/_browser_daemon.py"
 STATE_PATH = "/tmp/_browser_state.json"  # 저장된 로그인 상태. 데몬이 읽자마자 지운다
 DAEMON_PORT = 9333
-DAEMON_VERSION = 27
+DAEMON_VERSION = 29
 LOGIN_TIMEOUT_SECONDS = 600
 MAX_USER_REQUESTS = 3  # 한 번의 브라우저 작업에서 사용자에게 같은 해결을 요청하는 최대 횟수 (해결이 반복해서 실패하면 멈춘다)
 
@@ -38,7 +38,7 @@ from http.server import BaseHTTPRequestHandler, HTTPServer
 from urllib.parse import urlparse
 from playwright.sync_api import sync_playwright
 
-PORT, IDLE_SECONDS, VERSION = 9333, 900, 27
+PORT, IDLE_SECONDS, VERSION = 9333, 900, 29
 STATE_PATH = "/tmp/_browser_state.json"
 SHOT_DIR = "/workspace/browser"
 
@@ -430,6 +430,8 @@ def _compact_element(e: dict, origin: str = "") -> str:
         v = e.get(key)
         if v and v != e.get("label"):
             parts.append(f"{key}={json.dumps(v, ensure_ascii=False)}")
+    if e.get("date"):
+        parts.append("date=" + e["date"])  # 달력 칸의 날짜(이름은 숫자뿐이어도 어느 날짜인지 알 수 있다)
     href = e.get("href")
     if href:
         parts.append("href=" + (href[len(origin):] or "/" if origin and href.startswith(origin) else href))

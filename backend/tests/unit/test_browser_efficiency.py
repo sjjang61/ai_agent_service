@@ -290,7 +290,7 @@ def test_daemon_shoots_on_screen_changes_and_events():
     assert "shot(" in sel  # select 도 남긴다
     scr = src[src.index('if cmd == "scroll"'):src.index('if cmd == "wait"')]
     assert "shot(" in scr  # scroll 도 남긴다
-    assert bt.DAEMON_VERSION == 27 and "VERSION = 9333, 900, 27" in src
+    assert bt.DAEMON_VERSION == 29 and "VERSION = 9333, 900, 29" in src
 
 
 class _LocalFake:
@@ -1531,3 +1531,12 @@ def test_sandbox_browser_runs_in_korea_time():
     from app.tools import browser_tools as bt
 
     assert 'timezone_id="Asia/Seoul"' in bt.DAEMON_SOURCE and 'locale="ko-KR"' in bt.DAEMON_SOURCE
+
+
+def test_calendar_cells_show_their_date_and_big_repeated_lists_do_not_push_out_popup_buttons():
+    """달력 칸은 이름이 '4' 뿐이어도 날짜(data-iso)를 보여 주고, 같은 모양이 40개를 넘는 목록(터미널 수백 개)은 팝업의 '선택완료'·'확인' 버튼 뒤로 간다."""
+    from app.services.browser_snapshot import SNAP_JS
+
+    assert "data-iso" in SNAP_JS and "item.date" in SNAP_JS
+    assert "bulk" in SNAP_JS and "groupCount" in SNAP_JS and "> 40" in SNAP_JS
+    assert "date=2026-12-04" in bt._compact_element({"ref": 7, "tag": "div", "role": "gridcell", "label": "4", "date": "2026-12-04"})
