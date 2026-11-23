@@ -290,7 +290,7 @@ def test_daemon_shoots_on_screen_changes_and_events():
     assert "shot(" in sel  # select 도 남긴다
     scr = src[src.index('if cmd == "scroll"'):src.index('if cmd == "wait"')]
     assert "shot(" in scr  # scroll 도 남긴다
-    assert bt.DAEMON_VERSION == 18 and "VERSION = 9333, 900, 18" in src
+    assert bt.DAEMON_VERSION == 24 and "VERSION = 9333, 900, 24" in src
 
 
 class _LocalFake:
@@ -1508,3 +1508,25 @@ async def test_batch_with_ref_after_screen_change_runs_by_label_instead_of_being
     assert not out.startswith("Error") and "[자동 변환]" in out and "“도시”" in out
     typed = [c for c in calls if c["cmd"] == "type"]
     assert len(typed) == 1 and typed[0]["ref"] == 7  # 처음 번호(2)가 아니라 다시 읽은 화면의 번호(7)로 입력했다
+
+
+def test_same_named_elements_are_told_apart_by_order_and_area():
+    """슬라이더마다 있는 'Next' 처럼 이름이 같은 요소가 여럿이면 순번(2/2)과 구역 이름을 보여 줘서 엉뚱한 쪽이 눌리지 않게 한다."""
+    from app.tools import browser_tools as bt
+    from app.services import browser_snapshot as bs, local_browser as lb
+
+    month = {"ref": 3, "tag": "button", "label": "Next", "dup": "1/2", "ctx": "달력"}
+    time_ = {"ref": 118, "tag": "button", "label": "Next", "dup": "2/2", "ctx": "시간선택"}
+    assert '(1/2 · "달력")' in bt._compact_element(month) and '(2/2 · "시간선택")' in bt._compact_element(time_)
+    assert bt.describe_action("click", [month, time_], ref=118).endswith("(2/2)")
+    assert "byLabel" in bs.SNAP_JS and "it.dup" in bs.SNAP_JS and "covered" in bs.SNAP_JS  # 이름이 같은 요소 구분, 가려진 요소는 뒤로
+    import inspect
+    assert "BLOCKED_JS" in inspect.getsource(lb.LocalBrowser._element_center) and "elementFromPoint" in bs.BLOCKED_JS  # 보이지 않는 자리를 눌러 다른 곳이 눌리는 것을 막는다
+    assert "BLOCKED_JS" in bt.DAEMON_SOURCE and "elementFromPoint" in bt.DAEMON_SOURCE and "sig" in bt.DAEMON_SOURCE  # sandbox 데몬도 같다
+
+
+def test_sandbox_browser_runs_in_korea_time():
+    """컨테이너 시간대는 UTC 다. 한국 사이트가 브라우저 시각으로 '지금'을 계산하므로(코레일 시각 칩이 9시간 밀려 선택됨) 시간대를 서울로 맞춘다."""
+    from app.tools import browser_tools as bt
+
+    assert 'timezone_id="Asia/Seoul"' in bt.DAEMON_SOURCE and 'locale="ko-KR"' in bt.DAEMON_SOURCE

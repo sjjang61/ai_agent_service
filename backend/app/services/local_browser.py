@@ -23,7 +23,7 @@ import websockets
 
 from app.config import settings
 
-from app.services.browser_snapshot import SNAP_JS  # sandbox 데몬과 같은 요소 수집 스크립트 (data-agent-ref 번호 부여)
+from app.services.browser_snapshot import BLOCKED_JS, BLOCKED_MSG, SNAP_JS  # sandbox 데몬과 같은 요소 수집 스크립트 (data-agent-ref 번호 부여)
 
 # 키 이름 → (key, code, windowsVirtualKeyCode, text)
 _KEYS: dict[str, tuple[str, str, int, str]] = {
@@ -86,6 +86,7 @@ class LocalBrowser:
         self._seq = 0
         self._lock = asyncio.Lock()
         self._shots = 0
+        self._sig: Any = None  # 마지막 snapshot 의 (주소, 요소 수, 본문): 클릭 뒤 변화가 있었는지 보는 용도
         self._stopped_run: Optional[str] = None  # 사용자가 중지한 브라우저 작업(run 태그)
         self._seen_stop: Optional[int] = None  # 앱의 '중지' 누름 횟수 중 이미 처리한 값 (병렬 세션이 모두 중지되도록 횟수로 비교한다)
 
@@ -224,6 +225,7 @@ class LocalBrowser:
                 s = await self._eval(SNAP_JS)
                 url = await self._eval("location.href")
                 title = await self._eval("document.title")
+                self._sig = (url, len(s["elements"]), s["text"])
                 return {"url": url, "title": title, "elements": s["elements"], "text": s["text"], "sy": s.get("sy")}
             except LocalBrowserError:
                 if attempt:
@@ -235,12 +237,14 @@ class LocalBrowser:
     async def _element_center(self, ref: int) -> tuple[float, float]:
         js = (
             "(() => { const el = document.querySelector('[data-agent-ref=\"%d\"]'); if (!el) return null;"
-            " el.scrollIntoView({block:'center', inline:'center'}); const r = el.getBoundingClientRect();"
-            " return {x: r.x + r.width/2, y: r.y + r.height/2, w: r.width, h: r.height}; })()" % int(ref)
+            " const blocked = (%s)(el); const r = el.getBoundingClientRect();"
+            " return {x: r.x + r.width/2, y: r.y + r.height/2, w: r.width, h: r.height, blocked}; })()" % (int(ref), BLOCKED_JS)
         )
         pos = await self._eval(js)
         if not pos:
             raise LocalBrowserError(f"ref {ref} 요소를 찾을 수 없습니다. snapshot 으로 최신 ref 를 확인하세요")
+        if pos.get("blocked"):
+            raise LocalBrowserError(BLOCKED_MSG.format(ref=ref, what=pos["blocked"]))
         return float(pos["x"]), float(pos["y"])
 
     async def _click_at(self, x: float, y: float) -> None:
@@ -306,10 +310,15 @@ class LocalBrowser:
             return {"ok": True, **await self._snapshot()}
         if cmd == "click":
             x, y = await self._element_center(int(c["ref"]))
+            before = self._sig
             await self._click_at(x, y)
             await asyncio.sleep(0.6)
             await self._settle()
-            return {"ok": True, **await self._snapshot()}
+            snap = await self._snapshot()
+            if before is not None and self._sig == before:  # 변화가 없다: 열리는 데 시간이 걸리는 팝업·패널일 수 있어 잠시 기다려 한 번 더 읽는다
+                await asyncio.sleep(1.2)
+                snap = await self._snapshot()
+            return {"ok": True, **snap}
         if cmd == "type":
             ref, text = int(c["ref"]), str(c.get("text", ""))[:2000]
             focus = (

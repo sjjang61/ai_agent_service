@@ -52,13 +52,18 @@ SNAP_JS = r"""(() => {
     const bare = (el) => el.tagName === 'INPUT' && el.type === 'checkbox' && !el.getAttribute('aria-label') && !el.title && !(el.labels && el.labels.length);
     const generic = (el) => !['A', 'BUTTON', 'INPUT', 'SELECT', 'TEXTAREA', 'SUMMARY'].includes(el.tagName) && !el.getAttribute('role') && !el.hasAttribute('onclick');
     const rank = (el) => (bare(el) || generic(el)) ? 2 : el.tagName === 'A' ? 1 : 0;
+    // 화면 안인데 그 자리에서 눌리는 것이 다른 요소인 항목(슬라이더 밖으로 밀려난 항목, 다른 요소에 가려진 항목)은 팝업 안에서도 뒤로 민다
+    const covered = (el) => { const r = el.getBoundingClientRect(); const cx = r.x + r.width / 2, cy = r.y + r.height / 2;
+      if (cx < 0 || cy < 0 || cx > innerWidth || cy > innerHeight) return false;
+      const h = document.elementFromPoint(cx, cy); if (!h || h === el || el.contains(h) || h.contains(el)) return false;
+      const q = 'a,button,label,summary,[role=button],[onclick]'; const h1 = h.closest(q); return !(h1 && h1 === el.closest(q)); };
     const g = [0, 1, 2].map(r => new Set(view.filter(el => rank(el) === r)));
-    picked = cands.filter(el => isPop.has(el)).concat(cands.filter(el => g[0].has(el)), cands.filter(el => g[1].has(el)), cands.filter(el => g[2].has(el)), cands.filter(el => !isPop.has(el) && !view.includes(el))).slice(0, MAX);
+    picked = cands.filter(el => isPop.has(el)).map(el => [el, rank(el) + (covered(el) ? 3 : 0)]).sort((a, b) => a[1] - b[1]).map(x => x[0]).concat(cands.filter(el => g[0].has(el)), cands.filter(el => g[1].has(el)), cands.filter(el => g[2].has(el)), cands.filter(el => !isPop.has(el) && !view.includes(el))).slice(0, isPop.size > 60 ? MAX + 50 : MAX);   // 팝업(달력+시간 슬라이더 등)이 크면 상한을 조금 늘려 팝업 안 요소가 잘리지 않게 한다
     picked.sort((a, b) => a === b ? 0 : (a.compareDocumentPosition(b) & 4 ? -1 : 1));   // 번호는 문서 순서로 다시 매긴다
   }
 
   const STOP = new Set(['react', 'border', 'outline', 'flex', 'btn', 'button', 'css', 'item', 'wrapper', 'container', 'active', 'hover', 'focus', 'rounded', 'text', 'icon', 'inline', 'block', 'relative', 'absolute', 'svg', 'sc', 'jsx', 'styled', 'component', 'base', 'default', 'primary', 'secondary', 'small', 'large', 'medium', 'full', 'width', 'center', 'with', 'for', 'the']);
-  const out = []; let n = 0;
+  const out = []; const outEls = []; let n = 0;
   for (const el of picked) {
     n++; el.setAttribute('data-agent-ref', String(n));
     const label = clean(el.innerText || el.value || el.getAttribute('aria-label') || el.placeholder || el.title || el.alt, 80);
@@ -99,7 +104,28 @@ SNAP_JS = r"""(() => {
     if (aSel === 'true') item.sel = 'selected'; else if (aCur && aCur !== 'false') item.sel = 'current';
     if (el.getAttribute('aria-pressed') === 'true') item.pressed = true;
     if (el.getAttribute('aria-expanded') === 'true') item.expanded = true;
-    out.push(item);
+    out.push(item); outEls.push(el);
+  }
+  // 같은 이름의 요소가 여럿이면(슬라이더마다 있는 'Next'·'Previous' 화살표, 줄마다 있는 '선택' 버튼 등) 어느 것인지 알 수 있게 순번과 맥락을 붙인다:
+  // 이름만 보고 누르면 엉뚱한 쪽(예: 달력의 월 이동)이 눌려 목표(시각 슬라이더 이동)가 이뤄지지 않는다
+  const byLabel = new Map();
+  out.forEach((it, i) => { if (it.label) { const k = it.tag + '|' + it.label; (byLabel.get(k) || byLabel.set(k, []).get(k)).push(i); } });
+  const HEAD = 'h1,h2,h3,h4,h5,caption,legend,strong,[class*=title i],[class*=tit i],[class*=month i],[class*=head i]';
+  for (const idxs of byLabel.values()) {
+    if (idxs.length < 2) continue;
+    // 맥락: 가까운 조상 안의 제목(월 머리글·'시간선택' 같은 구역 이름). 같은 칸의 이웃 항목 글자(1 2 3 …)는 구분에 도움이 안 된다.
+    // 같은 이름 요소 모두에 똑같이 붙는 제목('달력')보다 서로 달라지는 제목('2026. 11.')을 우선한다
+    const heads = idxs.map(i => { const el = outEls[i], hs = [];
+      for (let a = el.parentElement, n = 0; a && n < 6 && a !== document.body; a = a.parentElement, n++) {
+        for (const x of a.querySelectorAll(HEAD)) { if (x === el || el.contains(x) || x.contains(el)) continue; const t = clean(x.innerText, 30); if (t && t !== out[i].label && !hs.includes(t)) hs.push(t); }
+      }
+      return hs; });
+    idxs.forEach((i, k) => {
+      const it = out[i]; it.dup = (k + 1) + '/' + idxs.length;
+      if (it.ctx) return;
+      const own = heads[k], pick = own.find(t => heads.some(h => !h.includes(t))) || own[0];
+      if (pick) it.ctx = pick;
+    });
   }
   // 페이지 본문: 취소선이 그어진 글자(이전 가격 등)는 ~~글자~~ 로 표시한다. innerText 는 서식을 잃어서 취소선 가격과 현재 가격이 구분되지 않기 때문이다
   let txt = (document.body ? document.body.innerText : '').slice(0, 8000);
@@ -142,3 +168,26 @@ SNAP_JS = r"""(() => {
   } catch (e) {}
   return {elements: out, text: txt.slice(0, 3000), sy: Math.round(window.scrollY / Math.max(1, window.innerHeight / 2))};   // sy: 스크롤 위치(반 화면 단위) — 스크린샷 중복 판단용
 })()"""
+
+
+# 누르기 전에 그 요소 자리에서 실제로 눌리는 것이 이 요소(또는 같은 눌림 대상)인지 확인한다. 아니면 그 자리의 다른 요소 이름을 돌려주고(빈 문자열이면 정상),
+# 슬라이더 밖으로 밀려나 보이지 않는 항목을 눌러 엉뚱한 항목(예: 09시 대신 18시)이 선택되는데도 성공으로 보이는 것을 막는다.
+BLOCKED_JS = r"""(el) => {
+  // 같은 슬라이더의 화살표 버튼 이름: 숨은 항목은 이 화살표로 넘겨야 보인다
+  const arrows = () => { for (let a = el.parentElement, n = 0; a && n < 6 && a !== document.body; a = a.parentElement, n++) {
+      const bs = [...a.querySelectorAll('button,a')].filter(x => x !== el && /next|prev|다음|이전/i.test((x.className || '') + ' ' + (x.getAttribute('aria-label') || '') + ' ' + (x.innerText || '')));
+      if (bs.length) return ' 같은 영역의 화살표 버튼: ' + bs.slice(0, 2).map(x => '“' + ((x.innerText || x.getAttribute('aria-label') || x.className || '').trim().slice(0, 20)) + '”').join(', ') + ' (이름이 같은 것이 여럿이면 순번·맥락으로 구분)'; }
+    return ''; };
+  if (el.getAttribute('aria-disabled') === 'true' || el.disabled) return '비활성 상태(aria-disabled)입니다. 이미 지난 날짜·시각이거나 슬라이더 안에 숨은 항목일 수 있습니다.' + arrows();
+  el.scrollIntoView({block: 'center', inline: 'center'});
+  const r = el.getBoundingClientRect(); const cx = r.x + r.width / 2, cy = r.y + r.height / 2;
+  const hit = document.elementFromPoint(cx, cy);
+  if (!hit) return '';   // 화면 밖이라 판단할 수 없다
+  const q = 'a,button,label,summary,[role=button],[onclick]'; const h1 = hit.closest(q), e1 = el.closest(q);
+  // 이 요소이거나 그 안쪽, 또는 같은 눌림 대상(버튼 안의 글자 등)이면 정상. 이 요소를 감싼 일반 영역(슬라이더 틀 등)이 맨 위에 있으면 이 요소는 가려진 것이다
+  if (hit === el || el.contains(hit) || (h1 && h1 === e1) || (hit.contains(el) && hit.matches(q))) return '';
+  return '그 자리에는 다른 요소(' + (((hit.tagName || '') + ' ' + (hit.innerText || hit.getAttribute('aria-label') || '')).trim().replace(/\s+/g, ' ').slice(0, 30) || hit.tagName) + ')가 있습니다.' + arrows();
+}"""
+
+BLOCKED_MSG = ("ref {ref} 요소를 누를 수 없습니다: {what}. 슬라이더·스크롤 영역 밖에 밀려나 보이지 않거나 다른 요소에 가려진 상태일 수 있습니다. "
+               "같은 영역의 다음/이전 화살표(같은 이름이 여럿이면 순번·맥락으로 구분)로 이 항목이 보이게 한 뒤 snapshot 으로 다시 확인하세요")

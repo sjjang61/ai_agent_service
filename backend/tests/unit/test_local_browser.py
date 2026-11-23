@@ -39,6 +39,8 @@ class FakeBrowser(lb.LocalBrowser):
             return "https://example.com/"
         if "document.title" in expression:
             return "Example"
+        if "elementFromPoint" in expression and "scrollIntoView" in expression:  # 요소 위치 계산 (눌러도 되는 자리인지 확인 포함)
+            return self.values.get("eval")
         if "elements" in expression or "data-agent-ref" in expression and "querySelectorAll" in expression:
             return {"elements": [{"ref": 1, "tag": "a", "label": "x"}], "text": "hi"}
         return self.values.get("eval")

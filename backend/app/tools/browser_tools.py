@@ -26,11 +26,11 @@ from app.config import settings
 DAEMON_PATH = "/tmp/_browser_daemon.py"
 STATE_PATH = "/tmp/_browser_state.json"  # 저장된 로그인 상태. 데몬이 읽자마자 지운다
 DAEMON_PORT = 9333
-DAEMON_VERSION = 18
+DAEMON_VERSION = 24
 LOGIN_TIMEOUT_SECONDS = 600
 MAX_USER_REQUESTS = 3  # 한 번의 브라우저 작업에서 사용자에게 같은 해결을 요청하는 최대 횟수 (해결이 반복해서 실패하면 멈춘다)
 
-from app.services.browser_snapshot import SNAP_JS as SNAP_JS_SRC
+from app.services.browser_snapshot import BLOCKED_JS as BLOCKED_JS_SRC, BLOCKED_MSG, SNAP_JS as SNAP_JS_SRC
 
 DAEMON_SOURCE = r'''
 import base64, hashlib, ipaddress, json, os, socket, sys, time
@@ -38,11 +38,13 @@ from http.server import BaseHTTPRequestHandler, HTTPServer
 from urllib.parse import urlparse
 from playwright.sync_api import sync_playwright
 
-PORT, IDLE_SECONDS, VERSION = 9333, 900, 18
+PORT, IDLE_SECONDS, VERSION = 9333, 900, 24
 STATE_PATH = "/tmp/_browser_state.json"
 SHOT_DIR = "/workspace/browser"
 
-SNAP_JS = r"""__SNAP_JS__"""   # 요소 수집 스크립트: app/services/browser_snapshot.py (로컬 브라우저와 같은 것)
+SNAP_JS = r"""__SNAP_JS__"""
+BLOCKED_JS = r"""__BLOCKED_JS__"""
+BLOCKED_MSG = """__BLOCKED_MSG__"""   # 요소 수집 스크립트: app/services/browser_snapshot.py (로컬 브라우저와 같은 것)
 
 FOCUS_JS = """() => {
   const el = document.activeElement;
@@ -87,7 +89,7 @@ def _chrome_ua():
     except Exception:
         return None
 
-_ctx_args = dict(viewport={"width": 1280, "height": 800}, locale="ko-KR")
+_ctx_args = dict(viewport={"width": 1280, "height": 800}, locale="ko-KR", timezone_id="Asia/Seoul")   # 시간대: 컨테이너는 UTC 라 한국 사이트의 현재 시각·시간 선택이 9시간 어긋난다 (코레일 시각 칩이 +9시 선택됨)
 _ua = _chrome_ua()
 if _ua: _ctx_args["user_agent"] = _ua
 if os.path.exists(STATE_PATH):   # 사용자 로그인 상태(쿠키/localStorage) 복원 후 파일은 바로 지운다
@@ -166,6 +168,7 @@ def settle(page):
 
 def snapshot(page):
     s = page.evaluate(SNAP_JS)
+    state["sig"] = (page.url, len(s["elements"]), s["text"])
     return {"url": page.url, "title": page.title(), "elements": s["elements"], "text": s["text"], "sy": s.get("sy")}
 
 def handle(c):
@@ -215,9 +218,16 @@ def handle(c):
         shot(page, c.get("run")); return {"ok": True}
     loc = lambda: page.locator('[data-agent-ref="%s"]' % int(c["ref"])).first
     if cmd == "click":
-        loc().click(timeout=8000); time.sleep(0.6); settle(state["page"])
+        el = loc()
+        what = el.evaluate(BLOCKED_JS, timeout=8000)   # 슬라이더 밖에 밀려나 보이지 않는 항목이면 엉뚱한 곳이 눌리므로 누르지 않는다
+        if what: return {"ok": False, "error": BLOCKED_MSG.format(ref=int(c["ref"]), what=what)}
+        before = state.get("sig")
+        el.click(timeout=8000); time.sleep(0.6); settle(state["page"])
+        snap = snapshot(state["page"])
+        if before is not None and state.get("sig") == before:   # 변화가 없다: 열리는 데 시간이 걸리는 팝업·패널일 수 있어 잠시 기다려 한 번 더 읽는다
+            time.sleep(1.2); settle(state["page"]); snap = snapshot(state["page"])
         shot(state["page"], c.get("run"))
-        return {"ok": True, **snapshot(state["page"])}
+        return {"ok": True, **snap}
     if cmd == "type":
         loc().fill(str(c.get("text", ""))[:2000], timeout=8000)
         if c.get("submit"):
@@ -275,7 +285,7 @@ srv = HTTPServer(("127.0.0.1", PORT), H); srv.timeout = 30
 while time.time() - last[0] < IDLE_SECONDS:
     srv.handle_request()
 browser.close(); pw.stop()
-'''.replace("__SNAP_JS__", SNAP_JS_SRC)
+'''.replace("__SNAP_JS__", SNAP_JS_SRC).replace("__BLOCKED_JS__", BLOCKED_JS_SRC).replace("__BLOCKED_MSG__", BLOCKED_MSG)
 
 
 def _truncate(s: str, limit: int) -> str:
@@ -407,6 +417,8 @@ def _compact_element(e: dict, origin: str = "") -> str:
         parts[0] += f"({e['role']})"
     if e.get("label"):
         parts.append(json.dumps(e["label"], ensure_ascii=False))
+    if e.get("label") and e.get("dup"):
+        parts.append(f"({e['dup']}" + (" · " + json.dumps(e["ctx"], ensure_ascii=False) if e.get("ctx") else "") + ")")  # 같은 이름이 여럿: 몇 번째인지와 어느 영역인지
     if not e.get("label"):
         if e.get("ctx"):
             parts.append("ctx=" + json.dumps(e["ctx"], ensure_ascii=False))  # 이름 없는 요소: 감싸는 항목의 글자
@@ -775,7 +787,7 @@ def describe_action(action: str, elements: list, url: Optional[str] = None, ref:
         n = _clip(_el_name(el), 30)
         kind = _el_kind(el)
         if n:
-            target = f"“{n}”" + (f" {kind}" if kind else "")
+            target = f"“{n}”" + (f" {kind}" if kind else "") + (f"({el['dup']})" if el.get("dup") else "")
         elif el.get("ctx"):  # 이름 없는 요소(아이콘 버튼 등): 어느 항목 안에 있는지로 알린다
             target = f"“{_clip(el['ctx'], 24)}” 항목의 {kind or '요소'}" + (f"[{_clip(el['tid'], 24)}]" if el.get("tid") else (f"({el['cls']})" if el.get("cls") else ""))
         else:
@@ -1272,7 +1284,9 @@ class BrowserActionTool(BaseTool):
             log.append(f"{i}. {st.action}{name}" + (" → 실패" if failed else " → 완료"))
             if failed:
                 log.append(f"중단: {len(steps) - i}단계는 실행하지 않았습니다.")
-                return "\n".join(["[batch 진행]"] + log + ["", out])
+                body = "\n".join(["[batch 진행]"] + log + ["", out])
+                # 오류로 멈췄는데 '성공'(화면의 OK 표시·성공 이벤트)으로 보이지 않게 오류로 시작한다
+                return f"Error: 일괄 {i}/{len(steps)}단계에서 실패해 중단했습니다.\n" + body if out.startswith("Error") else body
         if not out.startswith("URL:") or "Interactive elements" not in out:  # 마지막이 화면을 돌려주지 않는 동작(type/select)이면 현재 화면을 붙인다
             out = await self._arun_action("snapshot")
         return "\n".join(["[batch 진행]"] + log + ["", out])
