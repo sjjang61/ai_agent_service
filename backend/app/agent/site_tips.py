@@ -38,6 +38,7 @@ class SiteTip:
     status: str = "verified"  # draft(분석 대기)는 에이전트에게 주지 않는다
     category: str = ""  # 분야가 없는 사이트의 카테고리 key (화면 분류용)
     skills: tuple[str, ...] = ()  # 사이트 분석이 참고할 스킬 이름(소문자)
+    commands: tuple = ()  # 분석 전에 돌릴 조회 전용 스킬 명령 [{skill,label,command}]
 
     def block(self, hint: bool = True, vspec: Optional[dict] = None) -> str:
         head = f"[사이트 요령 · {self.name} · 확인 {self.verified}]"
@@ -108,6 +109,18 @@ def split_spec(body: str, clean) -> tuple[str, dict]:
         raise ValueError(f"spec 블록이 올바르지 않습니다: {e}")
 
 
+def _commands(raw) -> tuple:
+    """md 앞머리 reference_commands(한 줄 JSON)를 읽는다. 형식이 틀리면 ValueError."""
+    if not raw:
+        return ()
+    from app.services.skill_runner import clean_commands
+
+    try:
+        return tuple(clean_commands(json.loads(raw)))
+    except (json.JSONDecodeError, ValueError) as e:
+        raise ValueError(f"reference_commands 가 올바르지 않습니다: {e}")
+
+
 def parse_site_file(path: Path) -> SiteTip:
     meta, body = _frontmatter(path)
     try:
@@ -116,7 +129,8 @@ def parse_site_file(path: Path) -> SiteTip:
         raise ValueError(f"{path.name}: {e}")
     return SiteTip(name=meta.get("name", ""), domains=_csv(meta.get("domains")), aliases=_csv(meta.get("aliases")),
                    verified=meta.get("verified", ""), body=body, vertical=meta.get("vertical", "").strip().lower(), spec=spec,
-                   status=meta.get("status", "verified").strip().lower() or "verified", category=meta.get("category", "").strip().lower(), skills=_csv(meta.get("skills")))
+                   status=meta.get("status", "verified").strip().lower() or "verified", category=meta.get("category", "").strip().lower(), skills=_csv(meta.get("skills")),
+                   commands=_commands(meta.get("reference_commands")))
 
 
 def parse_vertical_file(path: Path) -> Vertical:

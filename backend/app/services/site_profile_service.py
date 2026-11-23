@@ -45,7 +45,7 @@ async def seed_from_files(db: AsyncSession) -> dict:
         if t.name and t.name not in have_s:
             db.add(SiteProfile(name=t.name, vertical=t.vertical or None, domains=_join(t.domains), aliases=_join(t.aliases),
                                body=t.body, spec=t.spec or None, status=t.status if t.status in STATUSES else "verified", verified_at=t.verified or None,
-                               category=(None if t.vertical else (t.category or None)), reference_skills=_join(t.skills) or None, source="seed"))
+                               category=(None if t.vertical else (t.category or None)), reference_skills=_join(t.skills) or None, reference_commands=list(t.commands) or None, source="seed"))
             added["sites"] += 1
     # 구조화 기능이 생기기 전에 시드된 항목: 화면에서 고친 적 없고(source=seed) spec 이 비어 있으면 md 의 spec 을 채운다
     files_v = {v.key: v for v in site_tips.file_verticals()}
@@ -71,6 +71,9 @@ async def seed_from_files(db: AsyncSession) -> dict:
             row.category = files_s[row.name].category
             added["sites"] += 1
     # 참고 스킬이 생기기 전에 만든 항목: 비어 있는 것만 md 로 채운다
+    for row in (await db.execute(select(SiteProfile).where(SiteProfile.reference_commands.is_(None)))).scalars().all():
+        if files_s.get(row.name) and files_s[row.name].commands:
+            row.reference_commands = list(files_s[row.name].commands)
     for row in (await db.execute(select(SiteVertical).where(SiteVertical.reference_skills.is_(None)))).scalars().all():
         if files_v.get(row.key) and files_v[row.key].skills:
             row.reference_skills = _join(files_v[row.key].skills)
@@ -93,7 +96,7 @@ def to_tip(row: SiteProfile) -> site_tips.SiteTip:
     return site_tips.SiteTip(
         name=row.name, domains=site_tips._csv(row.domains), aliases=site_tips._csv(row.aliases), verified=row.verified_at or "",
         body=row.body or "", vertical=(row.vertical or "").lower(), spec=row.spec or {}, category=row.category or "",
-        skills=site_tips._csv(row.reference_skills),
+        skills=site_tips._csv(row.reference_skills), commands=tuple(row.reference_commands or ()),
     )
 
 
@@ -188,6 +191,8 @@ def site_md(row: SiteProfile) -> str:
         head.append(f"aliases: {row.aliases}")
     if row.reference_skills:
         head.append(f"skills: {row.reference_skills}")
+    if row.reference_commands:
+        head.append("reference_commands: " + json.dumps(row.reference_commands, ensure_ascii=False))
     if row.status != "verified":
         head.append(f"status: {row.status}")  # draft(분석 전)·stale. 생략하면 verified 로 시드되므로 내보낼 때 빠뜨리면 안 된다
     head.append(f"verified: {row.verified_at or ''}")
@@ -329,6 +334,18 @@ def _ref_skills(data: dict, row) -> Optional[str]:
     return names  # 비우면 ''(None 이 아니다): 다시 시작할 때 md 로 채워지지 않게
 
 
+def _ref_commands(data: dict, row):
+    """사전 실행 명령(JSON 목록). 보내지 않으면(None) 지금 값을 유지하고, 빈 목록이면 비운다."""
+    if data.get("reference_commands") is None:
+        return row.reference_commands if row is not None else None
+    from app.services.skill_runner import clean_commands
+
+    try:
+        return clean_commands(data["reference_commands"])
+    except ValueError as e:
+        raise ProfileError(400, str(e))
+
+
 def _status(raw: str) -> str:
     if raw not in STATUSES:
         raise ProfileError(400, "상태가 올바르지 않습니다")
@@ -365,7 +382,7 @@ async def save_site(db: AsyncSession, data: dict, site_id: Optional[str] = None,
         name=name, vertical=vertical, domains=domains, aliases=normalize_csv(data.get("aliases", "")),
         body=(data.get("body") or "").strip(), status=status, verified_at=verified_at, enabled=bool(data.get("enabled", True)),
         spec=_spec(data, row, site_spec.clean_site), category=None if vertical else _category(data, row),  # 분야가 있으면 분야의 카테고리를 따른다
-        reference_skills=_ref_skills(data, row),
+        reference_skills=_ref_skills(data, row), reference_commands=_ref_commands(data, row),
     )
     before = None
     if row is None:
@@ -446,7 +463,7 @@ async def delete_vertical(db: AsyncSession, key: str) -> None:
 
 # ── 수정 이력 ─────────────────────────────────────────────────
 MAX_REVISIONS = 50  # 항목마다 남기는 이력 수 (넘으면 오래된 것부터 지운다)
-SITE_FIELDS = ("name", "vertical", "category", "reference_skills", "domains", "aliases", "body", "status", "verified_at", "enabled", "spec")
+SITE_FIELDS = ("name", "vertical", "category", "reference_skills", "reference_commands", "domains", "aliases", "body", "status", "verified_at", "enabled", "spec")
 VERTICAL_FIELDS = ("name", "category", "reference_skills", "keywords", "stop_words", "stop_urls", "body", "checklist", "spec")
 
 

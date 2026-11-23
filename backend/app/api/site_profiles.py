@@ -47,6 +47,7 @@ class SiteOut(BaseModel):
     vertical: Optional[str] = None
     category: Optional[str] = None  # 분야가 없는 사이트의 카테고리
     reference_skills: Optional[str] = None
+    reference_commands: Optional[list] = None
     domains: str
     aliases: str
     body: str
@@ -87,6 +88,7 @@ class SiteIn(BaseModel):
     vertical: Optional[str] = None
     category: Optional[str] = Field(default=None, description="분야가 없는 사이트의 카테고리 key. 보내지 않으면 지금 값을 유지한다")
     reference_skills: Optional[str] = Field(default=None, description="사이트 분석이 참고할 스킬 이름(쉼표). 보내지 않으면 지금 값을 유지, 빈 문자열이면 비운다")
+    reference_commands: Optional[list] = Field(default=None, description="분석 전에 일회용 컨테이너에서 돌릴 조회 전용 스킬 명령 [{skill,label,command}]. 보내지 않으면 유지, 빈 목록이면 비운다")
     domains: str
     aliases: str = ""
     body: str = ""
@@ -141,7 +143,7 @@ def _vertical_out(row: SiteVertical, counts: dict) -> VerticalOut:
 
 def _site_out(row: SiteProfile) -> SiteOut:
     return SiteOut(
-        id=row.id, name=row.name, vertical=row.vertical, category=row.category, reference_skills=row.reference_skills, domains=row.domains, aliases=row.aliases, body=row.body, spec=row.spec or {}, status=row.status,
+        id=row.id, name=row.name, vertical=row.vertical, category=row.category, reference_skills=row.reference_skills, reference_commands=row.reference_commands, domains=row.domains, aliases=row.aliases, body=row.body, spec=row.spec or {}, status=row.status,
         verified_at=row.verified_at, enabled=row.enabled, source=row.source, version=row.version, updated_at=row.updated_at,
         is_stale=svc.is_stale(row), md=svc.site_md(row),
     )

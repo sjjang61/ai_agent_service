@@ -56,6 +56,7 @@ class SiteProfile(Base):
     vertical = Column(String(50), nullable=True, index=True)  # SiteVertical.key (분야가 없는 사이트도 있다)
     category = Column(String(30), nullable=True)  # 분야가 없는 사이트의 카테고리 key (분야가 있으면 분야의 카테고리를 따른다)
     reference_skills = Column(String(300), nullable=True)  # 쉼표 구분. 사이트 분석이 참고할 스킬 이름(없으면 건너뜀). 분야의 것과 합쳐 쓴다
+    reference_commands = Column(JSON, nullable=True)  # [{skill, label, command}] 분석 전에 일회용 컨테이너에서 돌릴 조회 전용 스킬 명령(결과를 기준 데이터로 준다)
     domains = Column(Text, nullable=False, default="")  # 쉼표 구분. 하위 도메인도 맞는다
     aliases = Column(Text, nullable=False, default="")  # 쉼표 구분. 작업 문장에 나오면 시작할 때 붙인다
     body = Column(Text, nullable=False, default="")  # 에이전트에게 주는 사이트 요령 (구조화에 담기지 않는 예외·주의, markdown)

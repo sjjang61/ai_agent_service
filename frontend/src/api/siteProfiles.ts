@@ -50,6 +50,7 @@ export interface SiteProfile {
   /** 분야가 없는 사이트의 카테고리 (분야가 있으면 분야의 카테고리를 따른다) */
   category: string | null
   reference_skills: string | null
+  reference_commands: { skill: string; label: string; command: string }[] | null
   domains: string
   aliases: string
   body: string
@@ -78,6 +79,7 @@ export type SiteInput = Pick<SiteProfile, 'name' | 'domains' | 'aliases' | 'body
   /** 보내지 않으면 서버가 지금 값을 유지한다 */
   category?: string | null
   reference_skills?: string | null
+  reference_commands?: { skill: string; label: string; command: string }[] | null
   verified_at: string | null
   version?: number
 }

@@ -301,6 +301,18 @@ def _flow_list(vspec: dict) -> str:
     return "\n".join(f"- {s['key']}: {s['title']}" + (" (상태를 바꾸는 단계: 실행하지 않고 '진행 방법'만 기록)" if s.get("write") else "") for s in vspec.get("flow", [])) or "(정의된 단계 없음)"
 
 
+async def _reference_data(db: AsyncSession, run: SiteAnalysisRun, site) -> str:
+    """2단계: 사이트에 지정한 조회 전용 스킬 명령을 일회용 컨테이너에서 돌려 기준 데이터를 만든다(입력값이 없거나 실패하면 빈 문자열)."""
+    from app.services import skill_refs, skill_runner
+
+    commands = list(getattr(site, "reference_commands", None) or [])
+    if not commands or not skill_refs.ENABLED:
+        return ""
+    sample = (_vspec(run).get("sample") or {}) if run.mode in ("analyze", "verify") else {}
+    inputs = {**{str(k): str(v) for k, v in sample.items()}, **{str(k): str(v) for k, v in (run.inputs or {}).items()}}
+    return await skill_runner.reference_runs(db, run.user_id, commands, inputs)
+
+
 async def _skills_block(db: AsyncSession, run: SiteAnalysisRun) -> str:
     """이 사이트·분야에 지정한 참고 스킬 중 이 사용자가 가진 것만 '참고 스킬' 블록으로 만든다. 없거나 실패하면 빈 문자열(지금처럼 동작)."""
     try:
@@ -316,7 +328,8 @@ async def _skills_block(db: AsyncSession, run: SiteAnalysisRun) -> str:
         block, found, missing = await reference_block(db, run.user_id, names)
         if missing:
             logger.info("[site_analysis] 참고 스킬을 찾지 못해 건너뜀: %s", ", ".join(missing))
-        return block
+        data = await _reference_data(db, run, s)
+        return "\n\n".join(x for x in (block, data) if x)
     except Exception:  # noqa: BLE001 — 참고 자료를 못 붙여도 분석은 계속한다
         logger.exception("[site_analysis] 참고 스킬 블록을 만들지 못함")
         return ""

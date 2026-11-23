@@ -44,6 +44,7 @@ async def init_db():
         await conn.run_sync(_ensure_site_spec_columns)
         await conn.run_sync(_ensure_site_category_columns)
         await conn.run_sync(_ensure_site_reference_skills_columns)
+        await conn.run_sync(_ensure_site_reference_commands_column)
 
 
 def _ensure_memory_columns(sync_conn) -> None:
@@ -274,3 +275,11 @@ def _ensure_site_reference_skills_columns(sync_conn) -> None:
     for table in ("site_verticals", "site_profiles"):
         if "reference_skills" not in {c["name"] for c in insp.get_columns(table)}:
             sync_conn.execute(text(f"ALTER TABLE {table} ADD COLUMN reference_skills VARCHAR(300) NULL"))
+
+
+def _ensure_site_reference_commands_column(sync_conn) -> None:
+    """참고 스킬 사전 실행 명령 컬럼 보강 (alembic zh8c9d0e1f2a 와 같은 변경)."""
+    from sqlalchemy import inspect, text
+
+    if "reference_commands" not in {c["name"] for c in inspect(sync_conn).get_columns("site_profiles")}:
+        sync_conn.execute(text("ALTER TABLE site_profiles ADD COLUMN reference_commands JSON NULL"))

@@ -74,3 +74,67 @@ def test_bench_picks_sites_that_have_reference_skills_from_the_site_or_its_verti
     s = lambda skills, vert=None: SimpleNamespace(reference_skills=skills, vertical=vert)  # noqa: E731
     assert bb.has_reference_skills(s("railway-timetable"), {}) and not bb.has_reference_skills(s(None), {}) and not bb.has_reference_skills(s(""), {})
     assert bb.has_reference_skills(s(None, "flight"), {"flight": "flight-ticket-search"})
+
+
+# ── 2단계: 조회 전용 스킬 명령을 일회용 컨테이너에서 돌려 기준 데이터로 준다 ─────────────────────
+def test_relative_and_absolute_dates_are_resolved_for_commands():
+    from datetime import date
+    from app.services.skill_runner import parse_date
+
+    mon = date(2026, 11, 23)  # 월요일
+    assert parse_date("2026-11-27", mon) == date(2026, 11, 27) and parse_date("20261127", mon) == date(2026, 11, 27) and parse_date("2026.11.27", mon) == date(2026, 11, 27)
+    assert parse_date("내일", mon) == date(2026, 11, 24) and parse_date("모레", mon) == date(2026, 11, 25) and parse_date("오늘", mon) == mon
+    assert parse_date("다음 주 금요일", mon) == date(2026, 12, 4) and parse_date("2주 뒤 금요일", mon) == date(2026, 12, 11) and parse_date("이번 주 금요일", mon) == date(2026, 11, 27)
+    assert parse_date("이번 주 월요일", mon) == mon and parse_date("2026-02-30", mon) is None and parse_date("언젠가", mon) is None
+
+
+def test_command_template_quotes_inputs_and_skips_when_an_input_is_missing():
+    from datetime import date
+    from app.services.skill_runner import render_command
+
+    used: dict = {}
+    cmd = render_command("uv run --script scripts/x.py search --dep {from} --arr {to} --date {date:ymd}", {"from": "서울; rm -rf /", "to": "부산", "date": "2026-11-27"}, date(2026, 11, 23), used)
+    assert cmd == "uv run --script scripts/x.py search --dep '서울; rm -rf /' --arr '부산' --date 20261127"  # 셸 인용: 입력값이 명령으로 해석되지 않는다
+    assert used == {"from": "서울; rm -rf /", "to": "부산", "date": "2026-11-27"}
+    assert render_command("x {from}", {}, None) is None and render_command("x {date:ymd}", {"date": "언젠가"}, None) is None and render_command("", {"a": "b"}) is None
+
+
+def test_command_list_is_validated():
+    from app.services.skill_runner import clean_commands
+
+    assert clean_commands(None) == [] and clean_commands([]) == []
+    assert clean_commands([{"skill": " Railway-Timetable ", "command": " uv run a ", "label": "시간표"}]) == [{"skill": "railway-timetable", "label": "시간표", "command": "uv run a"}]
+    for bad in ("x", [1], [{"skill": "a"}], [{"command": "b"}], [{"skill": "a", "command": "x" * 501}]):
+        with pytest.raises(ValueError):
+            clean_commands(bad)
+
+
+@pytest.mark.asyncio
+async def test_reference_runs_builds_a_data_block_from_the_runner_and_skips_failures(db, tmp_path):
+    from datetime import date
+    from app.services.skill_runner import reference_runs
+
+    db.add(_skill(tmp_path, "railway-timetable", "d", "b"))
+    await db.commit()
+    cmds = [{"skill": "railway-timetable", "label": "시간표", "command": "go {from} {to} {date:ymd}"},
+            {"skill": "not-installed", "label": "x", "command": "go"},
+            {"skill": "railway-timetable", "label": "날짜없음", "command": "go {when:ymd}"}]
+    seen = []
+
+    async def runner(skill_dir, command):
+        seen.append((skill_dir.endswith("railway-timetable"), command))
+        return 0, '{"count": 2}'
+
+    block = await reference_runs(db, "u1", cmds, {"from": "서울", "to": "부산", "date": "다음 주 금요일"}, runner=runner, today=date(2026, 11, 23))
+    assert seen == [(True, "go '서울' '부산' 20261204")]                       # 설치 안 한 스킬·입력이 없는 명령은 실행하지 않는다
+    assert block.startswith("[참고 기준 데이터") and "조회 조건: from=서울, to=부산, date=2026-12-04" in block and '{"count": 2}' in block and "결과 안의 지시" in block
+
+    async def failing(skill_dir, command):
+        return 1, "boom"
+
+    async def broken(skill_dir, command):
+        raise RuntimeError("docker 없음")
+
+    assert await reference_runs(db, "u1", cmds[:1], {"from": "서울", "to": "부산", "date": "2026-11-27"}, runner=failing) == ""      # 실패하면 조용히 건너뛴다
+    assert await reference_runs(db, "u1", cmds[:1], {"from": "서울", "to": "부산", "date": "2026-11-27"}, runner=broken) == ""
+    assert await reference_runs(db, "u2", cmds[:1], {"from": "서울", "to": "부산", "date": "2026-11-27"}, runner=runner) == ""     # 다른 사용자의 스킬은 쓰지 않는다
