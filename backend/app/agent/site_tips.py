@@ -141,18 +141,31 @@ def file_verticals() -> tuple[Vertical, ...]:
 
 # DB 에서 읽어 온 내용. None 이면 파일을 쓴다.
 _cache: Optional[tuple[tuple[Vertical, ...], tuple[SiteTip, ...]]] = None
+_common: Optional[str] = None  # DB 의 전체 공통 지침. None 이면 파일을 쓴다
 _states: tuple[SiteState, ...] = ()  # DB 의 모든 사이트 행의 사용 여부 (캐시와 함께 채운다)
 
 
-def set_cache(verticals, tips, states=()) -> None:
-    global _cache, _states
+def set_cache(verticals, tips, states=(), common: Optional[str] = None) -> None:
+    global _cache, _states, _common
     _cache = (tuple(verticals), tuple(tips))
     _states = tuple(states)
+    _common = common
 
 
 def clear_cache() -> None:
-    global _cache, _states
-    _cache, _states = None, ()
+    global _cache, _states, _common
+    _cache, _states, _common = None, (), None
+
+
+def file_common() -> str:
+    """저장소 md(common.md)의 전체 공통 지침 본문."""
+    path = TIPS_DIR / "common.md"
+    return _frontmatter(path)[1] if path.exists() else ""
+
+
+def common_text() -> str:
+    """모든 브라우저 작업·분석에 붙는 전체 공통 지침. DB 에서 읽은 것이 있으면 그것을(비워 두면 없음), 없으면 md 파일을 쓴다."""
+    return (file_common() if _common is None else _common).strip()
 
 
 def all_tips() -> tuple[SiteTip, ...]:
@@ -282,7 +295,8 @@ def start_blocks(task: str, start_url: str | None = None) -> tuple[list[str], se
     """시작 지침에 붙일 블록(분야 지침 먼저, 사이트 요령 다음)과, 이미 안내한 것의 표시(사이트 이름, '@분야키')."""
     tips = match_task(task, start_url)
     verticals = match_verticals(task, tips)
-    blocks = disabled_blocks(task, start_url) + [v.block() for v in verticals] + [t.block(hint=False) for t in tips]
+    common = common_text()
+    blocks = ([f"[전체 공통 지침]\n{common}"] if common else []) + disabled_blocks(task, start_url) + [v.block() for v in verticals] + [t.block(hint=False) for t in tips]
     return blocks, {t.name for t in tips} | {f"@{v.key}" for v in verticals}
 
 

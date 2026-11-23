@@ -31,6 +31,19 @@ class SiteVertical(Base):
     updated_at = Column(DateTime, default=_now, onupdate=_now)
 
 
+class SiteCommon(Base):
+    """웹사이트 분석 전체 공통 지침(분야·사이트와 무관하게 모든 브라우저 작업·분석에 붙는다). 행은 하나(key='common')."""
+
+    __tablename__ = "site_common"
+
+    key = Column(String(20), primary_key=True, default="common")
+    body = Column(Text, nullable=False, default="")
+    version = Column(Integer, nullable=False, default=1)
+    source = Column(String(20), nullable=False, default="seed")  # seed | ui
+    updated_by = Column(String(100), nullable=True)
+    updated_at = Column(DateTime, default=_now, onupdate=_now)
+
+
 class SiteProfile(Base):
     """사이트별 특성(요령). 분야 지침과 함께 브라우저 에이전트에게 주어진다."""
 

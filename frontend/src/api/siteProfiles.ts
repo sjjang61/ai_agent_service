@@ -157,7 +157,11 @@ export interface AnalysisInput {
   base_run_id?: string
 }
 
+export interface SiteCommon { body: string; version: number; source: string; updated_by: string | null; updated_at: string | null }
+
 export const siteProfilesApi = {
+  getCommon: () => apiClient.get<SiteCommon>('/site-profiles/common'),
+  updateCommon: (data: { body: string; version?: number }) => apiClient.put<SiteCommon>('/site-profiles/common', data),
   list: () => apiClient.get<SiteProfiles>('/site-profiles'),
   createVertical: (data: VerticalInput) => apiClient.post<SiteVertical>('/site-profiles/verticals', data),
   updateVertical: (key: string, data: VerticalInput) => apiClient.put<SiteVertical>(`/site-profiles/verticals/${key}`, data),

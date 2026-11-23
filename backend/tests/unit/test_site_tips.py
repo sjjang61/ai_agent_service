@@ -118,12 +118,15 @@ def test_every_vertical_file_is_well_formed_and_sites_reference_existing_vertica
 
 def test_vertical_block_goes_with_site_block_and_keywords_match_without_site():
     blocks, shown = site_tips.start_blocks("다나와에서 진라면 최저가", None)
+    assert blocks[0].startswith("[전체 공통 지침]")  # 전체 공통 지침이 분야·사이트 지침보다 앞에 붙는다
+    blocks = blocks[1:]
     assert blocks[0].startswith("[분야 지침 · 쇼핑") and "요령이 있는 사이트: " in blocks[0] and "다나와" in blocks[0]
     assert any(b.startswith("[사이트 요령 · 다나와") for b in blocks[1:]) and shown == {"다나와", "@shopping"}
     blocks, shown = site_tips.start_blocks("제주 항공권 최저가 알려줘", None)  # 사이트가 없어도 키워드로 분야 지침이 붙는다
     assert [b.split("\n")[0] for b in blocks if b.startswith("[분야")] == ["[분야 지침 · 항공권]", "[분야 지침 · 쇼핑 (가격비교)]"]
     assert "@flight" in shown
-    assert site_tips.start_blocks("영화 추천해줘", None) == ([], set())  # 흔한 단어만으로는 붙지 않는다
+    blocks, shown = site_tips.start_blocks("영화 추천해줘", None)  # 흔한 단어만으로는 분야·사이트 지침이 붙지 않는다 (전체 공통 지침만)
+    assert [b.split("\n")[0] for b in blocks] == ["[전체 공통 지침]"] and shown == set()
 
 
 def test_jit_text_adds_vertical_once_then_only_new_sites():
@@ -158,12 +161,12 @@ async def test_seed_fills_missing_only_and_refresh_serves_db_content(clean_cache
     from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
     from app.db.base import Base
-    from app.models.site_profile import SiteProfile, SiteProfileRevision, SiteVertical
+    from app.models.site_profile import SiteProfile, SiteProfileRevision, SiteVertical, SiteCommon
     from app.services import site_profile_service as svc
 
     engine = create_async_engine("sqlite+aiosqlite:///:memory:")
     async with engine.begin() as conn:
-        await conn.run_sync(lambda c: Base.metadata.create_all(c, tables=[SiteVertical.__table__, SiteProfile.__table__, SiteProfileRevision.__table__]))
+        await conn.run_sync(lambda c: Base.metadata.create_all(c, tables=[SiteVertical.__table__, SiteProfile.__table__, SiteProfileRevision.__table__, SiteCommon.__table__]))
     async with async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)() as db:
         added = await svc.seed_from_files(db)
         assert added == {"verticals": len(site_tips.file_verticals()), "sites": len(site_tips.file_tips())}

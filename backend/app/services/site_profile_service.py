@@ -11,7 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 import json
 
 from app.agent import site_categories, site_spec, site_tips
-from app.models.site_profile import SiteProfile, SiteProfileRevision, SiteVertical
+from app.models.site_profile import SiteCommon, SiteProfile, SiteProfileRevision, SiteVertical
 
 logger = logging.getLogger(__name__)
 
@@ -58,6 +58,9 @@ async def seed_from_files(db: AsyncSession) -> dict:
         if not row.spec and files_s.get(row.name) and files_s[row.name].spec:
             row.spec = files_s[row.name].spec
             added["sites"] += 1
+    if (await db.get(SiteCommon, COMMON_KEY)) is None:  # 전체 공통 지침: 처음 한 번만 md 로 시드한다(이후 화면에서 고친 것은 덮어쓰지 않는다)
+        db.add(SiteCommon(key=COMMON_KEY, body=site_tips.file_common(), source="seed"))
+        await db.flush()
     # 카테고리가 생기기 전에 만든 항목: 비어 있는 것만 md 의 카테고리로 채운다 (이미 정한 값은 덮어쓰지 않는다)
     for row in (await db.execute(select(SiteVertical).where(SiteVertical.category.is_(None)))).scalars().all():
         if files_v.get(row.key) and files_v[row.key].category:
@@ -67,8 +70,7 @@ async def seed_from_files(db: AsyncSession) -> dict:
         if files_s.get(row.name) and files_s[row.name].category:
             row.category = files_s[row.name].category
             added["sites"] += 1
-    if added["verticals"] or added["sites"]:
-        await db.commit()
+    await db.commit()
     return added
 
 
@@ -95,7 +97,8 @@ async def refresh(db: AsyncSession) -> None:
     all_rows = (await db.execute(select(SiteProfile))).scalars().all()
     states = [site_tips.SiteState(name=r.name, domains=site_tips._csv(r.domains), aliases=site_tips._csv(r.aliases), enabled=bool(r.enabled))
               for r in all_rows if r.domains.strip()]
-    site_tips.set_cache([to_vertical(v) for v in verticals], [to_tip(s) for s in sites if s.domains.strip()], states)
+    common = await db.get(SiteCommon, COMMON_KEY)
+    site_tips.set_cache([to_vertical(v) for v in verticals], [to_tip(s) for s in sites if s.domains.strip()], states, common=common.body if common is not None else None)
 
 
 async def init() -> None:
@@ -118,6 +121,7 @@ import re
 from datetime import date, datetime, timezone
 from typing import Optional
 
+COMMON_KEY = "common"
 STALE_DAYS = 30  # 확인한 지 이 일수가 지나면 화면에서 '오래됨'으로 표시한다 (에이전트에게는 계속 준다)
 STATUSES = ("verified", "draft", "stale")
 _KEY_RE = re.compile(r"^[a-z][a-z0-9_]{1,49}$")
@@ -194,6 +198,31 @@ def preview_text(site: SiteProfile, vertical: Optional[SiteVertical]) -> str:
         parts.append(to_vertical(vertical).block())
     parts.append(to_tip(site).block(vspec=(vertical.spec or {}) if vertical is not None else None))
     return "\n\n".join(parts)
+
+
+async def get_common(db: AsyncSession) -> SiteCommon:
+    row = await db.get(SiteCommon, COMMON_KEY)
+    if row is None:  # 시드 전(테스트 등): md 내용으로 만든다
+        row = SiteCommon(key=COMMON_KEY, body=site_tips.file_common(), source="seed", version=1)
+        db.add(row)
+        await db.commit()
+        await db.refresh(row)
+    return row
+
+
+async def save_common(db: AsyncSession, body: str, version: Optional[int] = None, author: Optional[str] = None) -> SiteCommon:
+    """전체 공통 지침을 고친다. 비워도 된다(공통 지침 없음). 저장하면 런타임 캐시를 갱신한다."""
+    row = await get_common(db)
+    _check_version(row, version)
+    text = (body or "").strip()
+    if len(text) > 4000:
+        raise ProfileError(400, "전체 공통 지침은 4000자 이내로 입력하세요 (모든 브라우저 작업의 지침에 붙습니다)")
+    row.body, row.source, row.updated_by, row.version = text, "ui", author, row.version + 1
+    row.updated_at = datetime.now(timezone.utc)
+    await db.commit()
+    await db.refresh(row)
+    await refresh(db)
+    return row
 
 
 async def list_all(db: AsyncSession) -> tuple[list[SiteVertical], list[SiteProfile]]:

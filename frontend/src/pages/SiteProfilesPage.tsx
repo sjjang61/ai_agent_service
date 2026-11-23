@@ -5,11 +5,12 @@ import { siteProfilesApi, type SiteProfiles } from '../api/siteProfiles'
 import SettingsPage from '../components/skills/SettingsPage'
 import { T } from '../components/skills/typography'
 import SiteEditor from '../components/sites/SiteEditor'
+import CommonEditor from '../components/sites/CommonEditor'
 import VerticalEditor from '../components/sites/VerticalEditor'
 import StatusBadge from '../components/sites/StatusBadge'
 import { secondaryBtn } from '../components/sites/fields'
 
-type Selection = { kind: 'site'; id: string } | { kind: 'vertical'; key: string } | { kind: 'new-site'; vertical?: string | null; category?: string | null } | { kind: 'new-vertical'; category?: string | null } | null
+type Selection = { kind: 'common' } | { kind: 'site'; id: string } | { kind: 'vertical'; key: string } | { kind: 'new-site'; vertical?: string | null; category?: string | null } | { kind: 'new-vertical'; category?: string | null } | null
 
 export default function SiteProfilesPage() {
   const [sel, setSel] = useState<Selection>(null)
@@ -82,7 +83,9 @@ export default function SiteProfilesPage() {
   let editor: React.ReactNode = (
     <p className={T.itemDesc}>왼쪽에서 분야나 사이트를 고르거나 새로 추가하세요. 분야는 같은 분야의 모든 사이트가 공유하는 지침이고, 사이트는 그 사이트에서만 맞는 특성입니다.</p>
   )
-  if (sel?.kind === 'site') {
+  if (sel?.kind === 'common') {
+    editor = <CommonEditor />
+  } else if (sel?.kind === 'site') {
     const s = sites.find((x) => x.id === sel.id)
     if (s) editor = <SiteEditor key={`${s.id}:${s.version}`} site={s} verticals={verticals} categories={categories} onSaved={(id) => setSel({ kind: 'site', id })} onDeleted={() => setSel(null)} />
   } else if (sel?.kind === 'vertical') {
@@ -115,6 +118,9 @@ export default function SiteProfilesPage() {
             <button onClick={() => setSel({ kind: 'new-vertical' })} className={`${secondaryBtn} flex items-center gap-1`}><Plus size={14} />분야</button>
             <button onClick={() => setSel({ kind: 'new-site' })} className={`${secondaryBtn} flex items-center gap-1`}><Plus size={14} />사이트</button>
           </div>
+          <button onClick={() => setSel({ kind: 'common' })} className={`${rowCls(sel?.kind === 'common')} font-semibold`} title="분야·사이트와 상관없이 모든 브라우저 작업과 사이트 분석에 붙는 지침">
+            <span className="truncate flex-1 text-content-primary">전체 공통 지침</span>
+          </button>
           {isLoading && <p className={T.itemDesc}>불러오는 중…</p>}
           {categories.map((c) => (
             <div key={c.key} className="space-y-0.5">

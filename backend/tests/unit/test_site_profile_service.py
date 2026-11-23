@@ -5,7 +5,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_asyn
 
 from app.agent import site_tips
 from app.db.base import Base
-from app.models.site_profile import SiteAnalysisRun, SiteProfile, SiteProfileRevision, SiteVertical
+from app.models.site_profile import SiteAnalysisRun, SiteProfile, SiteProfileRevision, SiteVertical, SiteCommon
 from app.services import site_profile_service as svc
 from app.services.site_profile_service import ProfileError
 
@@ -15,7 +15,7 @@ async def db():
     site_tips.clear_cache()
     engine = create_async_engine("sqlite+aiosqlite:///:memory:")
     async with engine.begin() as conn:
-        await conn.run_sync(lambda c: Base.metadata.create_all(c, tables=[SiteVertical.__table__, SiteProfile.__table__, SiteProfileRevision.__table__, SiteAnalysisRun.__table__]))
+        await conn.run_sync(lambda c: Base.metadata.create_all(c, tables=[SiteVertical.__table__, SiteProfile.__table__, SiteProfileRevision.__table__, SiteCommon.__table__, SiteAnalysisRun.__table__]))
     async with async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)() as s:
         await svc.seed_from_files(s)
         await svc.refresh(s)

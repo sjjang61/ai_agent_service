@@ -5,7 +5,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_asyn
 
 from app.agent import site_spec, site_tips
 from app.db.base import Base
-from app.models.site_profile import SiteAnalysisRun, SiteProfile, SiteProfileRevision, SiteVertical
+from app.models.site_profile import SiteAnalysisRun, SiteProfile, SiteProfileRevision, SiteVertical, SiteCommon
 from app.services import site_profile_service as svc
 from app.services.site_profile_service import ProfileError
 
@@ -88,7 +88,7 @@ async def db():
     site_tips.clear_cache()
     engine = create_async_engine("sqlite+aiosqlite:///:memory:")
     async with engine.begin() as conn:
-        await conn.run_sync(lambda c: Base.metadata.create_all(c, tables=[SiteVertical.__table__, SiteProfile.__table__, SiteProfileRevision.__table__, SiteAnalysisRun.__table__]))
+        await conn.run_sync(lambda c: Base.metadata.create_all(c, tables=[SiteVertical.__table__, SiteProfile.__table__, SiteProfileRevision.__table__, SiteCommon.__table__, SiteAnalysisRun.__table__]))
     async with async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)() as s:
         await svc.seed_from_files(s)
         await svc.refresh(s)
@@ -229,6 +229,7 @@ def test_start_blocks_warns_about_a_disabled_site_the_task_names():
     try:
         _states(("지마켓", "gmarket.co.kr", "지마켓, g마켓", False), ("다나와", "danawa.com", "다나와", True))
         blocks, _ = site_tips.start_blocks("지마켓에서 진라면 최저가 찾아줘")
+        blocks = [b for b in blocks if not b.startswith("[전체 공통 지침]")]
         assert blocks and blocks[0].startswith("[사용 안 함 사이트] 지마켓") and "건너뛰고" in blocks[0]
         assert not any("[사용 안 함" in b for b in site_tips.start_blocks("다나와에서 진라면 최저가")[0])  # 켜진 사이트나 언급 없는 작업은 안내하지 않는다
         assert site_tips.disabled_blocks("https://www.gmarket.co.kr/ 열어줘")  # 주소로 가리켜도
@@ -317,3 +318,34 @@ async def test_category_is_saved_seeded_and_kept_when_a_client_does_not_send_it(
     sky = (await db.execute(select(SiteProfile).where(SiteProfile.name == "스카이스캐너"))).scalar_one()
     out = await svc.save_site(db, {"name": sky.name, "vertical": sky.vertical, "domains": sky.domains, "body": sky.body, "status": sky.status, "category": "finance"}, site_id=sky.id)
     assert out.category is None
+
+
+def test_common_md_is_the_default_global_guideline_and_reaches_task_start_and_analysis_prompt():
+    """'모든 팝업은 항상 닫는다' 같은 전체 공통 지침(common.md)은 분야·사이트와 무관하게 모든 브라우저 작업의 시작 지침과 분석 프롬프트에 붙는다."""
+    text = site_tips.file_common()
+    assert "팝업은 항상 닫고" in text and "동의" in text and "숨은 팝업" in text
+    assert site_tips.common_text() == text.strip()
+    blocks, _ = site_tips.start_blocks("아무 사이트나 열어 줘")
+    assert blocks and blocks[0].startswith("[전체 공통 지침]") and "팝업은 항상 닫고" in blocks[0]
+    site_tips.set_cache([], [], common="")  # 화면에서 비워 두면 공통 지침 없음
+    try:
+        assert site_tips.common_text() == "" and not any(b.startswith("[전체 공통 지침]") for b in site_tips.start_blocks("아무 사이트나 열어 줘")[0])
+    finally:
+        site_tips.clear_cache()
+
+
+@pytest.mark.asyncio
+async def test_common_guideline_is_seeded_edited_with_version_check_and_cached(db):
+    from app.services import site_profile_service as svc
+
+    await svc.seed_from_files(db)
+    row = await svc.get_common(db)
+    assert row.version == 1 and "팝업은 항상 닫고" in row.body
+    saved = await svc.save_common(db, "  모든 팝업을 닫는다  ", version=1, author="t")
+    assert saved.body == "모든 팝업을 닫는다" and saved.version == 2 and site_tips.common_text() == "모든 팝업을 닫는다"
+    with pytest.raises(svc.ProfileError) as e:
+        await svc.save_common(db, "x", version=1)  # 다른 사용자가 먼저 고쳤다
+    assert e.value.status == 409
+    with pytest.raises(svc.ProfileError):
+        await svc.save_common(db, "가" * 4001)
+    site_tips.clear_cache()

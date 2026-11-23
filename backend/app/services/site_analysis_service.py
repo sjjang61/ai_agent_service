@@ -312,7 +312,9 @@ def _prompt(run: SiteAnalysisRun, current_body: str) -> str:
                       current=current_body or "(없음)", current_spec=json.dumps(run.draft_spec, ensure_ascii=False, indent=1) if run.draft_spec else "(없음)")
     else:
         text = render("site_verify", name=run.name, start_url=run.start_url, scenario=run.scenario, samples=samples, flow=_flow_list(vspec))
-    return f"{text}\n\n(시작 URL: {run.start_url})"
+    common = site_tips.common_text()
+    common_part = f"\n\n[전체 공통 지침 — 모든 사이트에 적용]\n{common}" if common else ""
+    return f"{text}{common_part}\n\n(시작 URL: {run.start_url})"
 
 
 async def _execute(run_id: str, current_body: str = "") -> None:

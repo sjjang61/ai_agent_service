@@ -93,6 +93,19 @@ class SiteIn(BaseModel):
     version: Optional[int] = None
 
 
+class CommonOut(BaseModel):
+    body: str
+    version: int
+    source: str
+    updated_by: Optional[str] = None
+    updated_at: Optional[datetime] = None
+
+
+class CommonIn(BaseModel):
+    body: str = ""
+    version: Optional[int] = Field(default=None, description="마지막으로 본 버전 (다른 사용자가 먼저 고쳤는지 확인)")
+
+
 class PreviewOut(BaseModel):
     text: str
 
@@ -132,6 +145,24 @@ def _site_out(row: SiteProfile) -> SiteOut:
 
 def _fail(e: svc.ProfileError):
     raise HTTPException(status_code=e.status, detail=e.detail)
+
+
+def _common_out(row) -> CommonOut:
+    return CommonOut(body=row.body, version=row.version, source=row.source, updated_by=row.updated_by, updated_at=row.updated_at)
+
+
+@router.get("/common", response_model=CommonOut)
+async def get_common(db: AsyncSession = Depends(get_session), _: User = Depends(get_current_user)):
+    """모든 브라우저 작업·사이트 분석에 붙는 전체 공통 지침."""
+    return _common_out(await svc.get_common(db))
+
+
+@router.put("/common", response_model=CommonOut)
+async def update_common(data: CommonIn, db: AsyncSession = Depends(get_session), user: User = Depends(get_current_user)):
+    try:
+        return _common_out(await svc.save_common(db, data.body, version=data.version, author=_author(user)))
+    except svc.ProfileError as e:
+        _fail(e)
 
 
 @router.get("", response_model=ProfilesOut)
