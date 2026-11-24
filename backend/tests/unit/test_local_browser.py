@@ -428,6 +428,13 @@ def test_old_snapshots_are_compacted_but_latest_stays_full():
     assert all(m.compressed_content for m in msgs[:-1]) and msgs[-1].compressed_content is None  # 가장 최근 화면은 그대로
     assert sum(len(m.get_content(use_compressed_content=True) or "") for m in msgs) < 2 * len(big)  # 5개가 전부 쌓이지 않는다
 
+    # snapshot 다음에 짧은 결과(스크린샷)가 와도 방금 읽은 snapshot 은 그대로 남는다
+    shot = Message(role="tool", content="URL: https://x.com/a\nScreenshot saved: /tmp/a.png", tool_name="browser_action")
+    msgs2 = [Message(role="tool", content=big, tool_name="browser_action") for _ in range(3)] + [shot]
+    _make_compression_manager().compress(msgs2)
+    assert msgs2[0].compressed_content and msgs2[1].compressed_content  # 오래된 snapshot 은 줄어든다
+    assert msgs2[2].compressed_content is None and msgs2[3].compressed_content is None  # 가장 최근 snapshot 과 최근 결과는 그대로
+
 
 @pytest.mark.asyncio
 async def test_pet_gateway_error_body_is_reported_not_a_nonetype_crash():

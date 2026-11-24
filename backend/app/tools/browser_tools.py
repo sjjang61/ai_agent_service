@@ -26,7 +26,7 @@ from app.config import settings
 DAEMON_PATH = "/tmp/_browser_daemon.py"
 STATE_PATH = "/tmp/_browser_state.json"  # 저장된 로그인 상태. 데몬이 읽자마자 지운다
 DAEMON_PORT = 9333
-DAEMON_VERSION = 31
+DAEMON_VERSION = 32
 LOGIN_TIMEOUT_SECONDS = 600
 MAX_USER_REQUESTS = 3  # 한 번의 브라우저 작업에서 사용자에게 같은 해결을 요청하는 최대 횟수 (해결이 반복해서 실패하면 멈춘다)
 
@@ -38,7 +38,7 @@ from http.server import BaseHTTPRequestHandler, HTTPServer
 from urllib.parse import urlparse
 from playwright.sync_api import sync_playwright
 
-PORT, IDLE_SECONDS, VERSION = 9333, 900, 31
+PORT, IDLE_SECONDS, VERSION = 9333, 900, 32
 STATE_PATH = "/tmp/_browser_state.json"
 SHOT_DIR = "/workspace/browser"
 
@@ -1411,7 +1411,16 @@ def _make_compression_manager():
     class SnapshotCompression(CompressionManager):
         def _shrink(self, messages) -> None:
             tools = [m for m in messages if m.role == "tool" and m.compressed_content is None]
-            for m in tools[:-1]:  # 가장 최근 결과는 모델이 아직 읽어야 하므로 남긴다
+            keep = {id(tools[-1])} if tools else set()  # 가장 최근 결과는 모델이 아직 읽어야 하므로 남긴다
+            # 가장 최근 snapshot(요소 목록이 있는 결과)도 남긴다: snapshot 으로 시간표를 읽은 직후 스크린샷·대기 같은 짧은 결과가 이어지면
+            # 방금 읽은 화면이 곧바로 생략돼 '시간표가 없다'고 잘못 보고하는 일이 있었다. 다음 snapshot 이 오면 그때 줄어든다.
+            for m in reversed(tools):
+                if "Interactive elements" in str(m.content or ""):
+                    keep.add(id(m))
+                    break
+            for m in tools:
+                if id(m) in keep:
+                    continue
                 text = str(m.content or "")
                 m.compressed_content = compact_snapshot(text)
                 self.stats["tool_results_compressed"] = self.stats.get("tool_results_compressed", 0) + 1
