@@ -385,3 +385,12 @@ def test_browser_tool_refuses_a_disabled_site_but_analysis_may_visit_it(monkeypa
         assert not ok.startswith("Error") and called == ["goto"]  # 그 사이트를 다시 분석하는 실행은 접속할 수 있다
     finally:
         site_tips.clear_cache()
+
+
+def test_verify_prompt_counts_a_confirmed_absence_as_a_reached_step_but_not_a_missed_lookup():
+    """사이트가 표시하지 않는 정보(취소 규정 등)를 있을 만한 곳에서 찾아보고 없음을 확인했다면 단계를 충족한 것으로 본다. 찾지 못했거나 못 눌러서 확인하지 못한 것은 failed 다."""
+    from app.agent.prompts import load
+
+    text = load("site_verify")
+    assert "화면에 표시되지 않음" in text and "`reached`" in text and "없다고 추측하지 마세요" in text
+    assert "버튼을 누르지 못해 확인하지 못한 것은 여기에 해당하지 않으며 `failed`" in text
