@@ -487,6 +487,7 @@ def _format(res: dict) -> str:
         parts.append(f"Title: {res['title']}")
     if res.get("path"):
         parts.append(f"Screenshot saved: {res['path']}")
+        parts.append("(스크린샷은 사용자에게 보여 주려고 저장하는 파일이며 당신은 이미지 내용을 읽을 수 없습니다. 시간표·가격·목록 같은 화면 내용은 snapshot 으로 읽으세요.)")
     if "elements" in res:
         from app.services.browser_policy import fence_untrusted
 
