@@ -13,11 +13,15 @@ export interface Skill {
   category: string
   /** 사용자가 직접 고른 카테고리 (자동 분류가 바꾸지 않음) */
   category_locked: boolean
+  /** 상세 카테고리 id (리서치·정보 수집만 나뉜다) */
+  subcategory?: string | null
 }
 
 export interface SkillCategory {
   id: string
   label: string
+  /** 상세 카테고리 (없으면 나누지 않는 카테고리) */
+  subcategories?: { id: string; label: string }[]
 }
 
 export type SkillType = 'builtin' | 'custom'

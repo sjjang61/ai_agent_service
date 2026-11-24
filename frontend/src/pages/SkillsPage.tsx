@@ -58,7 +58,17 @@ export default function SkillsPage() {
       by.set(id, [...(by.get(id) ?? []), s])
     }
     const order = categories.length ? categories : [{ id: 'etc', label: '기타' }]
-    return order.filter((c) => by.has(c.id)).map((c) => ({ ...c, skills: by.get(c.id)! }))
+    return order.filter((c) => by.has(c.id)).map((c) => {
+      const list = by.get(c.id)!
+      const subs = c.subcategories ?? []
+      // 상세 카테고리가 있는 카테고리는 한 번 더 나눈다 (서버가 준 순서, 비어 있으면 숨김, 모르는 id 는 목록 끝의 '기타')
+      if (!subs.length) return { ...c, skills: list, subgroups: [] as { id: string; label: string; skills: Skill[] }[] }
+      const sid = (s: Skill) => (subs.some((x) => x.id === s.subcategory) ? (s.subcategory as string) : '')
+      const parts = [...subs, { id: '', label: '기타' }]
+        .map((x) => ({ id: x.id, label: x.label, skills: list.filter((s) => sid(s) === x.id) }))
+        .filter((x) => x.skills.length)
+      return { ...c, skills: list, subgroups: parts }
+    })
   }, [visible, categories])
   const searching = q !== ''
   const toggleGroup = (id: string) =>
@@ -247,7 +257,7 @@ export default function SkillsPage() {
                     <span className="text-[14px] font-semibold text-content-primary">{g.label}</span>
                     <span className="text-[12px] text-content-tertiary">{g.skills.length}</span>
                   </button>
-                  {open && (
+                  {open && g.subgroups.length === 0 && (
                     <div className="grid grid-cols-1 xl:grid-cols-2 gap-x-6">
                       {g.skills.map((s) => (
                         <ItemCard
@@ -260,6 +270,32 @@ export default function SkillsPage() {
                           onDelete={() => remove(s)}
                           onOpen={() => setDetail(s)}
                         />
+                      ))}
+                    </div>
+                  )}
+                  {open && g.subgroups.length > 0 && (
+                    <div className="space-y-3 mt-1">
+                      {g.subgroups.map((sg) => (
+                        <div key={sg.id || 'etc'}>
+                          <div className="flex items-center gap-2 px-3 py-1">
+                            <span className="text-[12px] font-medium text-content-secondary">{sg.label}</span>
+                            <span className="text-[11px] text-content-tertiary">{sg.skills.length}</span>
+                          </div>
+                          <div className="grid grid-cols-1 xl:grid-cols-2 gap-x-6">
+                            {sg.skills.map((s) => (
+                              <ItemCard
+                                key={s.id}
+                                name={s.name}
+                                description={s.description}
+                                meta={[s.skill_type === 'custom' ? '커스텀' : null, s.plugin_name ? `플러그인 · ${s.plugin_name}` : null].filter(Boolean).join(' · ') || undefined}
+                                active={s.is_active}
+                                onToggle={() => toggle(s)}
+                                onDelete={() => remove(s)}
+                                onOpen={() => setDetail(s)}
+                              />
+                            ))}
+                          </div>
+                        </div>
                       ))}
                     </div>
                   )}

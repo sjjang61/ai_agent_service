@@ -10,7 +10,7 @@ export const skillsApi = {
     apiClient.post<{ installed: boolean; sandbox_running: boolean }>(`/skills/${id}/sandbox`, { installed, conversation_id: conversationId ?? null }, { timeout: 120000 }),
   categories: () => apiClient.get<SkillCategory[]>('/skills/categories'),
   /** category: 카테고리 id, 'auto' 면 자동 분류로 되돌린다 */
-  setCategory: (id: string, category: string) => apiClient.post(`/skills/${id}/category`, { category }),
+  setCategory: (id: string, category: string, subcategory?: string) => apiClient.post(`/skills/${id}/category`, { category, subcategory }),
   recategorize: () => apiClient.post<{ changed: number; total: number }>('/skills/recategorize', {}, { timeout: 300000 }),
   setType: (id: string, skill_type: SkillType) => apiClient.post(`/skills/${id}/type`, { skill_type }),
   uploadZip: (file: File, skill_type?: SkillType) => {

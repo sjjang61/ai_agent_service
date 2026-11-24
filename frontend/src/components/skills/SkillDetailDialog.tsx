@@ -171,14 +171,16 @@ export default function SkillDetailDialog({ skill, onClose }: { skill: Skill; on
     staleTime: Infinity,
   })
   const [category, setCategory] = useState(skill.category ?? 'etc')
+  const [subcategory, setSubcategory] = useState(skill.subcategory ?? '')
   const [locked, setLocked] = useState(!!skill.category_locked)
   const [catBusy, setCatBusy] = useState(false)
   // value: 카테고리 id 또는 'auto'(자동 분류로 되돌림)
-  const changeCategory = async (value: string) => {
+  const changeCategory = async (value: string, sub?: string) => {
     setCatBusy(true)
     try {
-      const res = await skillsApi.setCategory(skill.id, value)
+      const res = await skillsApi.setCategory(skill.id, value, sub)
       setCategory(res.data.category)
+      setSubcategory(res.data.subcategory ?? '')
       setLocked(!!res.data.category_locked)
       queryClient.invalidateQueries({ queryKey: ['skills'] })
     } finally {
@@ -261,6 +263,20 @@ export default function SkillDetailDialog({ skill, onClose }: { skill: Skill; on
                   <option key={c.id} value={c.id}>{c.label}</option>
                 ))}
               </select>
+              {(categories.find((c) => c.id === category)?.subcategories ?? []).length > 0 && (
+                <select
+                  value={subcategory}
+                  disabled={catBusy}
+                  onChange={(e) => changeCategory(category, e.target.value)}
+                  aria-label="상세 카테고리"
+                  className="bg-surface-secondary border border-border rounded-md px-2 py-1 text-xs text-content-primary disabled:opacity-60"
+                >
+                  {!subcategory && <option value="">상세 분류 없음</option>}
+                  {(categories.find((c) => c.id === category)?.subcategories ?? []).map((c) => (
+                    <option key={c.id} value={c.id}>{c.label}</option>
+                  ))}
+                </select>
+              )}
               <span className="text-xs text-content-muted">
                 {locked ? '직접 지정함' : '설명을 읽어 자동 분류됨'}
               </span>
