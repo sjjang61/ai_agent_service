@@ -110,7 +110,8 @@ SNAP_JS = r"""(() => {
       }
     }
     const aSel = el.getAttribute('aria-selected'), aCur = el.getAttribute('aria-current');   // 이미 선택된 항목(날짜·탭 등)을 구분할 수 있게 상태를 알린다
-    if (aSel === 'true') item.sel = 'selected'; else if (aCur && aCur !== 'false') item.sel = 'current';
+    const ttl = (el.getAttribute('title') || '').trim();   // aria 대신 title="선택됨" 으로 선택 상태를 알리는 사이트(CGV 날짜·극장·시간대 버튼)
+    if (aSel === 'true' || /^(선택됨|선택된 항목|현재 선택됨?)$/.test(ttl)) item.sel = 'selected'; else if (aCur && aCur !== 'false') item.sel = 'current';
     if (el.getAttribute('aria-pressed') === 'true') item.pressed = true;
     if (el.getAttribute('aria-expanded') === 'true') item.expanded = true;
     out.push(item); outEls.push(el);

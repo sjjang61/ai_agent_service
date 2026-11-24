@@ -290,7 +290,7 @@ def test_daemon_shoots_on_screen_changes_and_events():
     assert "shot(" in sel  # select 도 남긴다
     scr = src[src.index('if cmd == "scroll"'):src.index('if cmd == "wait"')]
     assert "shot(" in scr  # scroll 도 남긴다
-    assert bt.DAEMON_VERSION == 31 and "VERSION = 9333, 900, 31" in src
+    assert bt.DAEMON_VERSION == 32 and "VERSION = 9333, 900, 32" in src
 
 
 class _LocalFake:
@@ -897,6 +897,7 @@ def test_snapshot_exposes_selected_state():
 
     for js in (bt.DAEMON_SOURCE, lb.SNAP_JS):
         assert "aria-selected" in js and "item.sel" in js and "aria-pressed" in js
+        assert "선택됨" in js  # title="선택됨" 으로 선택 상태를 알리는 사이트(CGV)
     line = bt.compact_elements([{"ref": 2, "tag": "button", "label": "27일", "sel": "selected", "pressed": True, "expanded": True}], "https://x.com")[0]
     assert line.endswith("pressed expanded selected") and "27일" in line
 
