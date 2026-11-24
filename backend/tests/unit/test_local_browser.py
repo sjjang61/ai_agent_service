@@ -418,22 +418,26 @@ def test_old_snapshots_are_compacted_but_latest_stays_full():
     big = _format(res)
     assert len(big) > 10000
     small = compact_snapshot(big)
-    assert len(small) < 1200 and "URL: https://x.com/a" in small and "Title: T" in small and '"ref": 5' not in small and "본문" in small
+    assert len(small) < 3200 and "URL: https://x.com/a" in small and "Title: T" in small and '"ref": 5' not in small and "본문" in small
     assert compact_snapshot("짧은 결과") == "짧은 결과"  # 짧은 결과는 그대로
 
     msgs = [Message(role="tool", content=big, tool_name="browser_action") for _ in range(5)]
     mgr = _make_compression_manager()
     assert mgr.should_compress(msgs)
     mgr.compress(msgs)
-    assert all(m.compressed_content for m in msgs[:-1]) and msgs[-1].compressed_content is None  # 가장 최근 화면은 그대로
-    assert sum(len(m.get_content(use_compressed_content=True) or "") for m in msgs) < 2 * len(big)  # 5개가 전부 쌓이지 않는다
+    from app.tools.browser_tools import SNAPSHOT_KEEP
+
+    assert all(m.compressed_content for m in msgs[:-SNAPSHOT_KEEP]) and all(m.compressed_content is None for m in msgs[-SNAPSHOT_KEEP:])  # 최근 화면 몇 개는 그대로
+    msgs_many = [Message(role="tool", content=big, tool_name="browser_action") for _ in range(12)]
+    mgr.compress(msgs_many)
+    assert sum(len(m.get_content(use_compressed_content=True) or "") for m in msgs_many) < (SNAPSHOT_KEEP + 3) * len(big)  # 12개가 전부 쌓이지 않는다
 
     # snapshot 다음에 짧은 결과(스크린샷)가 와도 방금 읽은 snapshot 은 그대로 남는다
     shot = Message(role="tool", content="URL: https://x.com/a\nScreenshot saved: /tmp/a.png", tool_name="browser_action")
-    msgs2 = [Message(role="tool", content=big, tool_name="browser_action") for _ in range(3)] + [shot]
+    msgs2 = [Message(role="tool", content=big, tool_name="browser_action") for _ in range(6)] + [shot]
     _make_compression_manager().compress(msgs2)
     assert msgs2[0].compressed_content and msgs2[1].compressed_content  # 오래된 snapshot 은 줄어든다
-    assert msgs2[2].compressed_content is None and msgs2[3].compressed_content is None  # 가장 최근 snapshot 과 최근 결과는 그대로
+    assert all(m.compressed_content is None for m in msgs2[2:])  # 최근 snapshot 4개와 가장 최근 결과는 그대로 (여러 후보를 차례로 읽을 때 앞 후보가 지워지지 않게)
 
 
 @pytest.mark.asyncio
@@ -543,3 +547,17 @@ def test_only_lookup_consent_confirms_are_accepted():
     assert not dialog_confirm_ok("결제를 진행하시겠습니까? 취소수수료 내용에 동의하십니까?")
     assert not dialog_confirm_ok("예약을 취소하시겠습니까?")
     assert not dialog_confirm_ok("")
+
+
+def test_compacted_snapshot_keeps_list_item_links():
+    """목록(검색 결과)을 읽은 뒤 상세로 넘어가 목록 화면이 요약돼도 항목 링크의 이름·주소는 남아, 다음 후보를 열려고 목록을 다시 열지 않는다."""
+    from app.tools.browser_tools import _format, compact_snapshot, link_digest
+
+    els = [{"ref": i, "tag": "a", "label": f"호텔 {i}", "href": f"/ko-kr/hotel-{i}/hotel/kyoto-jp.html?countryId=3&x=1"} for i in range(1, 9)]
+    els += [{"ref": 20 + i, "tag": "a", "label": f"메뉴 {i}", "href": f"https://x.com/menu{i}"} for i in range(3)]
+    big = _format({"ok": True, "url": "https://x.com/s", "title": "T", "elements": els, "text": "본문 " * 800})
+    digest = link_digest(big)
+    assert len(digest) == 8 and "호텔 1 → /ko-kr/hotel-1/hotel/kyoto-jp.html" in digest[0] and "countryId" not in digest[0]
+    small = compact_snapshot(big)
+    assert "목록 항목 링크" in small and "/ko-kr/hotel-3/hotel/kyoto-jp.html" in small
+    assert link_digest("[1] a \"하나\" href=/a") == []  # 링크가 적으면 만들지 않는다

@@ -1386,6 +1386,31 @@ BROWSER_INSTRUCTIONS = sections("browser_agent")  # prompts/browser_agent.md
 
 
 _SNAPSHOT_KEEP_PREFIX = ("URL:", "Title:", "Screenshot saved:", "Error")
+SNAPSHOT_KEEP = 4  # 압축하지 않고 남기는 최근 snapshot(요소 목록이 있는 결과) 수
+
+
+_LINK_LINE = re.compile(r'^\[\d+\] a "([^"]*)"(?: \([^)]*\))? href=(\S+)')
+LINK_DIGEST_MAX = 12
+
+
+def link_digest(text: str) -> list[str]:
+    """목록 화면(검색 결과·상품 목록)의 항목 링크 이름과 주소. 같은 모양의 주소(끝 경로가 같은 링크)가 4개 이상이면 그 링크들을 최대 LINK_DIGEST_MAX 개 남긴다.
+    목록을 읽은 뒤 상세로 들어가 목록 화면이 요약돼도, 다음 후보 주소를 얻으려고 목록을 다시 열지 않게 하려는 것이다."""
+    links = []
+    for ln in text.splitlines():
+        m = _LINK_LINE.match(ln)
+        if m and m.group(2).startswith(("/", "http")):
+            links.append((m.group(1), m.group(2)))
+    if len(links) < 4:
+        return []
+    tail = lambda href: href.split("?")[0].rstrip("/").rsplit("/", 1)[-1]  # noqa: E731
+    common: dict[str, int] = {}
+    for _n, h in links:
+        common[tail(h)] = common.get(tail(h), 0) + 1
+    best, count = max(common.items(), key=lambda kv: kv[1])
+    if count < 4 or not best:
+        return []
+    return [f'- {n[:60]} → {h.split("?")[0]}' for n, h in links if tail(h) == best][:LINK_DIGEST_MAX]
 
 
 def compact_snapshot(text: str) -> str:
@@ -1400,6 +1425,10 @@ def compact_snapshot(text: str) -> str:
     out = head + ["[지난 화면의 요소 목록은 컨텍스트 절약을 위해 생략했습니다. 필요하면 snapshot 을 다시 호출하세요]"]
     if excerpt:
         out.append(f"본문 앞부분: {excerpt}")
+    digest = link_digest(text)
+    if digest:
+        out.append("지난 화면의 목록 항목 링크 (주소로 바로 열 수 있다):")
+        out.extend(digest)
     return "\n".join(out)
 
 
@@ -1414,10 +1443,13 @@ def _make_compression_manager():
             keep = {id(tools[-1])} if tools else set()  # 가장 최근 결과는 모델이 아직 읽어야 하므로 남긴다
             # 가장 최근 snapshot(요소 목록이 있는 결과)도 남긴다: snapshot 으로 시간표를 읽은 직후 스크린샷·대기 같은 짧은 결과가 이어지면
             # 방금 읽은 화면이 곧바로 생략돼 '시간표가 없다'고 잘못 보고하는 일이 있었다. 다음 snapshot 이 오면 그때 줄어든다.
+            seen = 0
             for m in reversed(tools):
                 if "Interactive elements" in str(m.content or ""):
                     keep.add(id(m))
-                    break
+                    seen += 1
+                    if seen >= SNAPSHOT_KEEP:  # 여러 후보(숙소·상품)를 차례로 읽을 때 앞에서 읽은 후보의 정보가 지워지지 않게 몇 개를 남긴다
+                        break
             for m in tools:
                 if id(m) in keep:
                     continue
