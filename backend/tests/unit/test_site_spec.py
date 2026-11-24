@@ -389,3 +389,33 @@ def test_path_scoped_site_does_not_hijack_plain_pages_of_the_same_domain():
     assert [t.name for t in site_tips.match_task("구글에서 진라면 최저가 검색해줘", "https://www.google.com/")] == ["검색엔진(구글·네이버·다음)"]
     assert "Google Flights" in [t.name for t in site_tips.match_task("구글 항공권으로 서울 도쿄 조회")]
     assert "Google Flights" in [t.name for t in site_tips.match_task("google.com 에서 항공권 찾아줘")]
+
+
+@pytest.mark.asyncio
+async def test_refresh_loop_rereads_db_and_survives_errors(monkeypatch):
+    """서버 밖(스크립트·다른 워커)에서 고친 사이트 요령도 주기적으로 반영한다. 일시적인 오류가 나도 루프는 계속 돈다."""
+    import asyncio
+
+    from app.db import session as dbs
+    from app.services import site_profile_service as svc
+
+    calls = []
+
+    class Ctx:
+        async def __aenter__(self):
+            return object()
+
+        async def __aexit__(self, *a):
+            return False
+
+    async def fake_refresh(db):
+        calls.append(1)
+        if len(calls) == 1:
+            raise RuntimeError("일시적인 DB 오류")
+
+    monkeypatch.setattr(dbs, "AsyncSessionLocal", lambda: Ctx())
+    monkeypatch.setattr(svc, "refresh", fake_refresh)
+    task = asyncio.create_task(svc.run_refresh_loop(interval=0.01))
+    await asyncio.sleep(0.15)
+    task.cancel()
+    assert len(calls) >= 2  # 첫 호출이 실패해도 다음 주기에 다시 읽는다

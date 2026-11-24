@@ -3,6 +3,7 @@
 원본은 DB 이고, 저장소의 md 파일(agent/site_tips/)은 시드(DB 에 없는 것만 채움)와 내보내기에 쓴다.
 런타임은 DB 내용을 agent/site_tips 의 메모리 캐시로 읽어 쓰므로, 저장하거나 시드한 뒤에는 refresh() 로 캐시를 갱신한다.
 """
+import asyncio
 import logging
 
 from sqlalchemy import select
@@ -114,6 +115,25 @@ async def refresh(db: AsyncSession) -> None:
               for r in all_rows if r.domains.strip()]
     common = await db.get(SiteCommon, COMMON_KEY)
     site_tips.set_cache([to_vertical(v) for v in verticals], [to_tip(s) for s in sites if s.domains.strip()], states, common=common.body if common is not None else None)
+
+
+REFRESH_INTERVAL_SECONDS = 60
+
+
+async def run_refresh_loop(interval: float = REFRESH_INTERVAL_SECONDS) -> None:
+    """DB 의 사이트 요령을 주기적으로 다시 읽는다. 다른 프로세스(스크립트·다른 워커)가 고친 내용도 서버를 다시 시작하지 않고 반영하기 위해서다.
+    (저장 화면은 저장 즉시 refresh 하지만, 이 서버 밖에서 DB 를 고치면 시작 때 읽은 캐시가 계속 남았다.)"""
+    from app.db.session import AsyncSessionLocal
+
+    while True:
+        await asyncio.sleep(interval)
+        try:
+            async with AsyncSessionLocal() as db:
+                await refresh(db)
+        except asyncio.CancelledError:
+            raise
+        except Exception:  # noqa: BLE001  일시적인 DB 오류: 이전 캐시를 그대로 쓰고 다음 주기에 다시 시도한다
+            logger.warning("[site_profiles] 주기 갱신 실패 — 이전 캐시를 유지합니다", exc_info=True)
 
 
 async def init() -> None:

@@ -94,6 +94,7 @@ async def lifespan(app: FastAPI):
 
     from app.core.scheduler import run_scheduler
 
+    site_refresh = asyncio.create_task(site_profile_service.run_refresh_loop())  # 서버 밖에서 고친 사이트 요령도 반영
     reaper = asyncio.create_task(run_idle_reaper())
     app_reaper = None
     if settings.APP_HOST_ENABLED:
@@ -128,6 +129,7 @@ async def lifespan(app: FastAPI):
 
         channels = asyncio.create_task(run_channels())
     yield
+    site_refresh.cancel()
     reaper.cancel()
     if app_reaper:
         app_reaper.cancel()
