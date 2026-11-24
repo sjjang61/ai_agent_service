@@ -31,6 +31,34 @@ import { apiUrl } from '../../config/server'
 
 // 코드 컴포넌트: 인라인 `code` 는 한 줄 강조로, 펜스 코드 블록(```)은 복사 버튼이 있는 블록으로 그린다.
 // react-markdown v9 에는 `inline` prop 이 없다. 블록 여부는 부모 <pre> 가 `block` 으로 알려 준다 (아래 components.pre).
+// 링크 옆에 보여 주는 주소. 누르면 클립보드에 복사한다.
+function CopyableUrl({ url }: { url: string }) {
+  const [copied, setCopied] = useState(false)
+  const copy = async () => {
+    try {
+      await navigator.clipboard.writeText(url)
+    } catch {
+      const ta = document.createElement('textarea')
+      ta.value = url
+      document.body.appendChild(ta)
+      ta.select()
+      try { document.execCommand('copy') } finally { document.body.removeChild(ta) }
+    }
+    setCopied(true)
+    setTimeout(() => setCopied(false), 1500)
+  }
+  return (
+    <button
+      type="button"
+      onClick={copy}
+      title="클릭하면 주소를 복사합니다"
+      className="ml-1 inline text-xs text-content-muted hover:text-content-secondary break-all text-left"
+    >
+      ({url}){copied && <span className="ml-1 text-accent-primary">복사됨</span>}
+    </button>
+  )
+}
+
 function CodeBlock({ block, className, children, ...props }: any) {
   const [copied, setCopied] = useState(false)
   const match = /language-(\w+)/.exec(className || '')
@@ -382,7 +410,7 @@ export default function MessageBubble({ message }: { message: Message }) {
                         {...props}
                       />
                       {showUrl && (
-                        <span className="ml-1 text-xs text-content-muted break-all select-all">({href})</span>
+                        <CopyableUrl url={href} />
                       )}
                     </>
                   )
