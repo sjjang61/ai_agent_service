@@ -365,13 +365,26 @@ export default function MessageBubble({ message }: { message: Message }) {
                     )
                   }
 
+                  // 링크 문구가 주소와 다르면(예: "예매 페이지에서 확인하기") 실제 주소를 옆에 보여 준다.
+                  const text = typeof props.children === 'string'
+                    ? props.children
+                    : Array.isArray(props.children) && props.children.every((c) => typeof c === 'string')
+                      ? props.children.join('')
+                      : ''
+                  const showUrl = /^https?:\/\//i.test(href) && text.trim() !== '' && text.trim() !== href
                   return (
-                    <a
-                      className="text-accent-primary hover:text-accent-primary/80 underline break-all"
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      {...props}
-                    />
+                    <>
+                      <a
+                        className="text-accent-primary hover:text-accent-primary/80 underline break-all"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        title={href}
+                        {...props}
+                      />
+                      {showUrl && (
+                        <span className="ml-1 text-xs text-content-muted break-all select-all">({href})</span>
+                      )}
+                    </>
                   )
                 },
                 // 테이블 스타일링
