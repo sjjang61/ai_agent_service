@@ -13,6 +13,7 @@ from app.models.user import User
 from app.schemas.skill import (
     ActiveRequest,
     CategoryInfo,
+    SubCategoryInfo,
     CategoryRequest,
     RecategorizeResponse,
     PluginInstallResponse,
@@ -47,6 +48,7 @@ def _to_response(s: Skill, plugins: dict | None = None) -> SkillResponse:
         skill_type=s.skill_type or "builtin",
         category=s.category or "etc",
         category_locked=bool(s.category_locked),
+        subcategory=s.subcategory,
         created_at=s.created_at,
     )
 
@@ -75,9 +77,9 @@ async def list_skills(
 @router.get("/categories", response_model=List[CategoryInfo])
 async def list_categories(current_user: User = Depends(get_current_user)):
     """자동 분류에 쓰는 카테고리 목록 (표시 순서대로)."""
-    from app.services.skill_category import CATEGORY_IDS, LABELS
+    from app.services.skill_category import CATEGORY_IDS, LABELS, SUBCATEGORIES
 
-    return [CategoryInfo(id=c, label=LABELS[c]) for c in CATEGORY_IDS]
+    return [CategoryInfo(id=c, label=LABELS[c], subcategories=[SubCategoryInfo(id=i, label=l) for i, l, _k in SUBCATEGORIES.get(c, [])]) for c in CATEGORY_IDS]
 
 
 @router.post("/recategorize", response_model=RecategorizeResponse)
@@ -332,7 +334,7 @@ async def set_skill_category(
     db: AsyncSession = Depends(get_session),
 ):
     """카테고리를 직접 지정한다 (이후 자동 분류가 바꾸지 않음). category='auto' 면 자동 분류로 되돌린다."""
-    skill = await SkillService.set_category(skill_id, current_user.id, data.category, db)
+    skill = await SkillService.set_category(skill_id, current_user.id, data.category, db, data.subcategory)
     owners = _owner_map(await SkillService.list_plugins(current_user.id, db))
     return _to_response(skill, owners)
 

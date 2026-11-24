@@ -179,11 +179,17 @@ def _ensure_skill_category(sync_conn) -> None:
         sync_conn.execute(text("ALTER TABLE skills ADD COLUMN category VARCHAR(20) NULL"))
     if "category_locked" not in cols:
         sync_conn.execute(text("ALTER TABLE skills ADD COLUMN category_locked BOOLEAN NOT NULL DEFAULT 0"))
-    from app.services.skill_category import classify_by_rules
+    if "subcategory" not in cols:
+        sync_conn.execute(text("ALTER TABLE skills ADD COLUMN subcategory VARCHAR(20) NULL"))
+    from app.services.skill_category import classify_by_rules, classify_sub
 
+    rows = sync_conn.execute(text("SELECT id, name, description FROM skills WHERE category = 'research' AND subcategory IS NULL")).all()
+    for sid, name, desc in rows:  # 이미 분류된 리서치 스킬의 상세 카테고리는 키워드 규칙으로 채운다
+        sync_conn.execute(text("UPDATE skills SET subcategory = :c WHERE id = :i"), {"c": classify_sub("research", name, desc or ""), "i": sid})
     rows = sync_conn.execute(text("SELECT id, name, description FROM skills WHERE category IS NULL")).all()
     for sid, name, desc in rows:
-        sync_conn.execute(text("UPDATE skills SET category = :c WHERE id = :i"), {"c": classify_by_rules(name, desc or "")[0], "i": sid})
+        cat = classify_by_rules(name, desc or "")[0]
+        sync_conn.execute(text("UPDATE skills SET category = :c, subcategory = :s WHERE id = :i"), {"c": cat, "s": classify_sub(cat, name, desc or ""), "i": sid})
 
 
 def _ensure_schedule_notify_columns(sync_conn) -> None:

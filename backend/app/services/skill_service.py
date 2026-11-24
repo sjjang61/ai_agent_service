@@ -20,7 +20,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.config import settings
 from app.models.plugin import Plugin
 from app.models.skill import Skill
-from app.services.skill_category import classify_many
+from app.services.skill_category import classify_many, classify_sub
 from app.services.sandbox_service import SandboxService, sandbox_manager
 
 SKILL_TYPES = ("builtin", "custom")
@@ -40,6 +40,7 @@ async def assign_categories(skills: list[Skill], db: AsyncSession, force: bool =
     for s, c in zip(targets, cats):
         if s.category != c:
             s.category, changed = c, changed + 1
+        s.subcategory = classify_sub(c, s.name, s.description or "")  # 상위가 같아도 설명이 바뀌면 상세는 다시 정한다
     await db.commit()
     return changed
 MAX_SKILLS_PER_INSTALL = 20
@@ -579,9 +580,10 @@ class SkillService:
         return skill, err
 
     @staticmethod
-    async def set_category(skill_id: str, user_id: str, category: str, db: AsyncSession) -> Skill:
-        """카테고리를 직접 지정한다(고정). 'auto' 면 고정을 풀고 description 으로 다시 자동 분류한다."""
-        from app.services.skill_category import CATEGORY_IDS
+    async def set_category(skill_id: str, user_id: str, category: str, db: AsyncSession, subcategory: Optional[str] = None) -> Skill:
+        """카테고리를 직접 지정한다(고정). 'auto' 면 고정을 풀고 description 으로 다시 자동 분류한다.
+        상세 카테고리는 지정하면 그 값을, 생략하면 키워드 규칙으로 정한다(나누지 않는 카테고리는 None)."""
+        from app.services.skill_category import CATEGORY_IDS, subcategory_ids
 
         skill = await SkillService.get_skill(skill_id, user_id, db)
         if category == "auto":
@@ -591,7 +593,10 @@ class SkillService:
         else:
             if category not in CATEGORY_IDS:
                 raise HTTPException(400, "알 수 없는 카테고리입니다")
+            if subcategory and subcategory not in subcategory_ids(category):
+                raise HTTPException(400, "알 수 없는 상세 카테고리입니다")
             skill.category, skill.category_locked = category, True
+            skill.subcategory = subcategory or classify_sub(category, skill.name, skill.description or "")
             await db.commit()
         await db.refresh(skill)
         return skill

@@ -22,4 +22,6 @@ class Skill(Base):
     # description 으로 자동 분류한 카테고리 id (services/skill_category.py). 사용자가 직접 고르면 category_locked 로 고정한다
     category = Column(String(20), nullable=True)
     category_locked = Column(Boolean, nullable=False, default=False, server_default="0")
+    # 상위 카테고리 안의 상세 카테고리 id (리서치·정보 수집만 나눈다). category_locked 면 사용자가 고른 값이다
+    subcategory = Column(String(20), nullable=True)
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))

@@ -57,6 +57,55 @@ for _cid, _label, _desc, _kws in CATEGORIES:
         pats.append(re.compile((r"(?<![a-z0-9])" + kw) if re.match(r"[a-z\\]", kw) else kw, re.I))
     _PATTERNS[_cid] = pats
 
+# 상세 카테고리: 상위 카테고리 안에서 한 번 더 나눈다. 지금은 '리서치·정보 수집'만 나눈다(18개 이상이 한 묶음에 섞이기 때문).
+# (id, 라벨, 키워드) — 위에서부터 점수가 높은 것을 고르고, 동점이면 앞의 것. 아무것도 안 맞으면 SUB_DEFAULT.
+SUB_DEFAULT = "general"
+SUBCATEGORIES: dict[str, list[tuple[str, str, list[str]]]] = {
+    "research": [
+        ("shopping", "쇼핑·가격 비교", [r"shop", r"coupang", r"danawa", r"bunjang", r"daangn", r"ohou", r"lowest.?price", r"product", r"deal\b", r"used.?goods", r"marketplace", r"구매", r"쇼핑", r"상품", r"최저가", r"중고", r"쿠팡", r"다나와", r"번개장터", r"당근", r"오늘의집", r"특가", r"배송"]),
+        ("transport", "교통·예매 조회", [r"flight", r"airline", r"airport", r"train", r"railway", r"korail", r"\bktx\b", r"\bbus\b", r"kobus", r"timetable", r"subway", r"taxi", r"항공", r"비행기", r"기차", r"철도", r"버스", r"고속버스", r"시간표", r"지하철", r"교통", r"예매"]),
+        ("travel", "여행·숙소", [r"travel", r"trip", r"itinerar", r"hotel", r"accommodation", r"airbnb", r"tour", r"destination", r"여행", r"숙소", r"호텔", r"일정", r"관광", r"리조트", r"펜션"]),
+        ("realestate", "부동산", [r"real.?estate", r"apartment", r"officetel", r"housing", r"rent\b", r"lease", r"realty", r"부동산", r"아파트", r"전세", r"월세", r"실거래", r"공시가", r"오피스텔", r"청약"]),
+        ("finance", "금융·주식", [r"stock", r"securit", r"\bkrx\b", r"\betf\b", r"crypto", r"bitcoin", r"exchange rate", r"\bfund\b", r"interest rate", r"bank", r"loan", r"주식", r"증권", r"종목", r"코스피", r"코스닥", r"환율", r"금융", r"펀드", r"대출", r"금리", r"암호화폐", r"코인"]),
+        ("news", "뉴스·시사", [r"news", r"headline", r"breaking", r"press", r"journal", r"current events", r"뉴스", r"헤드라인", r"속보", r"기사", r"시사", r"언론"]),
+        ("weather", "날씨·생활 정보", [r"weather", r"forecast", r"air quality", r"dust", r"pollen", r"holiday", r"calendar of", r"날씨", r"기상", r"예보", r"미세먼지", r"황사", r"공휴일", r"생활"]),
+        ("sports", "스포츠·공연·행사", [r"sport", r"\bkbo\b", r"baseball", r"soccer", r"football", r"marathon", r"triathlon", r"concert", r"musical", r"exhibition", r"festival", r"schedule", r"야구", r"축구", r"농구", r"배구", r"마라톤", r"경기", r"공연", r"전시", r"축제", r"행사", r"콘서트"]),
+        ("academic", "논문·학술 자료", [r"paper", r"arxiv", r"scholar", r"citation", r"literature", r"journal article", r"academic", r"patent", r"thesis", r"논문", r"학술", r"인용", r"특허", r"문헌", r"학위"]),
+        (SUB_DEFAULT, "웹 검색·일반 조사", [r"web search", r"crawl", r"scrap", r"browse", r"fact.?check", r"investigat", r"look.?up", r"fetch", r"웹 검색", r"크롤", r"조사", r"자료", r"팩트"]),
+    ],
+}
+SUB_LABELS = {cid: {sid: label for sid, label, _k in subs} for cid, subs in SUBCATEGORIES.items()}
+_SUB_PATTERNS: dict[str, list[tuple[str, list[re.Pattern]]]] = {
+    cid: [(sid, [re.compile((r"(?<![a-z0-9])" + kw) if re.match(r"[a-z\\]", kw) else kw, re.I) for kw in kws]) for sid, _l, kws in subs]
+    for cid, subs in SUBCATEGORIES.items()
+}
+
+
+def subcategory_ids(category: str) -> list[str]:
+    return [sid for sid, _l, _k in SUBCATEGORIES.get(category, [])]
+
+
+def classify_sub(category: str, name: str, description: str) -> Optional[str]:
+    """상위 카테고리 안의 상세 카테고리 id. 나누지 않는 카테고리는 None, 맞는 키워드가 없으면 기본(일반)."""
+    pats = _SUB_PATTERNS.get(category)
+    if not pats:
+        return None
+    name_l, desc_l = (name or "").replace("-", " ").replace("_", " ").lower(), (description or "").lower()
+    best, best_score = SUB_DEFAULT, 0
+    for sid, plist in pats:
+        if sid == SUB_DEFAULT:
+            continue
+        s = 0
+        for p in plist:
+            if p.search(name_l):
+                s += 2
+            elif p.search(desc_l):
+                s += 1
+        if s > best_score:  # 동점이면 앞의 것
+            best, best_score = sid, s
+    return best
+
+
 CONFIDENT_MIN = 2  # 1위 점수가 이 이상이고, 2위보다 1점 이상 높으면 규칙만으로 확정
 
 

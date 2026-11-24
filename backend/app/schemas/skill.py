@@ -25,15 +25,23 @@ class SkillResponse(BaseModel):
     skill_type: str = "builtin"  # builtin: sandbox 생성 시 자동 설치 / custom: 필요할 때 설치
     category: str = "etc"  # description 으로 자동 분류한 카테고리 id
     category_locked: bool = False  # 사용자가 직접 고른 카테고리
+    subcategory: Optional[str] = None  # 상세 카테고리 id (리서치·정보 수집만)
 
 
 class CategoryRequest(BaseModel):
     category: str  # 카테고리 id 또는 'auto'(자동 분류로 되돌림)
+    subcategory: Optional[str] = None  # 상세 카테고리 id (생략하면 자동으로 정한다)
+
+
+class SubCategoryInfo(BaseModel):
+    id: str
+    label: str
 
 
 class CategoryInfo(BaseModel):
     id: str
     label: str
+    subcategories: List[SubCategoryInfo] = []
 
 
 class RecategorizeResponse(BaseModel):

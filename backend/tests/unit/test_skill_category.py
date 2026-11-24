@@ -99,3 +99,26 @@ async def test_assign_categories_skips_locked_and_already_classified(monkeypatch
 def test_every_category_has_label_and_prompt_lists_all():
     assert set(sc.LABELS) == set(sc.CATEGORY_IDS) and sc.ETC in sc.CATEGORY_IDS
     assert sc.CATEGORY_IDS[-1] == sc.ETC  # '기타' 는 항상 마지막
+
+
+def test_research_skills_get_a_subcategory():
+    from app.services.skill_category import SUB_DEFAULT, SUB_LABELS, classify_sub, subcategory_ids
+
+    assert "shopping" in subcategory_ids("research") and subcategory_ids("dev") == []
+    cases = {
+        ("danawa-price-search", "다나와 공개 검색/가격비교 표면으로 상품 후보를 찾고 최저가를 비교"): "shopping",
+        ("railway-timetable", "Read-only Korail railway timetable lookup covering KTX-family trains"): "transport",
+        ("trip-planner", "Interactive expert global travel planner and itinerary architect"): "travel",
+        ("real-estate-search", "Korean apartment real transaction price and rent lookups"): "realestate",
+        ("korean-stock-search", "Search Korean listed stocks, inspect KRX base information"): "finance",
+        ("google-daily-news", "latest news, current headlines, breaking news"): "news",
+        ("korea-weather", "한국 날씨를 기상청 예보로 조회해 요약한다"): "weather",
+        ("kbo-results", "Fetch KBO game schedules and results"): "sports",
+        ("arxiv-search", "논문 검색과 인용 정리"): "academic",
+        ("web-research", "웹 검색과 크롤링으로 자료를 조사한다"): SUB_DEFAULT,
+    }
+    for (name, desc), want in cases.items():
+        assert classify_sub("research", name, desc) == want, name
+    assert classify_sub("research", "x", "") == SUB_DEFAULT  # 맞는 키워드가 없으면 일반 조사
+    assert classify_sub("dev", "code-review", "review code") is None  # 나누지 않는 카테고리
+    assert all(label for label in SUB_LABELS["research"].values())
