@@ -66,6 +66,18 @@ def payment_stop(payload: dict, elements: list[dict], url: str, words: tuple = (
             "우회하거나 다른 방법으로 결제하지 마세요. 지금까지 확인한 내용(상품·가격·옵션·선택한 항목)과 현재 화면 주소를 최종 보고하고 멈추세요. 결제는 사용자가 직접 진행합니다.")
 
 
+# 페이지 confirm 대화상자 중 '조회를 계속하려면 안내를 확인했다는 동의'만 확인으로 응답한다 (KOBUS 조회하기: "취소수수료 내용에 동의하십니까?").
+# 결제·구매·삭제·탈퇴·신청처럼 상태를 바꾸는 말이 함께 있으면 허용하지 않는다. 그 밖의 confirm 은 계속 취소한다.
+_DIALOG_OK = re.compile(r"(취소\s*)?수수료[^\n]{0,20}(내용|안내|규정)[^\n]{0,20}동의|(이용|유의|안내|운행)\s*(안내|사항|시간)[^\n]{0,20}(확인|동의)하(십니까|시겠습니까)")
+_DIALOG_DENY = re.compile(r"결제|구매|삭제|탈퇴|주문|송금|이체|신청|예약을 (확정|진행)|예매를 (확정|진행)|취소하시겠|환불하시겠|로그아웃")
+
+
+def dialog_confirm_ok(message: str) -> bool:
+    """이 confirm 대화상자를 '확인'으로 응답해도 되는가 (조회 단계의 안내 동의만)."""
+    msg = message or ""
+    return bool(_DIALOG_OK.search(msg)) and not _DIALOG_DENY.search(msg)
+
+
 def confirm_hit(payload: dict, elements: list[dict], words: tuple = ()) -> Optional[str]:
     """누르려는 버튼이 분야의 '승인 후 누를 문구'(예약·동의 확정)에 해당하면 그 라벨을, 아니면 None.
     '문구@조건' 은 현재 화면에 조건 문구가 들어 있는 요소가 함께 있을 때만 적용한다 (같은 '예약하기' 라벨이 패널을 여는 버튼일 때와 확정 버튼일 때를 구분한다)."""

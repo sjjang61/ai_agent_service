@@ -531,3 +531,15 @@ async def test_page_dialogs_are_answered_so_the_page_does_not_hang_and_the_agent
     assert b._dialogs == ["확인 처리한 alert 대화상자: 출발 당일 안내", "취소 처리한 confirm 대화상자: 삭제할까요?"]
     snap = await lb.LocalBrowser._snapshot(b)
     assert snap["text"].startswith("[페이지 대화상자 자동 응답] 확인 처리한 alert") and b._dialogs == []
+
+
+def test_only_lookup_consent_confirms_are_accepted():
+    """조회하기 뒤 '취소수수료 내용에 동의하십니까?' confirm 을 취소하면 조회가 진행되지 않는다(KOBUS). 조회용 안내 동의만 확인하고 상태를 바꾸는 confirm 은 계속 취소한다."""
+    from app.services.browser_policy import dialog_confirm_ok
+
+    assert dialog_confirm_ok("승차권 예매에 따른 취소수수료 내용에 동의하십니까?")
+    assert dialog_confirm_ok("운행 안내를 확인하십니까?")
+    assert not dialog_confirm_ok("삭제할까요?")
+    assert not dialog_confirm_ok("결제를 진행하시겠습니까? 취소수수료 내용에 동의하십니까?")
+    assert not dialog_confirm_ok("예약을 취소하시겠습니까?")
+    assert not dialog_confirm_ok("")

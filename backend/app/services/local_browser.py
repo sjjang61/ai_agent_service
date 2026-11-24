@@ -178,9 +178,11 @@ class LocalBrowser:
 
     async def _answer_dialog(self, p: dict) -> None:
         """페이지의 alert·confirm·prompt 대화상자: 열려 있는 동안 페이지가 멈춰 '로딩 시간 초과'로 보이므로 바로 응답한다.
-        alert 는 확인, confirm·prompt·beforeunload 는 취소(사용자 동의가 필요한 되돌릴 수 없는 동작을 대신 승인하지 않는다). 내용은 다음 화면 읽기에 알려 준다."""
+        alert 는 확인, confirm 은 조회를 계속하기 위한 안내 동의(취소수수료 등)만 확인하고 나머지와 prompt·beforeunload 는 취소(사용자 동의가 필요한 되돌릴 수 없는 동작을 대신 승인하지 않는다). 내용은 다음 화면 읽기에 알려 준다."""
         kind = str(p.get("type") or "alert")
-        accept = kind == "alert"
+        from app.services.browser_policy import dialog_confirm_ok
+
+        accept = kind == "alert" or (kind == "confirm" and dialog_confirm_ok(str(p.get("message") or "")))  # 조회 단계의 안내 동의(취소수수료 등)만 확인
         self._seq += 1
         try:
             await self._ws.send(json.dumps({"id": self._seq, "method": "Page.handleJavaScriptDialog", "params": {"accept": accept}}))
