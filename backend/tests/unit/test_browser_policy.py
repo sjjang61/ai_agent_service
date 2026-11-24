@@ -243,3 +243,36 @@ async def test_plain_click_needs_no_approval_in_desktop_app_browser(monkeypatch)
     monkeypatch.setattr(lb, "route_for", local)
     assert await tool._approve({"cmd": "click", "ref": 99}) is None  # 앱 브라우저: 승인 불필요
     assert await tool._approve({"cmd": "click", "ref": 4})  # 위험 라벨은 여전히 승인 필요
+
+
+# ── 분야의 '승인 후 누를 문구'(예약·동의 확정): 사용자 작업은 매번 승인, 분석·검증은 누르지 않는다 ─────────────────
+def test_confirm_words_match_the_consent_and_the_final_button_only_on_the_confirmation_screen():
+    from app.services import browser_policy as pol
+
+    words = ("모두 동의합니다", "예약하기@모두 동의합니다")
+    panel = [{"ref": 1, "tag": "button", "label": "예약하기"}]                                              # 상품 페이지: 패널을 여는 '예약하기'
+    confirm_page = [{"ref": 2, "tag": "div", "label": "아래 내용에 모두 동의합니다 필수"}, {"ref": 3, "tag": "button", "label": "예약하기"}, {"ref": 4, "tag": "button", "label": "이전"}]
+    assert pol.confirm_hit({"cmd": "click", "ref": 1}, panel, words) is None                                   # 패널을 여는 '예약하기'는 그대로
+    assert pol.confirm_hit({"cmd": "click", "ref": 2}, confirm_page, words) == "아래 내용에 모두 동의합니다 필수"   # 동의 체크
+    assert pol.confirm_hit({"cmd": "click", "ref": 3}, confirm_page, words) == "예약하기"                        # 동의가 있는 화면의 최종 '예약하기'
+    assert pol.confirm_hit({"cmd": "click", "ref": 4}, confirm_page, words) is None and pol.confirm_hit({"cmd": "goto", "url": "x"}, confirm_page, words) is None
+    assert pol.confirm_hit({"cmd": "click", "ref": 2}, confirm_page, ()) is None
+
+
+def test_confirm_label_makes_the_click_ask_every_time_and_the_analysis_stop_message_stops_batches():
+    from app.services import browser_policy as pol
+
+    els = [{"ref": 3, "tag": "button", "label": "예약하기"}]
+    d = pol.classify({"cmd": "click", "ref": 3}, els, "https://m.booking.naver.com/x", confirm_label="예약하기")
+    assert d.level == pol.ASK_ALWAYS and "확정" in d.reason and pol.classify({"cmd": "click", "ref": 3}, els, "https://m.booking.naver.com/x").level != pol.ASK_ALWAYS
+    msg = pol.confirm_stop("예약하기")
+    assert msg.startswith("[결제 직전]") and "분석·검증" in msg  # 일괄 동작이 이 접두사로 멈춘다
+
+
+def test_restaurant_vertical_carries_the_confirm_words_and_they_reach_the_rules():
+    from app.agent import site_tips
+
+    v = site_tips.vertical("restaurant")
+    assert v is not None and "모두 동의합니다" in v.confirm_words and "예약하기@모두 동의합니다" in v.confirm_words
+    assert "예약하기@모두 동의합니다" in site_tips.confirm_rules("https://m.booking.naver.com/x", {"@restaurant"})
+    assert site_tips.confirm_rules("https://www.danawa.com/", {"@shopping"}) == ()

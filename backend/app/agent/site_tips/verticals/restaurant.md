@@ -1,80 +1,81 @@
 ---
 key: restaurant
-category: culture
 name: 식당 예약
+category: culture
 keywords: 식당 예약, 레스토랑 예약, 맛집 예약, 테이블 예약, 웨이팅
 stop_words: 예약 확정, 예약 완료, 예약금 결제
-stop_urls:
+confirm_words: 모두 동의합니다, 예약하기@모두 동의합니다
+stop_urls: 
 ---
 ```spec
 {
-  "inputs": [
-    {
-      "key": "restaurant",
-      "label": "식당 또는 지역·음식",
-      "required": true,
-      "format": "식당 이름, 또는 지역과 음식 종류",
-      "example": "강남 이탈리안"
-    },
-    {
-      "key": "date",
-      "label": "날짜",
-      "required": true,
-      "format": "YYYY-MM-DD 또는 상대 표현",
-      "example": "다음 주 금요일"
-    },
-    {
-      "key": "time",
-      "label": "시간대",
-      "required": false,
-      "format": "희망 시각 또는 시간대",
-      "example": "저녁 7시"
-    },
-    {
-      "key": "people",
-      "label": "인원",
-      "required": true,
-      "format": "명",
-      "example": "2"
-    }
-  ],
   "flow": [
     {
       "key": "search",
-      "title": "식당 찾기",
       "desc": "이름이면 상세로, 지역·음식이면 목록에서 후보를 고른다",
+      "title": "식당 찾기",
       "write": false
     },
     {
       "key": "detail",
-      "title": "식당 상세 확인",
       "desc": "영업시간·휴무·메뉴 가격·평점·예약 정책(예약금, 취소 규정)",
+      "title": "식당 상세 확인",
       "write": false
     },
     {
       "key": "slots",
-      "title": "예약 가능한 날짜·시간 확인",
       "desc": "날짜·인원을 정해 가능한 시간을 읽는다. 마감·대기만 가능한 시간은 구분",
+      "title": "예약 가능한 날짜·시간 확인",
       "write": false
     },
     {
       "key": "form",
-      "title": "예약자 정보 입력",
       "desc": "상태를 바꾸는 단계: 사용자가 요청했을 때만",
+      "title": "예약자 정보 입력",
       "write": true
     },
     {
       "key": "stop",
-      "title": "예약 확정·예약금 결제 전에 멈춤",
       "desc": "예약자 정보 입력·결제 화면으로 넘어가지 않고 멈춘다. 예약 가능 시간 목록 화면에서 멈추는 것도 이 단계를 충족한 것으로 본다",
+      "title": "예약 확정·예약금 결제 전에 멈춤",
       "write": false
     }
   ],
+  "inputs": [
+    {
+      "key": "restaurant",
+      "label": "식당 또는 지역·음식",
+      "format": "식당 이름, 또는 지역과 음식 종류",
+      "example": "강남 이탈리안",
+      "required": true
+    },
+    {
+      "key": "date",
+      "label": "날짜",
+      "format": "YYYY-MM-DD 또는 상대 표현",
+      "example": "다음 주 금요일",
+      "required": true
+    },
+    {
+      "key": "time",
+      "label": "시간대",
+      "format": "희망 시각 또는 시간대",
+      "example": "저녁 7시",
+      "required": false
+    },
+    {
+      "key": "people",
+      "label": "인원",
+      "format": "명",
+      "example": "2",
+      "required": true
+    }
+  ],
   "sample": {
-    "restaurant": "강남 이탈리안",
     "date": "다음 주 금요일",
     "time": "저녁 7시",
-    "people": "2"
+    "people": "2",
+    "restaurant": "강남 이탈리안"
   }
 }
 ```
@@ -89,6 +90,7 @@ stop_urls:
 5. 예약자 정보 입력, 예약 확정, 예약금 결제 화면으로 넘어가지 않고 멈춥니다.
 
 주의
+- 예약을 확정하는 화면(예약자 정보·확정)의 필수 동의 체크와 최종 '예약하기'는 사용자의 동의·확정이라서, 사이트 분석·검증에서는 누르지 않고 사용자가 예약을 요청한 작업에서는 누를 때마다 사용자 승인을 받은 뒤에만 누릅니다. 상품 페이지에서 예약 패널을 여는 '예약하기'와 이름이 같으니 화면에 '모두 동의합니다' 같은 동의 항목이 함께 있는지로 구분하세요.
 - 예약금이 있는 식당은 예약 단계에서 결제를 요구합니다. 금액과 취소 규정만 확인하고 결제하지 마세요.
 - 같은 식당이 여러 예약 플랫폼(네이버 예약, 캐치테이블 등)에 있을 수 있습니다. 사용자가 플랫폼을 정하지 않았으면 가능한 시간을 플랫폼별로 비교해 보고하세요.
 - 날짜나 인원을 바꾸면 이전에 고른 시간이 풀립니다. 바꾼 뒤에는 화면에서 선택 상태를 다시 확인하세요.

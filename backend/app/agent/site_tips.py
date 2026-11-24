@@ -71,6 +71,7 @@ class Vertical:
     spec: dict = field(default_factory=dict)
     category: str = ""  # 카테고리 key (화면 분류용)
     skills: tuple[str, ...] = ()  # 사이트 분석이 참고할 스킬 이름(소문자)
+    confirm_words: tuple[str, ...] = ()  # 승인 후 누를 문구(사용자 작업) / 분석·검증에서는 누르지 않는 문구. '문구@조건' 은 화면에 조건 문구의 요소가 함께 있을 때만
 
     def block(self) -> str:
         sites = [t.name for t in all_tips() if t.vertical == self.key]
@@ -142,7 +143,7 @@ def parse_vertical_file(path: Path) -> Vertical:
     guide, checklist = split_checklist(body)
     return Vertical(key=meta.get("key", "").strip().lower(), name=meta.get("name", ""), keywords=_csv(meta.get("keywords")),
                     stop_words=_csv(meta.get("stop_words")), stop_urls=_csv(meta.get("stop_urls")), body=guide, checklist=checklist, spec=spec,
-                    category=meta.get("category", "").strip().lower(), skills=_csv(meta.get("skills")))
+                    category=meta.get("category", "").strip().lower(), skills=_csv(meta.get("skills")), confirm_words=_csv(meta.get("confirm_words")))
 
 
 @lru_cache(maxsize=1)
@@ -341,6 +342,17 @@ def jit_text(url: str, shown: set) -> str:
             parts.append(v.block())
         parts.append(tip.block())
     return "\n\n".join(parts)
+
+
+def confirm_rules(url: str, shown: set) -> tuple[str, ...]:
+    """지금 작업에 적용되는 분야의 '승인 후 누를 문구'(사용자 작업은 매번 승인, 분석·검증은 누르지 않음). stop_rules 와 같은 방식으로 분야를 고른다."""
+    keys = {s[1:] for s in shown if isinstance(s, str) and s.startswith("@")}
+    keys |= {t.vertical for t in tips_for_url(url) if t.vertical} if url else set()
+    words: list[str] = []
+    for v in all_verticals():
+        if v.key in keys:
+            words += v.confirm_words
+    return tuple(dict.fromkeys(words))
 
 
 def stop_rules(url: str, shown: set) -> tuple[tuple[str, ...], tuple[str, ...]]:

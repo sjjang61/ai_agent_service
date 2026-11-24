@@ -22,6 +22,7 @@ class SiteVertical(Base):
     name = Column(String(100), nullable=False)
     keywords = Column(Text, nullable=False, default="")  # 쉼표 구분. 작업 문장에 나오면 이 분야 지침을 붙인다
     stop_words = Column(Text, nullable=False, default="")  # 쉼표 구분. 이 라벨의 버튼은 누르지 않는다 (결제 직전에 멈춘다)
+    confirm_words = Column(Text, nullable=True)  # 쉼표 구분. 이 라벨의 버튼은 사용자가 요청한 작업에서는 매번 승인을 받고 누르고, 사이트 분석·검증에서는 누르지 않는다. '문구@조건' 은 화면에 조건 문구의 요소가 함께 있을 때만 적용
     stop_urls = Column(Text, nullable=False, default="")  # 쉼표 구분. 이 문구가 주소에 있으면 이동하지 않는다
     body = Column(Text, nullable=False, default="")  # 에이전트에게 주는 공통 지침 (markdown)
     checklist = Column(Text, nullable=False, default="")  # 새 사이트를 분석할 때 확인할 항목 (markdown)

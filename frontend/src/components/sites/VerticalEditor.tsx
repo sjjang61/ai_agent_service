@@ -17,7 +17,7 @@ interface Props {
   onDeleted: () => void
 }
 
-const EMPTY: VerticalInput = { key: '', name: '', category: null, reference_skills: null, keywords: '', stop_words: '', stop_urls: '', body: '', checklist: '', spec: emptyVerticalSpec() }
+const EMPTY: VerticalInput = { key: '', name: '', category: null, reference_skills: null, confirm_words: null, keywords: '', stop_words: '', stop_urls: '', body: '', checklist: '', spec: emptyVerticalSpec() }
 
 export default function VerticalEditor({ vertical, categories, defaultCategory, onSaved, onDeleted }: Props) {
   const qc = useQueryClient()
@@ -72,6 +72,9 @@ export default function VerticalEditor({ vertical, categories, defaultCategory, 
       <Field label="키워드" hint="쉼표로 구분. 작업 문장에 나오면 사이트를 말하지 않아도 이 분야 지침이 붙습니다. '영화'처럼 흔한 단어는 피하세요.">
         <input value={form.keywords} onChange={(e) => set('keywords')(e.target.value)} className={inputCls} placeholder="항공권, 항공편" />
       </Field>
+      <Field label="승인 후 누를 문구" hint="쉼표로 구분. 사용자가 요청한 작업에서는 이 라벨의 버튼을 누를 때마다 사용자 승인을 받고, 사이트 분석·검증에서는 누르지 않습니다(예약·동의 확정). '예약하기@모두 동의합니다'처럼 @ 뒤 문구가 화면에 함께 있을 때만 적용할 수도 있습니다.">
+        <input value={form.confirm_words ?? ''} onChange={(e) => setForm((f) => ({ ...f, confirm_words: e.target.value }))} className={inputCls} placeholder="모두 동의합니다, 예약하기@모두 동의합니다" />
+      </Field>
       <div className="grid grid-cols-2 gap-3">
         <Field label="누르지 않을 버튼 문구" hint="쉼표로 구분. 짧은 버튼 라벨에 이 문구가 있으면 누르지 않습니다. 결제하기 같은 공통 문구는 이미 막혀 있습니다.">
           <input value={form.stop_words} onChange={(e) => set('stop_words')(e.target.value)} className={inputCls} placeholder="예약 확정" />
@@ -103,8 +106,8 @@ export default function VerticalEditor({ vertical, categories, defaultCategory, 
             <HistoryPanel
               queryKey={['vertical-revisions', vertical.key]}
               load={() => siteProfilesApi.verticalRevisions(vertical.key)}
-              current={{ name: vertical.name, category: vertical.category, reference_skills: vertical.reference_skills, keywords: vertical.keywords, stop_words: vertical.stop_words, stop_urls: vertical.stop_urls, body: vertical.body, checklist: vertical.checklist, spec: vertical.spec }}
-              labels={{ name: '이름', category: '카테고리', reference_skills: '참고 스킬', keywords: '키워드', stop_words: '누르지 않을 버튼 문구', stop_urls: '이동하지 않을 주소 문구', body: '공통 지침', checklist: '분석 체크리스트', spec: '구조 (입력값·표준 단계)' }}
+              current={{ name: vertical.name, category: vertical.category, reference_skills: vertical.reference_skills, confirm_words: vertical.confirm_words, keywords: vertical.keywords, stop_words: vertical.stop_words, stop_urls: vertical.stop_urls, body: vertical.body, checklist: vertical.checklist, spec: vertical.spec }}
+              labels={{ name: '이름', category: '카테고리', reference_skills: '참고 스킬', confirm_words: '승인 후 누를 문구', keywords: '키워드', stop_words: '누르지 않을 버튼 문구', stop_urls: '이동하지 않을 주소 문구', body: '공통 지침', checklist: '분석 체크리스트', spec: '구조 (입력값·표준 단계)' }}
               restore={(revId) => siteProfilesApi.restoreVertical(vertical.key, revId)}
               onRestored={() => { refresh(); qc.invalidateQueries({ queryKey: ['vertical-revisions', vertical.key] }) }}
             />

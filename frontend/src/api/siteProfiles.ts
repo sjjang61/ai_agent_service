@@ -28,6 +28,7 @@ export interface SiteVertical {
   name: string
   category: string | null
   reference_skills: string | null
+  confirm_words: string | null
   keywords: string
   stop_words: string
   stop_urls: string
@@ -72,7 +73,7 @@ export interface SiteProfiles {
   stale_days: number
 }
 
-export type VerticalInput = Pick<SiteVertical, 'name' | 'category' | 'reference_skills' | 'keywords' | 'stop_words' | 'stop_urls' | 'body' | 'checklist'> & { key?: string; version?: number; spec: VerticalSpec }
+export type VerticalInput = Pick<SiteVertical, 'name' | 'category' | 'reference_skills' | 'confirm_words' | 'keywords' | 'stop_words' | 'stop_urls' | 'body' | 'checklist'> & { key?: string; version?: number; spec: VerticalSpec }
 export type SiteInput = Pick<SiteProfile, 'name' | 'domains' | 'aliases' | 'body' | 'status' | 'enabled'> & {
   spec: SiteSpec
   vertical: string | null

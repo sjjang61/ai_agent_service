@@ -66,6 +66,30 @@ def payment_stop(payload: dict, elements: list[dict], url: str, words: tuple = (
             "우회하거나 다른 방법으로 결제하지 마세요. 지금까지 확인한 내용(상품·가격·옵션·선택한 항목)과 현재 화면 주소를 최종 보고하고 멈추세요. 결제는 사용자가 직접 진행합니다.")
 
 
+def confirm_hit(payload: dict, elements: list[dict], words: tuple = ()) -> Optional[str]:
+    """누르려는 버튼이 분야의 '승인 후 누를 문구'(예약·동의 확정)에 해당하면 그 라벨을, 아니면 None.
+    '문구@조건' 은 현재 화면에 조건 문구가 들어 있는 요소가 함께 있을 때만 적용한다 (같은 '예약하기' 라벨이 패널을 여는 버튼일 때와 확정 버튼일 때를 구분한다)."""
+    if not words or (payload.get("cmd") or payload.get("action") or "") != "click":
+        return None
+    el = _element(elements, payload.get("ref"))
+    label = ((el or {}).get("label") or (el or {}).get("value") or (el or {}).get("name") or "").strip()
+    if not label or len(label) > MAX_BUTTON_LABEL:
+        return None
+    low = label.lower()
+    for w in words:
+        word, _, cond = str(w).partition("@")
+        word, cond = word.strip().lower(), cond.strip().lower()
+        if word and word in low and (not cond or any(cond in str(e.get("label") or "").lower() for e in elements or [])):
+            return label
+    return None
+
+
+def confirm_stop(label: str) -> str:
+    """사이트 분석·검증에서 '승인 후 누를 문구' 버튼을 눌러 보려 할 때의 중단 안내 (결제 직전 안내와 같은 접두사를 써서 일괄 동작도 멈춘다)."""
+    return (f"[결제 직전] “{label}” 은(는) 예약·동의를 확정하는 동작이라 사이트 분석·검증에서는 실행하지 않았습니다. 이 단계 이전까지 확인한 내용과 현재 화면 주소를 보고하고 멈추세요. "
+            "우회하거나 다른 방법으로 확정하지 마세요.")
+
+
 _SENSITIVE_TOKENS = {
     "paypal", "stripe", "checkout", "toss", "tosspayments", "kakaopay", "naverpay", "payco", "pay", "payment", "payments",
     "wallet", "venmo", "alipay",
@@ -122,7 +146,7 @@ def _element(elements: list[dict], ref: Optional[int]) -> Optional[dict]:
     return None
 
 
-def classify(payload: dict, elements: list[dict], url: str) -> Decision:
+def classify(payload: dict, elements: list[dict], url: str, confirm_label: Optional[str] = None) -> Decision:
     """브라우저 명령 하나의 승인 필요 수준. elements 는 가장 최근 snapshot 의 요소 목록, url 은 현재 주소."""
     action = payload.get("cmd") or payload.get("action") or ""
     host = _host(url)
@@ -130,6 +154,9 @@ def classify(payload: dict, elements: list[dict], url: str) -> Decision:
 
     if action in READ_ACTIONS:
         return Decision(AUTO)
+
+    if action == "click" and confirm_label:  # 분야가 정한 '승인 후 누를 문구'(예약·동의 확정): 사용자 작업에서도 매번 승인을 받는다
+        return Decision(ASK_ALWAYS, "예약·동의를 확정하는 동작입니다", confirm_label)
 
     if action == "select":
         return Decision(AUTO)  # 값만 고르는 동작. 제출은 별도 동작이다

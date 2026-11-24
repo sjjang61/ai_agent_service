@@ -30,6 +30,7 @@ class VerticalOut(BaseModel):
     reference_skills: Optional[str] = None
     keywords: str
     stop_words: str
+    confirm_words: Optional[str] = None
     stop_urls: str
     body: str
     checklist: str
@@ -76,6 +77,7 @@ class VerticalIn(BaseModel):
     reference_skills: Optional[str] = Field(default=None, description="사이트 분석이 참고할 스킬 이름(쉼표). 보내지 않으면 지금 값을 유지, 빈 문자열이면 비운다")
     keywords: str = ""
     stop_words: str = ""
+    confirm_words: Optional[str] = Field(default=None, description="승인 후 누를 문구(쉼표, '문구@조건' 가능). 보내지 않으면 지금 값을 유지, 빈 문자열이면 비운다")
     stop_urls: str = ""
     body: str
     checklist: str = ""
@@ -135,7 +137,7 @@ def _rev_out(r: SiteProfileRevision) -> RevisionOut:
 
 def _vertical_out(row: SiteVertical, counts: dict) -> VerticalOut:
     return VerticalOut(
-        key=row.key, name=row.name, category=row.category, reference_skills=row.reference_skills, keywords=row.keywords, stop_words=row.stop_words, stop_urls=row.stop_urls, body=row.body,
+        key=row.key, name=row.name, category=row.category, reference_skills=row.reference_skills, keywords=row.keywords, stop_words=row.stop_words, confirm_words=row.confirm_words, stop_urls=row.stop_urls, body=row.body,
         checklist=row.checklist, spec=row.spec or {}, source=row.source, version=row.version, updated_at=row.updated_at,
         site_count=counts.get(row.key, 0), md=svc.vertical_md(row),
     )

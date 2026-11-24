@@ -388,7 +388,7 @@ async def _execute(run_id: str, current_body: str = "") -> None:
             skills_block = await _skills_block(db, run)
             clock = bt.WaitClock()
             tool = bt.BrowserActionTool(user_id=run.user_id, run_tag=run.browser_run, conversation_id=conv, login_enabled=False,
-                                        clock=clock, tips_shown=shown, captcha_handoff=bool(run.captcha_handoff), ignore_site_block=True,
+                                        clock=clock, tips_shown=shown, captcha_handoff=bool(run.captcha_handoff), ignore_site_block=True, stop_on_confirm=True,
                                         use_profile=not run.clean_session)
             agent = Agent(
                 name="SiteAnalyst" if run.mode == "analyze" else "SiteVerifier",

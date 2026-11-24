@@ -45,6 +45,7 @@ async def init_db():
         await conn.run_sync(_ensure_site_category_columns)
         await conn.run_sync(_ensure_site_reference_skills_columns)
         await conn.run_sync(_ensure_site_reference_commands_column)
+        await conn.run_sync(_ensure_vertical_confirm_words_column)
 
 
 def _ensure_memory_columns(sync_conn) -> None:
@@ -283,3 +284,11 @@ def _ensure_site_reference_commands_column(sync_conn) -> None:
 
     if "reference_commands" not in {c["name"] for c in inspect(sync_conn).get_columns("site_profiles")}:
         sync_conn.execute(text("ALTER TABLE site_profiles ADD COLUMN reference_commands JSON NULL"))
+
+
+def _ensure_vertical_confirm_words_column(sync_conn) -> None:
+    """분야의 '승인 후 누를 문구' 컬럼 보강 (alembic zi9d0e1f2a3b 와 같은 변경)."""
+    from sqlalchemy import inspect, text
+
+    if "confirm_words" not in {c["name"] for c in inspect(sync_conn).get_columns("site_verticals")}:
+        sync_conn.execute(text("ALTER TABLE site_verticals ADD COLUMN confirm_words TEXT NULL"))

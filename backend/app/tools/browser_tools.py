@@ -875,6 +875,7 @@ class BrowserActionTool(BaseTool):
     _healing: bool = PrivateAttr(default=False)  # 요소 번호 자동 복구 중 (재귀 방지)
     tips_shown: set = Field(default_factory=set)  # 이미 안내한 사이트 요령 (이름). 처음 방문하는 사이트에서만 한 번 덧붙인다
     login_enabled: bool = False
+    stop_on_confirm: bool = False  # 사이트 분석·검증: 분야의 '승인 후 누를 문구'(예약·동의 확정)는 승인 요청 없이 누르지 않는다. 사용자 작업은 매번 승인을 받고 누른다
     ignore_site_block: bool = False  # 사이트 설정에서 꺼진 사이트로의 이동도 허용한다 (그 사이트를 다시 분석할 때)
     captcha_handoff: bool = False  # login_enabled 가 아니어도(쓰기 승인은 계속 막은 채) CAPTCHA 만은 사용자에게 넘겨 해결을 기다린다 (사이트 분석)
     clock: Any = None
@@ -906,11 +907,11 @@ class BrowserActionTool(BaseTool):
             return True
         return await route_for(self.user_id) is not None  # local: 사용자 PC 의 브라우저일 때만
 
-    async def _approve(self, payload: dict) -> Optional[str]:
+    async def _approve(self, payload: dict, confirm_label: Optional[str] = None) -> Optional[str]:
         """쓰기 동작이면 사용자 승인을 받는다. 진행해도 되면 None, 막아야 하면 에이전트에게 돌려줄 메시지."""
         from app.services import browser_policy as policy
 
-        decision = policy.classify(payload, self.last_elements, self.last_url)
+        decision = policy.classify(payload, self.last_elements, self.last_url, confirm_label)
         if not policy.needs_approval(decision, self.conversation_id, self.last_url):
             return None
         if decision.level == policy.ASK and payload.get("cmd") == "click":
@@ -1089,8 +1090,13 @@ class BrowserActionTool(BaseTool):
             if stop:
                 await self._record_shot("payment")  # 멈춘 화면
                 return stop
-            if await self._needs_policy():
-                blocked_msg = await self._approve({k: v for k, v in payload.items() if v is not None})
+            clean = {k: v for k, v in payload.items() if v is not None}
+            confirm = policy.confirm_hit(clean, self.last_elements, site_tips.confirm_rules(self.last_url, self.tips_shown))
+            if confirm and self.stop_on_confirm:
+                await self._record_shot("payment")  # 멈춘 화면
+                return policy.confirm_stop(confirm)
+            if confirm or await self._needs_policy():  # 확정 동작은 승인 화면이 없는 환경에서도 승인 없이 실행하지 않는다
+                blocked_msg = await (self._approve(clean, confirm) if confirm else self._approve(clean))
                 if blocked_msg:
                     return blocked_msg
             res = await browser_call(self.user_id, {k: v for k, v in payload.items() if v is not None}, sandbox_cid=self.sandbox_cid, use_profile=self.use_profile, session_id=self.session_id)
