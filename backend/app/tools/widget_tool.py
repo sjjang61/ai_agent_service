@@ -151,7 +151,7 @@ class CreateWidgetInput(BaseModel):
     spec: dict = Field(
         description=(
             "Widget data. By widget_type: "
-            "table -> {\"columns\": [\"항목\",\"A\",\"B\"], \"rows\": [[\"가격\",\"1\",\"2\"]], \"caption\": optional}; "
+            "table -> {\"columns\": [\"항목\",\"A\",\"B\"], \"rows\": [[\"가격\",\"1\",\"2\"]], \"caption\": optional}. Cells and caption may contain clickable links written as [text](https://url); when rows are products/results, give EVERY row its own link cell like [상품 보기](https://…) instead of listing URLs only in the caption; "
             "chart -> {\"chart_type\": \"bar\"|\"line\"|\"pie\", \"labels\": [\"1월\",\"2월\"], "
             "\"series\": [{\"name\": \"매출\", \"values\": [10, 20]}], \"unit\": optional}; "
             "flow -> {\"mermaid\": \"flowchart TD\\n  A[시작] --> B{조건}\\n  B -->|예| C[처리]\"} (Mermaid syntax); "

@@ -1,4 +1,27 @@
+import type { ReactNode } from 'react'
 import type { TableSpec } from '../../types/widget'
+
+/** 셀·캡션 속 링크를 클릭 가능하게 만든다: `[글자](https://…)` 와 맨 URL 모두. http(s) 만 허용한다. */
+const LINK_RE = /\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)|(https?:\/\/[^\s)<>"']+)/g
+
+export function linkify(text: string): ReactNode[] {
+  const out: ReactNode[] = []
+  let last = 0
+  for (const m of text.matchAll(LINK_RE)) {
+    const idx = m.index ?? 0
+    if (idx > last) out.push(text.slice(last, idx))
+    const href = m[2] ?? m[3]
+    const label = m[1] ?? href
+    out.push(
+      <a key={idx} href={href} target="_blank" rel="noopener noreferrer" className="text-accent-primary underline break-all">
+        {label}
+      </a>,
+    )
+    last = idx + m[0].length
+  }
+  if (last < text.length) out.push(text.slice(last))
+  return out
+}
 
 /** 비교 표 위젯. 색은 모두 테마 토큰이라 라이트/다크 어느 쪽에서도 글자와 구분선이 잘 보인다. */
 export default function TableWidget({ spec }: { spec: TableSpec }) {
@@ -29,7 +52,7 @@ export default function TableWidget({ spec }: { spec: TableSpec }) {
                       c === 0 ? 'font-medium' : ''
                     } ${typeof cell === 'number' ? 'text-right tabular-nums' : ''}`}
                   >
-                    {typeof cell === 'number' ? cell.toLocaleString() : cell}
+                    {typeof cell === 'number' ? cell.toLocaleString() : linkify(cell)}
                   </td>
                 ))}
               </tr>
@@ -37,7 +60,7 @@ export default function TableWidget({ spec }: { spec: TableSpec }) {
           </tbody>
         </table>
       </div>
-      {spec.caption && <p className="mt-2 text-xs text-content-tertiary">{spec.caption}</p>}
+      {spec.caption && <p className="mt-2 text-xs text-content-tertiary">{linkify(spec.caption)}</p>}
     </div>
   )
 }
