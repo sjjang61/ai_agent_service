@@ -57,6 +57,12 @@ export default function BrowserProfilePage() {
     }
     setOpen(true)
   }
+  // 일반 Chrome 확장 연결: 사용자의 Chrome(전용 프로필 권장)을 에이전트의 브라우저로 쓴다 (앱 브라우저가 봇 차단되는 사이트용)
+  const [extToken, setExtToken] = useState<{ token: string; days: number } | null>(null)
+  const [extCopied, setExtCopied] = useState(false)
+  const { data: extStatus } = useQuery({ queryKey: ['ext-status'], queryFn: async () => (await browserApi.extStatus()).data, refetchInterval: 5000 })
+  const extServer = `ws://${location.port === '5173' ? `${location.hostname}:8500` : location.host}`
+  const makeExtToken = useMutation({ mutationFn: () => browserApi.extToken(), onSuccess: (r) => { setExtToken(r.data); setExtCopied(false) }, onError: (e) => setError(errorText(e, '토큰을 만들지 못했습니다')) })
   const { data } = useQuery<BrowserProfile>({
     queryKey: ['browser-profile'],
     queryFn: async () => (await browserApi.profile()).data,
@@ -78,6 +84,28 @@ export default function BrowserProfilePage() {
           </p>
           <button onClick={openLogin} className={primaryBtn}>브라우저 열어 로그인</button>
           {desktop && <p className={T.itemDesc}>앱 오른쪽에 브라우저가 열립니다. 주소창에 사이트 주소를 입력해 직접 로그인하세요. 로그인 상태는 앱에 그대로 유지되어 에이전트도 같이 씁니다.</p>}
+        </section>
+
+        <section className="space-y-2">
+          <h2 className={T.section}>일반 Chrome 으로 조작 (확장)</h2>
+          <p className={T.itemDesc}>
+            앱 브라우저를 봇으로 막는 사이트(예: 쿠팡)용입니다. 내 Chrome 에 확장을 설치하면 에이전트가 그 Chrome 의 탭을 조작합니다. 연결돼 있는 동안 브라우저 작업은 모두 그 Chrome 에서 진행됩니다.
+            평소 쓰는 프로필 말고 <b>전용 프로필</b>을 만들어 설치하고, 에이전트가 쓸 사이트에만 로그인해 두세요.
+          </p>
+          <p className={T.itemDesc}>
+            설치: Chrome 의 <code>chrome://extensions</code> → 개발자 모드 → 압축해제된 확장 프로그램 로드 → 프로젝트의 <code>chrome-extension</code> 폴더. 확장 아이콘을 눌러 아래 서버 주소와 토큰을 넣고 연결합니다.
+          </p>
+          <div className="text-[13px] text-content-secondary">상태: {extStatus?.enabled === false ? '꺼져 있음 (서버 설정 EXT_BROWSER_ENABLED)' : extStatus?.connected ? '🟢 연결됨' : '연결 안 됨'}</div>
+          <button onClick={() => makeExtToken.mutate()} disabled={makeExtToken.isPending} className={primaryBtn}>연결 토큰 만들기</button>
+          {extToken && (
+            <div className="space-y-1">
+              <div className={T.itemDesc}>서버 주소: <code>{extServer}</code> · 토큰은 {extToken.days}일 동안 유효하며, 이 확장 연결에만 쓸 수 있습니다. 이 창을 닫으면 다시 볼 수 없으니 지금 복사하세요.</div>
+              <div className="flex gap-2">
+                <input readOnly value={extToken.token} className="flex-1 px-3 py-2 bg-surface-secondary border border-border rounded-md text-xs text-content-primary" onFocus={(e) => e.currentTarget.select()} />
+                <button className={primaryBtn} onClick={() => navigator.clipboard.writeText(extToken.token).then(() => setExtCopied(true))}>{extCopied ? '복사됨' : '복사'}</button>
+              </div>
+            </div>
+          )}
         </section>
 
         {desktop && chrome && (

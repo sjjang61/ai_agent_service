@@ -37,6 +37,9 @@ export const browserApi = {
   /** 데스크톱 로컬 브라우저 스크린샷 이미지 (path 가 local://파일명 인 것) */
   shotImage: (name: string) => apiClient.get<Blob>('/browser/shots/image', { params: { name }, responseType: 'blob' }),
   profile: () => apiClient.get<BrowserProfile>('/browser/profile'),
+  /** 일반 Chrome 확장 연결 토큰 (확장 연결에만 쓸 수 있다) */
+  extToken: () => apiClient.post<{ token: string; days: number }>('/browser/ext-token'),
+  extStatus: () => apiClient.get<{ connected: boolean; enabled: boolean }>('/browser/ext-status'),
   deleteProfile: () => apiClient.delete('/browser/profile'),
   deleteDomain: (domain: string) => apiClient.delete(`/browser/profile/domains/${encodeURIComponent(domain)}`),
   loginRequest: (conversationId: string) =>

@@ -3,6 +3,7 @@ import { chatApi } from '../api/chat'
 import { useAuthStore } from '../store/authStore'
 import { useAgentStore } from '../store/agentStore'
 import { useChatStore } from '../store/chatStore'
+import { useChatOptionsStore } from '../store/chatOptionsStore'
 import type { AgentStreamEvent, MemorySavedItem } from '../types/agent'
 import type { Attachment, Message, Reference } from '../types/chat'
 import { currentTimezone } from '../utils/time'
@@ -92,6 +93,8 @@ export function useAgentStream(conversationId: string) {
               references,
               // 예약 도구의 기본 시간대와 '현재 시각' 안내에 쓴다
               timezone: currentTimezone(),
+              // + 메뉴에서 '로컬 Chrome 사용'을 고른 경우: 브라우저 작업을 내 PC 의 Chrome 확장으로 한다
+              use_local_chrome: useChatOptionsStore.getState().useLocalChrome,
             }),
             signal: controller.signal,
           }

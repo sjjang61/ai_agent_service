@@ -1,7 +1,10 @@
 import { useState, useRef, useEffect } from 'react'
+import { useQuery } from '@tanstack/react-query'
+import { browserApi } from '../../api/browser'
+import { useChatOptionsStore } from '../../store/chatOptionsStore'
 import { useInputHistory } from '../../hooks/useInputHistory'
 import axios from 'axios'
-import { Send, Loader2, X, FileText, AlertCircle, Square, Plus, ThumbsUp, Settings, Mic, Folder, FolderUp, Paperclip, MessageSquare, BookMarked, Puzzle, HardDrive } from 'lucide-react'
+import { Send, Loader2, X, FileText, AlertCircle, Square, Plus, Mic, Folder, FolderUp, Paperclip, MessageSquare, BookMarked, Settings, HardDrive, Chrome, Check } from 'lucide-react'
 import { useAgentStore } from '../../store/agentStore'
 import { useAgentStream } from '../../hooks/useAgentStream'
 import { sandboxApi } from '../../api/sandbox'
@@ -33,10 +36,11 @@ interface Pending {
 
 let seq = 0
 
-function MenuItem({ icon, label, hint, disabled, onClick }: { icon: React.ReactNode; label: string; hint?: string; disabled?: boolean; onClick: () => void }) {
+function MenuItem({ icon, label, hint, disabled, checked, onClick }: { icon: React.ReactNode; label: string; hint?: string; disabled?: boolean; checked?: boolean; onClick: () => void }) {
   return (
     <button
-      role="menuitem"
+      role={checked === undefined ? 'menuitem' : 'menuitemcheckbox'}
+      aria-checked={checked}
       onClick={onClick}
       disabled={disabled}
       className="w-full flex items-center gap-3 px-3 py-2 text-left border-none bg-transparent cursor-pointer text-content-primary hover:bg-surface-hover disabled:opacity-40 disabled:cursor-not-allowed"
@@ -46,6 +50,11 @@ function MenuItem({ icon, label, hint, disabled, onClick }: { icon: React.ReactN
         <span className="block text-[13px]">{label}</span>
         {hint && <span className="block text-[11px] text-content-muted">{hint}</span>}
       </span>
+      {checked !== undefined && (
+        <span className={`w-4 h-4 flex items-center justify-center rounded-sm border ${checked ? 'bg-accent-primary border-accent-primary text-white' : 'border-border'}`}>
+          {checked && <Check size={12} />}
+        </span>
+      )}
     </button>
   )
 }
@@ -56,6 +65,9 @@ export default function InputBar({ conversationId }: { conversationId: string })
   const [files, setFiles] = useState<Pending[]>([])
   const [dragging, setDragging] = useState(false)
   const [menuOpen, setMenuOpen] = useState(false)
+  const useLocalChrome = useChatOptionsStore((s) => s.useLocalChrome)
+  const setUseLocalChrome = useChatOptionsStore((s) => s.setUseLocalChrome)
+  const { data: extStatus } = useQuery({ queryKey: ['ext-status'], queryFn: async () => (await browserApi.extStatus()).data, enabled: menuOpen || useLocalChrome, refetchInterval: menuOpen || useLocalChrome ? 5000 : false })
   const [pickerOpen, setPickerOpen] = useState(false)
   const [drivePickerOpen, setDrivePickerOpen] = useState(false)
   const [refs, setRefs] = useState<Reference[]>([])
@@ -406,9 +418,26 @@ export default function InputBar({ conversationId }: { conversationId: string })
                       hint="스페이스 페이지·이전 대화"
                       onClick={() => { setMenuOpen(false); setPickerOpen(true) }}
                     />
+                    <div className="my-1 border-t border-border" />
+                    <MenuItem
+                      icon={<Chrome size={15} />}
+                      label="로컬 Chrome 사용"
+                      hint={extStatus?.connected ? '내 PC 의 Chrome 으로 브라우저 작업 · 연결됨' : '내 PC 의 Chrome 으로 브라우저 작업 · 확장 연결 필요'}
+                      checked={useLocalChrome}
+                      onClick={() => setUseLocalChrome(!useLocalChrome)}
+                    />
                   </div>
                 )}
               </div>
+              {useLocalChrome && (
+                <button
+                  onClick={() => setUseLocalChrome(false)}
+                  title={extStatus?.connected ? '로컬 Chrome 으로 브라우저 작업 중 (누르면 끔)' : '로컬 Chrome 확장이 연결되어 있지 않습니다 (누르면 끔)'}
+                  className={`flex items-center gap-1 px-2 py-1 text-[12px] rounded-[var(--radius-sm)] border ${extStatus?.connected ? 'border-accent-primary text-accent-primary' : 'border-red-400 text-red-500'}`}
+                >
+                  <Chrome size={13} /> 로컬 Chrome{extStatus?.connected ? '' : ' (연결 안 됨)'}
+                </button>
+              )}
               <button
                 onClick={() => setSkillsOpen(true)}
                 disabled={isRunning}
@@ -417,19 +446,6 @@ export default function InputBar({ conversationId }: { conversationId: string })
                 className="flex items-center gap-1.5 px-3 py-2 text-[13px] text-content-secondary
                   hover:bg-surface-hover hover:text-content-primary rounded-[var(--radius-sm)] transition-colors
                   disabled:opacity-40 disabled:cursor-not-allowed"
-              >
-                <Puzzle size={16} />
-              </button>
-              <button
-                className="flex items-center gap-1.5 px-3 py-2 text-[13px] text-content-secondary
-                  hover:bg-surface-hover hover:text-content-primary rounded-[var(--radius-sm)] transition-colors"
-              >
-                <ThumbsUp size={16} />
-                <span className="hidden sm:inline">Approval</span>
-              </button>
-              <button
-                className="flex items-center gap-1.5 px-3 py-2 text-[13px] text-content-secondary
-                  hover:bg-surface-hover hover:text-content-primary rounded-[var(--radius-sm)] transition-colors"
               >
                 <Settings size={16} />
               </button>
