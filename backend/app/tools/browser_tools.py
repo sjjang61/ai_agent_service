@@ -1589,6 +1589,7 @@ class CliBrowserAgentTool(BaseTool):
             clock = WaitClock()
             clock.session_id, clock.session_label = self.session_id, self.session_label
             from app.agent import site_tips
+            from app.tools.price_combo import PriceComboTool
 
             start_blocks, start_shown = site_tips.start_blocks(task, start_url)  # 작업에 해당하는 분야 지침과 사이트 요령만 지침에 붙인다
             browser_tool = BrowserActionTool(
@@ -1601,7 +1602,7 @@ class CliBrowserAgentTool(BaseTool):
             agent = Agent(
                 name="BrowserAgent",
                 model=build_agno_model(self.llm_provider or settings.LLM_TYPE, self.model),
-                tools=[to_agno_function(browser_tool), to_agno_function(login_tool)],
+                tools=[to_agno_function(browser_tool), to_agno_function(login_tool), to_agno_function(PriceComboTool())],
                 tool_call_limit=settings.BROWSER_MAX_STEPS,
                 instructions=BROWSER_INSTRUCTIONS + start_blocks,
                 compress_tool_results=True,
