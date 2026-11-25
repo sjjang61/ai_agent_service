@@ -1,86 +1,86 @@
 ---
 key: transport
-category: transport
 name: 교통 예약(기차·버스)
-keywords: 기차 예매, 기차표, 열차 예매, 열차 조회, KTX, SRT, 버스 예매, 고속버스, 시외버스, 승차권
+category: transport
+keywords: 기차 예매, 기차표, 열차 예매, 열차 조회, ktx, srt, 버스 예매, 고속버스, 시외버스, 승차권
 stop_words: 결제하기, 승차권 결제, 예매 확정, 예약 확정
-stop_urls:
+stop_urls: 
 ---
 ```spec
 {
-  "inputs": [
-    {
-      "key": "from",
-      "label": "출발지",
-      "required": true,
-      "format": "역 또는 터미널 이름",
-      "example": "서울"
-    },
-    {
-      "key": "to",
-      "label": "도착지",
-      "required": true,
-      "format": "역 또는 터미널 이름",
-      "example": "부산"
-    },
-    {
-      "key": "date",
-      "label": "가는 날짜",
-      "required": true,
-      "format": "YYYY-MM-DD 또는 상대 표현",
-      "example": "다음 주 금요일"
-    },
-    {
-      "key": "time",
-      "label": "희망 출발 시각",
-      "required": false,
-      "format": "시각 또는 시간대",
-      "example": "오전 9시 이후"
-    },
-    {
-      "key": "people",
-      "label": "인원",
-      "required": true,
-      "format": "성인·어린이 등 인원수",
-      "example": "성인 1명"
-    }
-  ],
   "flow": [
     {
       "key": "search",
-      "title": "출발지·도착지·날짜·시각 입력",
       "desc": "역(터미널)과 날짜, 출발 시각, 인원을 넣고 조회한다",
+      "title": "출발지·도착지·날짜·시각 입력",
       "write": false
     },
     {
       "key": "list",
-      "title": "열차·버스 목록 확인",
       "desc": "출발·도착 시각, 소요 시간, 열차(버스) 종류와 번호를 읽는다",
+      "title": "열차·버스 목록 확인",
       "write": false
     },
     {
       "key": "fare",
-      "title": "요금·좌석 확인",
       "desc": "일반실·특실(우등·일반) 등 등급별 요금과 잔여 좌석·매진·대기 여부를 구분해 읽는다",
+      "title": "요금·좌석 확인",
       "write": false
     },
     {
       "key": "select",
-      "title": "승차권 선택·좌석 지정",
       "desc": "상태를 바꾸는 단계: 사용자가 요청했을 때만. 좌석을 잡으면 일정 시간 점유될 수 있다",
+      "title": "승차권 선택·좌석 지정",
       "write": true
     },
     {
       "key": "stop",
-      "title": "결제 전에 멈춤",
       "desc": "결제 화면으로 넘어가지 않고 멈춘다. 열차(버스) 목록·요금 화면에서 멈추는 것도 이 단계를 충족한 것으로 본다",
+      "title": "결제 전에 멈춤",
       "write": false
     }
   ],
+  "inputs": [
+    {
+      "key": "from",
+      "label": "출발지",
+      "format": "역 또는 터미널 이름",
+      "example": "서울",
+      "required": true
+    },
+    {
+      "key": "to",
+      "label": "도착지",
+      "format": "역 또는 터미널 이름",
+      "example": "부산",
+      "required": true
+    },
+    {
+      "key": "date",
+      "label": "가는 날짜",
+      "format": "YYYY-MM-DD 또는 상대 표현",
+      "example": "다음 주 금요일",
+      "required": true
+    },
+    {
+      "key": "time",
+      "label": "희망 출발 시각",
+      "format": "시각 또는 시간대",
+      "example": "오전 9시 이후",
+      "required": false
+    },
+    {
+      "key": "people",
+      "label": "인원",
+      "format": "성인·어린이 등 인원수 (말하지 않으면 성인 1명)",
+      "example": "성인 1명",
+      "required": false
+    }
+  ],
   "sample": {
-    "from": "서울",
     "to": "부산",
     "date": "다음 주 금요일",
+    "from": "서울",
     "time": "오전 9시 이후",
     "people": "성인 1명"
   }
@@ -105,6 +105,7 @@ stop_urls:
 - 접속 대기열(대기 순번 화면)이 나오면 새로고침하지 말고 기다리세요.
 
 보고 항목: 구간, 날짜, 열차(버스) 종류·번호, 출발·도착 시각, 소요 시간, 등급별 요금, 잔여 좌석(매진·대기 구분), 사업자, 조회 주소, 멈춘 화면.
+**인원을 말하지 않았으면 성인 1명으로 조회한다**: 사용자가 인원을 정하지 않았으면 되묻거나 멈추지 말고 '성인 1명'을 기본으로 넣어 조회하고, 답변에 '성인 1명 기준'이라고 밝힌다. 인원 선택 때문에 조회가 막히면(예: '조회인원을 선택하세요') 성인 1명을 고른 뒤 다시 조회한다.
 
 ## 분석 체크리스트
 - 출발지·도착지·날짜·시각·인원은 어디에서 어떻게 입력하는가? (역 선택 팝업, 달력, 주소 파라미터)
