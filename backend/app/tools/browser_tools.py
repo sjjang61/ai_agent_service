@@ -1507,7 +1507,10 @@ class CliBrowserAgentTool(BaseTool):
         "the site / log in, or when web_crawler returned empty, partial, blocked (403) or failed results. A browser sub-agent does "
         "the whole task and reports the result (login state persists between calls). For merely finding public information or "
         "reading a public page, web_search/web_crawler is faster. For SEVERAL independent sites, issue all the calls together in the SAME response "
-        "(or use browser_parallel if available) so they run at the same time; never run them one by one."
+        "(or use browser_parallel if available) so they run at the same time; never run them one by one. "
+        "For a shopping price task with a quantity (e.g. 'N pcs cheapest'), tell the browser agent in the task to read each "
+        "pack option's (units per pack, price, shipping) from the result list and compute the total with its price_combo tool "
+        "instead of doing the arithmetic itself; keep the task small (list first, open at most 1-2 detail pages) so it finishes within the time limit."
     )
     args_schema: type[BaseModel] = CliBrowserAgentInput
     user_id: str = ""
