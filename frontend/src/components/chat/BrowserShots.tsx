@@ -1,6 +1,6 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
-import { X } from 'lucide-react'
+import { ChevronLeft, ChevronRight, X } from 'lucide-react'
 import { browserApi, type BrowserShot } from '../../api/browser'
 import { sandboxApi } from '../../api/sandbox'
 import { useChatStore } from '../../store/chatStore'
@@ -58,7 +58,7 @@ export default function BrowserShots({ run, running, size = 'md', conversationId
   const conversationId = convOverride !== undefined ? convOverride : storeConversationId
   const storeRunning = useAgentStore((s) => s.isRunning)
   const agentRunning = live !== undefined ? live : storeRunning
-  const [open, setOpen] = useState<BrowserShot | null>(null)
+  const [openPath, setOpenPath] = useState<string | null>(null)
   const { data: shots = [] } = useQuery({
     queryKey: ['browser-shots', conversationId, run ?? 'latest'],
     queryFn: async () => (await browserApi.shots(conversationId, run ?? 'latest')).data,
@@ -66,21 +66,45 @@ export default function BrowserShots({ run, running, size = 'md', conversationId
     retry: false,
   })
   if (shots.length === 0) return null
+  const openIdx = openPath ? shots.findIndex((x) => x.path === openPath) : -1
   const shown = size === 'sm' ? shots.slice(-4) : shots
 
   return (
     <>
       <div className={size === 'sm' ? 'flex gap-1.5 overflow-x-auto pt-1.5 pb-0.5' : 'flex flex-wrap gap-2'}>
         {shown.map((s) => (
-          <Thumb key={s.path} shot={s} conversationId={conversationId} size={size} onOpen={() => setOpen(s)} />
+          <Thumb key={s.path} shot={s} conversationId={conversationId} size={size} onOpen={() => setOpenPath(s.path)} />
         ))}
       </div>
-      {open && <Lightbox shot={open} conversationId={conversationId} onClose={() => setOpen(null)} />}
+      {openIdx >= 0 && (
+        <Lightbox
+          shot={shots[openIdx]}
+          conversationId={conversationId}
+          index={openIdx}
+          total={shots.length}
+          onPrev={openIdx > 0 ? () => setOpenPath(shots[openIdx - 1].path) : undefined}
+          onNext={openIdx < shots.length - 1 ? () => setOpenPath(shots[openIdx + 1].path) : undefined}
+          onClose={() => setOpenPath(null)}
+        />
+      )}
     </>
   )
 }
 
-function Lightbox({ shot, conversationId, onClose }: { shot: BrowserShot; conversationId: string | null; onClose: () => void }) {
+function Lightbox({ shot, conversationId, index, total, onPrev, onNext, onClose }: {
+  shot: BrowserShot; conversationId: string | null; index: number; total: number
+  onPrev?: () => void; onNext?: () => void; onClose: () => void
+}) {
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'ArrowLeft' && onPrev) onPrev()
+      else if (e.key === 'ArrowRight' && onNext) onNext()
+      else if (e.key === 'Escape') onClose()
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [onPrev, onNext, onClose])
+  const arrow = 'absolute top-1/2 -translate-y-1/2 z-10 w-10 h-10 rounded-full bg-black/60 hover:bg-black/80 text-white flex items-center justify-center border-none cursor-pointer'
   const { data: src } = useQuery({
     queryKey: ['browser-shot', conversationId, shot.path],
     queryFn: () => fetchShotUrl(shot, conversationId),
@@ -88,12 +112,15 @@ function Lightbox({ shot, conversationId, onClose }: { shot: BrowserShot; conver
   })
   return (
     <div className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center p-6" onClick={onClose}>
+      {onPrev && <button onClick={(e) => { e.stopPropagation(); onPrev() }} aria-label="이전 스크린샷" className={`${arrow} left-4`}><ChevronLeft size={22} /></button>}
+      {onNext && <button onClick={(e) => { e.stopPropagation(); onNext() }} aria-label="다음 스크린샷" className={`${arrow} right-4`}><ChevronRight size={22} /></button>}
       <div className="bg-surface-primary rounded-xl border border-border max-w-[1100px] w-full max-h-full overflow-auto" onClick={(e) => e.stopPropagation()}>
         <div className="flex items-center gap-2 px-4 py-2 border-b border-border">
           <div className="min-w-0 flex-1">
             <div className="text-sm text-content-primary truncate">{shot.title || shot.url}</div>
             <a href={shot.url} target="_blank" rel="noopener noreferrer" className="text-xs text-accent-primary truncate block">{shot.url}</a>
           </div>
+          {total > 1 && <span className="text-xs text-content-muted flex-shrink-0">{index + 1} / {total}</span>}
           <button onClick={onClose} aria-label="닫기" className="p-1.5 text-content-secondary hover:text-content-primary border-none bg-transparent cursor-pointer"><X size={16} /></button>
         </div>
         {src && <img src={src} alt={shot.title} className="w-full block" />}
