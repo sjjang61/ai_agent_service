@@ -1,3 +1,5 @@
+import logging
+
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 
 from app.agent.orchestrator import AgentOrchestrator
@@ -8,10 +10,11 @@ from app.db.session import AsyncSessionLocal
 from app.services.attachment_service import compose_with_attachments, validate_attachments
 from app.services.chat_service import ChatService
 
+logger = logging.getLogger(__name__)
 router = APIRouter()
 
 
-async def _get_user_from_token(token: str):
+async def _get_user_from_token(token: str, allow_ext: bool = False):
     from app.core.security import decode_token
     from app.models.user import User
     from sqlalchemy import select
@@ -19,11 +22,39 @@ async def _get_user_from_token(token: str):
     if not token:
         return None
     payload = decode_token(token)
-    if not payload:
+    if not payload or (payload.get("type") == "ext" and not allow_ext):
         return None
     async with AsyncSessionLocal() as db:
         result = await db.execute(select(User).where(User.id == payload.get("sub")))
         return result.scalar_one_or_none()
+
+
+@router.websocket("/ext")
+async def ext_websocket(websocket: WebSocket):
+    """일반 크롬 확장이 접속하는 곳. 확장이 보낸 응답을 기다리는 명령에 전달한다. 127.0.0.1(같은 PC)에서만 받는다."""
+    import json
+
+    from app.services import ext_browser
+
+    host = websocket.client.host if websocket.client else ""
+    user = await _get_user_from_token(websocket.query_params.get("token", ""), allow_ext=True)
+    if host not in ("127.0.0.1", "::1", "localhost") or user is None:
+        await websocket.close(code=4001)
+        return
+    await websocket.accept()
+    eb = ext_browser.register(user.id, websocket)
+    try:
+        while True:
+            data = json.loads(await websocket.receive_text())
+            if data.get("type") == "hello":
+                continue
+            eb.on_message(data)
+    except WebSocketDisconnect:
+        pass
+    except Exception:  # noqa: BLE001
+        logger.exception("[ext] 확장 연결 처리 중 오류로 연결을 닫습니다: user=%s", user.id)
+    finally:
+        ext_browser.unregister(user.id, eb)
 
 
 @router.websocket("/chat/{conversation_id}")
@@ -53,6 +84,7 @@ async def chat_websocket(conversation_id: str, websocket: WebSocket):
                         llm_provider=data.get("llm_provider"),
                         model=data.get("model"),
                         user_timezone=data.get("timezone"),
+                        use_local_chrome=bool(data.get("use_local_chrome")),
                     )
                     full_response = ""
                     agent_steps = []

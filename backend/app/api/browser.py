@@ -60,6 +60,32 @@ class LoginDone(BaseModel):
     remember: bool = False  # approval: 이 대화에서 이 도메인은 다시 묻지 않는다
 
 
+class ExtToken(BaseModel):
+    token: str
+    days: int
+
+
+class ExtStatus(BaseModel):
+    connected: bool
+    enabled: bool
+
+
+@router.post("/ext-token", response_model=ExtToken)
+async def create_ext_token_api(user: User = Depends(get_current_user)):
+    """일반 크롬 확장(chrome-extension/)을 이 계정에 연결하는 토큰을 만든다. 확장 연결(/ws/ext)에만 쓸 수 있다."""
+    from app.core.security import EXT_TOKEN_DAYS, create_ext_token
+
+    return ExtToken(token=create_ext_token(user.id), days=EXT_TOKEN_DAYS)
+
+
+@router.get("/ext-status", response_model=ExtStatus)
+async def ext_status(user: User = Depends(get_current_user)):
+    from app.config import settings
+    from app.services import ext_browser
+
+    return ExtStatus(connected=ext_browser.get_for(user.id) is not None, enabled=settings.EXT_BROWSER_ENABLED)
+
+
 @router.get("/profile", response_model=ProfileInfo)
 async def get_profile(current_user: User = Depends(get_current_user)):
     return await BrowserProfileService.info(current_user.id)

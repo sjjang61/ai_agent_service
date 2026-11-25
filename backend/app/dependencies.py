@@ -20,7 +20,7 @@ async def get_current_user(
     db: AsyncSession = Depends(get_db),
 ) -> User:
     payload = decode_token(token)
-    if not payload:
+    if not payload or payload.get("type") == "ext":  # 확장 연결 전용 토큰은 API 에 쓸 수 없다
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token")
     result = await db.execute(select(User).where(User.id == payload.get("sub")))
     user = result.scalar_one_or_none()
@@ -35,7 +35,7 @@ async def get_ws_user(websocket: WebSocket, db: AsyncSession = Depends(get_db)) 
         await websocket.close(code=4001)
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED)
     payload = decode_token(token)
-    if not payload:
+    if not payload or payload.get("type") == "ext":
         await websocket.close(code=4001)
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED)
     result = await db.execute(select(User).where(User.id == payload.get("sub")))

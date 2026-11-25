@@ -1,0 +1,34 @@
+{
+  "manifest_version": 3,
+  "name": "AI Agent Browser",
+  "version": "0.1.0",
+  "description": "AI Agent 플랫폼이 이 크롬(전용 프로필 권장)의 탭을 조작하도록 연결한다. 쿠키·디버거 권한은 쓰지 않는다.",
+  "permissions": [
+    "tabs",
+    "scripting",
+    "storage"
+  ],
+  "host_permissions": [
+    "<all_urls>"
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "action": {
+    "default_popup": "popup.html",
+    "default_title": "AI Agent Browser"
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "<all_urls>"
+      ],
+      "js": [
+        "dialogs.js"
+      ],
+      "run_at": "document_start",
+      "world": "MAIN",
+      "all_frames": true
+    }
+  ]
+}

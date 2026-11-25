@@ -1492,6 +1492,13 @@ class CliBrowserAgentInput(BaseModel):
     new_session: bool = Field(default=False, description="Restart the browser with a clean session (drops cookies/login state)")
 
 
+_EXT_LOCKS: dict[str, asyncio.Lock] = {}
+
+
+def _ext_lock(user_id: str) -> asyncio.Lock:
+    return _EXT_LOCKS.setdefault(user_id, asyncio.Lock())
+
+
 class CliBrowserAgentTool(BaseTool):
     name: str = "cli_browser_agent"
     description: str = (
@@ -1516,6 +1523,11 @@ class CliBrowserAgentTool(BaseTool):
         return "This tool supports async execution only"
 
     async def _arun(self, task: str, start_url: Optional[str] = None, new_session: bool = False) -> str:
+        from app.services.local_browser import extension_requested
+
+        if extension_requested():  # 내 PC 의 Chrome 은 탭 하나를 쓰므로 브라우저 작업을 한 번에 하나씩 순서대로 한다
+            async with _ext_lock(self.user_id):
+                return await self._arun_session(task, start_url, new_session)
         if self._local_possible():
             from app.services.local_browser import reset_if_new_turn
 

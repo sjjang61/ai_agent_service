@@ -29,6 +29,15 @@ def create_refresh_token(subject: str) -> str:
     )
 
 
+EXT_TOKEN_DAYS = 180
+
+
+def create_ext_token(subject: str) -> str:
+    """크롬 확장 연결 전용 토큰. /ws/ext 에서만 통하고 일반 API·채팅에는 쓸 수 없다."""
+    expire = datetime.now(timezone.utc) + timedelta(days=EXT_TOKEN_DAYS)
+    return jwt.encode({"sub": subject, "exp": expire, "type": "ext"}, settings.SECRET_KEY, algorithm="HS256")
+
+
 def decode_token(token: str) -> Optional[dict]:
     try:
         return jwt.decode(token, settings.SECRET_KEY, algorithms=["HS256"])

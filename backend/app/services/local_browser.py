@@ -517,10 +517,28 @@ def force_sandbox() -> None:
     _force_sandbox.set(True)
 
 
+# 이 요청이 '내 PC 의 Chrome(확장)'으로만 브라우저 작업을 하도록 골랐는가. 켜져 있으면 sandbox·앱 브라우저로는 절대 가지 않는다 (확장이 없으면 오류로 알린다)
+_ext_requested: ContextVar[bool] = ContextVar("ext_requested", default=False)
+
+
+def request_extension(on: bool) -> None:
+    _ext_requested.set(bool(on))
+
+
+def extension_requested() -> bool:
+    return _ext_requested.get()
+
+
 async def route_for(user_id: str, sid: str = "") -> Optional[LocalBrowser]:
     """이 사용자의 브라우저 작업을 로컬 브라우저로 보낼 수 있으면 그 인스턴스를, 아니면 None(→ sandbox).
     sid 가 있으면 open_session_for 로 만든 병렬 세션 전용 연결을 돌려준다."""
-    if user_id != settings.LOCAL_BROWSER_USER_ID or _force_sandbox.get():
+    if _force_sandbox.get():
+        return None
+    if _ext_requested.get():  # 사용자가 '로컬 Chrome 사용'을 골랐다: 확장으로만 간다. 연결이 없으면 다른 브라우저로 우회하지 않고 이유를 알리는 오류를 돌려준다
+        from app.services import ext_browser
+
+        return ext_browser.get_for(user_id) or ext_browser.UNAVAILABLE  # type: ignore[return-value]
+    if user_id != settings.LOCAL_BROWSER_USER_ID:
         return None
     if sid:
         lb = _sessions.get(sid)
@@ -533,8 +551,8 @@ async def route_for(user_id: str, sid: str = "") -> Optional[LocalBrowser]:
 
 async def open_session_for(user_id: str, sid: str) -> Optional[LocalBrowser]:
     """병렬 작업용 전용 탭을 만들고 연결한다. 로컬 브라우저를 쓸 수 없으면 None, 탭 수 제한 등으로 실패하면 LocalBrowserError."""
-    base = await route_for(user_id)
-    if base is None:
+    base = get_local_browser() if user_id == settings.LOCAL_BROWSER_USER_ID and not _force_sandbox.get() else None
+    if base is None or not await base.available():
         return None
     lb = LocalBrowser(base.cdp_url, base.info_url, sid=sid)
     await lb.open_session()

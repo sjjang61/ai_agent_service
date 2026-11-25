@@ -181,6 +181,7 @@ async def send_message(
             model=data.model,
             user_timezone=data.timezone,
             runtime=runtime,
+            use_local_chrome=data.use_local_chrome,
         )
         full_response = ""
         agent_steps = []

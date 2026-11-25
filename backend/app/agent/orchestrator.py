@@ -141,7 +141,9 @@ class AgentOrchestrator:
         runtime: Optional["AgentRuntime"] = None,
         channel: bool = False,
         approver=None,
+        use_local_chrome: bool = False,
     ):
+        self.use_local_chrome = use_local_chrome  # 이 요청의 브라우저 작업은 내 PC 의 Chrome(확장)으로만 한다
         self.channel = channel  # 메신저(Telegram) 대화: 사용자가 있지만 폼 UI 가 없다
         self.approver = approver  # 위험 도구 실행 전 사용자 승인 (app.channels.approval)
         self.runtime = runtime  # 커스텀 에이전트 설정 (None 이면 기본 에이전트)
@@ -290,6 +292,21 @@ class AgentOrchestrator:
     async def run(
         self, user_input: str, conversation_id: str, db: AsyncSession
     ) -> AsyncIterator[dict]:
+        try:
+            async for event in self._run_turn(user_input, conversation_id, db):
+                yield event
+        finally:
+            if self.use_local_chrome:  # 내 PC 의 Chrome 에서 작업용으로 연 탭은 요청이 끝나면(중단·오류 포함) 닫는다
+                from app.services import ext_browser
+
+                try:
+                    await ext_browser.close_agent_tab(self.user_id)
+                except Exception:  # noqa: BLE001
+                    logger.warning("[ext] 작업 탭을 닫지 못했습니다", exc_info=True)
+
+    async def _run_turn(
+        self, user_input: str, conversation_id: str, db: AsyncSession
+    ) -> AsyncIterator[dict]:
         from app.services.chat_service import ChatService
         from app.services.memory_service import MemoryService, ShortTermMemoryService
         from app.tools.interaction_tools import complete_all_todos
@@ -390,6 +407,9 @@ class AgentOrchestrator:
         if self.allow_browser:
             from app.services.local_browser import mark_new_turn
 
+            from app.services.local_browser import request_extension
+
+            request_extension(self.use_local_chrome)  # 이 요청(과 그 하위 작업)의 브라우저 경로를 정한다
             mark_new_turn(self.user_id)  # 이 요청에서 브라우저를 처음 쓸 때 이전 탭을 정리한다
         system_prompt = compose_prompt(SYSTEM_PROMPT, self.runtime) + _time_context(self.user_timezone) + memory_context + build_skills_prompt(skills) + mcp_prompt + local_note + route_note + ("\n\n" + load("headless") if self.headless else "") + ("\n\n" + load("channel") if self.channel else "")
 
